@@ -1,0 +1,32 @@
+# 실행 설정 예시. 복사해서 config.yaml로 만들고 환경에 맞게 수정한다.
+#   cp config.yaml.example config.yaml
+# DB 비밀번호는 여기 적지 않고 password_env가 가리키는 환경변수에서 읽는다.
+
+encoding: Shift_JIS
+
+paths:
+  asis_input_dir: ./samples/asis/input
+  asis_output_dir: ./samples/asis/output
+  tobe_output_dir: ./out/tobe_output
+  report_dir: ./out/reports
+
+database:
+  host: localhost
+  port: 5432
+  dbname: compare_proto
+  user: postgres
+  password_env: POSTGRES_PASSWORD   # 이 환경변수에서 비밀번호를 읽음
+
+batch:
+  type: stub                        # 'stub' | 'netcobol' (추후 확장)
+  stub_path: ./stub_batch/run_batch.py
+  timeout_seconds: 60
+
+shells:
+  range: [1, 10]
+  # 또는 ids: ["001", "003", "007"]
+
+output:
+  cli_color: true
+  cli_verbose: false
+  report_with_bom: true

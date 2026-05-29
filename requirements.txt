@@ -1,0 +1,7 @@
+# 본 도구의 의존성 (최소 유지 — CLAUDE.md 3-5)
+psycopg2-binary>=2.9
+pyyaml>=6.0
+
+# 개발용
+pytest>=8.0
+black>=24.0

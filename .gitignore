@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 실행 산출물 (To-Be 출력, 리포트 등)
+out/
+
+# 환경별 실제 설정 (예시 파일만 커밋, 실값은 제외)
+config.yaml
+
+# 비밀
+.env

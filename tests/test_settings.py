@@ -1,0 +1,136 @@
+"""T0-3 설정 로더 단위 테스트.
+
+정상/이상 케이스를 커버한다: 정상 로드·기본값·shells(range/ids/우선순위)·
+경로 해석·비밀번호 환경변수·필수 키 누락·파일 없음·YAML 오류.
+"""
+
+from pathlib import Path
+
+import pytest
+
+from src.config.settings import ConfigError, load_config
+
+_FULL_YAML = """
+encoding: Shift_JIS
+paths:
+  asis_input_dir: ./samples/asis/input
+  asis_output_dir: ./samples/asis/output
+  tobe_output_dir: ./out/tobe_output
+  report_dir: ./out/reports
+database:
+  host: localhost
+  port: 5432
+  dbname: compare_proto
+  user: postgres
+  password_env: TEST_PG_PW
+batch:
+  type: stub
+  stub_path: ./stub_batch/run_batch.py
+  timeout_seconds: 60
+shells:
+  range: [1, 10]
+output:
+  cli_color: true
+  cli_verbose: false
+  report_with_bom: true
+"""
+
+
+def _write(tmp_path: Path, text: str) -> Path:
+    p = tmp_path / "config.yaml"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_load_full_config(tmp_path, monkeypatch):
+    """완전한 config를 로드 → 모든 필드 정확, 비밀번호 환경변수 해석."""
+    monkeypatch.setenv("TEST_PG_PW", "secret123")
+    cfg = load_config(_write(tmp_path, _FULL_YAML))
+
+    assert cfg.encoding == "Shift_JIS"
+    assert cfg.database.dbname == "compare_proto"
+    assert cfg.database.port == 5432
+    assert cfg.database.password == "secret123"
+    assert cfg.database.password_env == "TEST_PG_PW"
+    assert cfg.batch.type == "stub"
+    assert cfg.batch.timeout_seconds == 60
+    assert cfg.output.report_with_bom is True
+    # range [1,10] inclusive → 10개, 3자리 zero-pad
+    assert cfg.shell_ids == [f"{n:03d}" for n in range(1, 11)]
+
+
+def test_relative_paths_resolved_against_config_dir(tmp_path):
+    """상대경로는 config 파일 위치 기준으로 절대경로화된다."""
+    cfg = load_config(_write(tmp_path, _FULL_YAML))
+    assert cfg.asis_input_dir.is_absolute()
+    assert cfg.asis_input_dir == (tmp_path / "samples/asis/input").resolve()
+    assert cfg.batch.stub_path == (tmp_path / "stub_batch/run_batch.py").resolve()
+
+
+def test_shells_ids_beats_range(tmp_path):
+    """ids와 range가 둘 다 있으면 ids 우선 (구체 > 일반)."""
+    text = _FULL_YAML.replace("  range: [1, 10]", '  range: [1, 10]\n  ids: ["001", "003", 7]')
+    cfg = load_config(_write(tmp_path, text))
+    # 정수 7도 3자리 zero-pad로 정규화
+    assert cfg.shell_ids == ["001", "003", "007"]
+
+
+def test_defaults_applied_when_optional_blocks_missing(tmp_path, monkeypatch):
+    """encoding/shells/batch/output 누락 시 기본값 적용. password 없으면 None."""
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    text = """
+paths:
+  asis_input_dir: ./a
+  asis_output_dir: ./b
+  tobe_output_dir: ./c
+  report_dir: ./d
+database:
+  host: localhost
+  port: 5432
+  dbname: db
+  user: postgres
+"""
+    cfg = load_config(_write(tmp_path, text))
+    assert cfg.encoding == "Shift_JIS"               # 기본값
+    assert cfg.shell_ids == [f"{n:03d}" for n in range(1, 11)]  # 기본 range
+    assert cfg.batch.type == "stub"                  # dataclass 기본값
+    assert cfg.output.cli_color is True
+    assert cfg.database.password is None             # 환경변수 미설정 → None (예외 아님)
+    assert cfg.database.password_env == "POSTGRES_PASSWORD"
+
+
+def test_missing_paths_block_raises(tmp_path):
+    """필수 blocks 'paths' 누락 → ConfigError."""
+    text = "\n".join(
+        line for line in _FULL_YAML.splitlines() if "dir:" not in line and line.strip() != "paths:"
+    )
+    with pytest.raises(ConfigError, match="paths"):
+        load_config(_write(tmp_path, text))
+
+
+def test_missing_database_key_raises(tmp_path):
+    """database 필수 키(dbname) 누락 → ConfigError."""
+    text = _FULL_YAML.replace("  dbname: compare_proto\n", "")
+    with pytest.raises(ConfigError, match="dbname"):
+        load_config(_write(tmp_path, text))
+
+
+def test_file_not_found_raises(tmp_path):
+    """존재하지 않는 경로 → ConfigError."""
+    with pytest.raises(ConfigError, match="찾을 수 없"):
+        load_config(tmp_path / "nope.yaml")
+
+
+def test_invalid_yaml_raises(tmp_path):
+    """깨진 YAML → ConfigError."""
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, "paths: [unclosed\n  : :"))
+
+
+def test_range_inclusive_and_reversed_rejected(tmp_path):
+    """range는 inclusive, 시작 > 끝이면 ConfigError."""
+    ok = load_config(_write(tmp_path, _FULL_YAML.replace("  range: [1, 10]", "  range: [3, 5]")))
+    assert ok.shell_ids == ["003", "004", "005"]
+
+    with pytest.raises(ConfigError, match="range"):
+        load_config(_write(tmp_path, _FULL_YAML.replace("  range: [1, 10]", "  range: [9, 2]")))
