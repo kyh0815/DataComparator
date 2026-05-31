@@ -65,6 +65,35 @@ class RunSummary:
     report_csv_path: Path
 
 
+class ProgressKind(str, Enum):
+    """오케스트레이터가 인터페이스(CLI/GUI)에 던지는 진행 이벤트의 종류 (ARCHITECTURE 5-3 옵션 A).
+
+    Core는 print 금지(CLAUDE.md 3-1)이므로 진행 상황을 구조화 이벤트로만 알리고,
+    실제 출력 포맷팅은 인터페이스가 담당한다.
+    """
+
+    SHELL_START = "shell_start"  # 한 셸 처리 시작 ([index/total])
+    STEP = "step"  # 한 단계 완료 (load / run / compare)
+    SHELL_DONE = "shell_done"  # 한 셸의 결과 확정
+
+
+@dataclass
+class ProgressEvent:
+    """진행 보고 콜백(on_progress)에 전달되는 단일 이벤트.
+
+    SPEC 5-1의 "입력 적재 / 배치 실행 / 결과 비교" 3단계에 STEP이 매핑된다.
+    (출력=database의 다운로드는 run_batch 내부 exporter라 'run' 단계에 포함된다.)
+    """
+
+    kind: ProgressKind
+    shell_id: str
+    index: int  # 1-based 셸 순번
+    total: int  # 전체 셸 수
+    step: str | None = None  # STEP에만: "load" | "run" | "compare"
+    step_status: str | None = None  # STEP에만: "OK" | "ERROR" | ComparisonStatus 값
+    result: ComparisonResult | None = None  # SHELL_DONE에만: 확정된 비교 결과
+
+
 @dataclass
 class DatabaseConfig:
     """PostgreSQL 접속 정보. 비밀번호는 환경변수에서 해석해 채운다."""

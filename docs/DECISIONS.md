@@ -339,6 +339,62 @@
 - mock 단위: db/file 입력 × file/db 출력 argv 정확성, 비밀번호 argv 미포함·env 전달, 종료코드≠0·timeout→RunnerError, db출력→exporter 호출, conn 없음→RunnerError.
 - DB 통합: **OK db-출력 셸 골든(clean) vs To-Be(non-clean) byte 동일 → comparator OK**(false-NG 가드), 008 file→DB export 경로 NG 1줄 검출, 010 종료코드 1→RunnerError.
 
+## D-024. 오케스트레이터(`run_full_comparison`) 정책 — T3-1
+
+**결정**: E2E 오케스트레이터를 아래로 확정(T3-1). 리뷰 피드백(🔴 2건·🟡 2건)을 코드/SPEC에 대조 검증 후 전량 반영.
+
+1. **배치·시그니처**: `src/core/orchestrator.py`에 `run_full_comparison(config: Config, on_progress: Callable[[ProgressEvent], None] | None = None) -> RunSummary`. `src/core/__init__.py`가 re-export(인터페이스 공통 진입점). 콜백 없이도 동작(DoD).
+2. **진행 보고 = ProgressEvent 콜백**(ARCHITECTURE 5-3 옵션 A). `models.py`에 `ProgressKind`(SHELL_START/STEP/SHELL_DONE) + `ProgressEvent` 추가. Core는 print 금지(CLAUDE 3-1)라 구조화 이벤트만 던지고 출력은 인터페이스(T3-2) 담당. STEP은 SPEC 5-1의 load/run/compare 3단계에 매핑(출력=database 다운로드는 run 단계에 포함).
+3. **정의 파일이 정본 — range/ids 폴백 제거(D-021 supersede)**: `config.definition_file`이 없으면 `DefinitionError`(fatal). D-021의 "정의 파일 없으면 config range/ids 폴백" 문구는 정의 파일이 flat·단순했을 때 결정이며, **D-022로 정의 구조가 input/output type·table·export_csv를 갖게 된 이후로는 shell_id만으로 정의를 합성할 수 없어 degenerate(전부 ERROR)**. 따라서 폴백은 dead code로 채택 안 함. (리뷰 🟡6a)
+4. **`--shells` 필터는 T3-1에 넣지 않음**: `config.shell_ids`는 D-019로 항상 채워지므로(기본 1-10) 무조건 교집합하면 1-10 밖 test_id가 silent drop되고 "정의=정본"과 "config.shells=필터" 두 출처가 섞인다. T3-1은 **전체 정의 실행**, 부분 실행 필터는 T3-3(CLI)에서 명시적으로. (리뷰 🟡6b)
+5. **DB connection 수명 = lazy + 접속 실패 fatal**: 정의 중 input/output이 database인 셸이 하나라도 있으면 루프 진입 전 connection 1회 생성, 끝에 close. **접속 실패는 `OrchestratorError`로 즉시 종료**(SPEC 8 "DB 접속 실패 → 즉시 종료"). DB가 전혀 필요 없으면 connect하지 않음(파일 전용 실행 견고). → 새 세션 초안의 "접속 실패 시 conn=None 진행"은 SPEC 8 및 자기 자신과 모순이라 폐기. (리뷰 🔴2)
+6. **셸 단위 트랜잭션 경계(D-023 구현)**: 셸마다 ① DB 입력이면 `load_input_csv` 후 즉시 `conn.commit()`(stub은 별도 connection이라 commit해야 적재분을 봄), ② `finally`에서 `conn.rollback()`으로 exporter read 트랜잭션(`tobe_result` ACCESS SHARE 락)을 해제(다음 셸 stub의 `TRUNCATE tobe_result` 비블로킹). 적재분은 이미 commit됐으므로 rollback은 export 읽기락만 해제하며 안전.
+7. **파일 입력 복사처 단일 진실(드리프트 차단)**: `runner.resolve_input_dir(definition, config)`를 public 헬퍼로 추출(우선순위 `config.tobe_input_dir` > `definition.input_dest_dir`). 오케스트레이터의 `copy_input_file` *복사처*와 Runner의 `_input_file_path` *읽기처*가 이 헬퍼를 **공유**한다. 초안이 우선순위를 반대로 적어 복사처≠읽기처 시 파일셸 전멸 위험이 있었음. (리뷰 🔴1)
+8. **예외 경계**: `load_definitions`·DB 접속 등 루프 진입 전 오류는 전파(CLI가 SPEC 8대로 즉시 종료), per-shell 오류는 `Exception`으로 잡아 `ComparisonResult.ERROR`로 매핑(다음 셸 진행, SPEC 3-1). 실패한 단계는 STEP 이벤트에 step_status="ERROR"로 보고.
+
+**검증 결과** (T3-1 완료):
+- 기본 스위트(DB 없이) **71 passed / 10 skipped**, Docker PostgreSQL 16 + `RUN_DB_TESTS=1` **81 passed / 0 skipped**.
+- mock 단위: 정의 파일 누락 fatal, DB 접속 실패 fatal, DB 셸 없으면 미접속, 콜백 없이 동작, 진행 이벤트 순서(SHELL_START→load/run/compare→SHELL_DONE), 한 셸 RunnerError가 다음 셸을 막지 않음(ERROR 격리), DB 입력 commit→셸 종료 rollback→close 순서, 파일 복사처=resolve_input_dir(tobe_input_dir).
+- DB 통합: **연속 DB→DB 셸이 `run_full_comparison`에서 TRUNCATE 블로킹 없이 완주하고 골든(clean)==To-Be(non-clean)로 OK 판정**(D-023 ①②의 E2E 회귀 가드). 테스트는 transaction_log 시드를 스냅샷/복원해 suite 위생 유지.
+
+**한계 / 인수 후 단계**: 콜백 기반 CLI 출력(T3-2)·argparse 진입점·종료코드(T3-3)·시연 샘플 데이터(T4-1)는 후속. SPEC 3-3의 "양쪽 파일 모두 없으면 처리 목록 제외"는 프로토에선 comparator 결과(both-missing→ERROR)를 그대로 기록(To-Be는 stub이 생성하므로 통상 발생 안 함).
+
+## D-025. CLI 출력 모듈(`output.py`) 정책 — T3-2
+
+**결정**: ProgressEvent 콜백을 받아 진행·요약을 출력하는 Interface 표시기를 아래로 확정(T3-2). 보고 전 자가검증 6항(`dc-self-review`)을 grep/read로 실행해 계약 갭을 선제 식별.
+
+1. **API**: `src/cli/output.py`에 `CliReporter(*, use_color, verbose=False, stream=None)` — `on_progress(event)`(run_full_comparison 콜백) + `print_summary(summary, elapsed_seconds)`. 모든 이벤트가 index/total을 운반하므로 **무상태**. print는 Interface인 여기서만(Core는 금지, CLAUDE 3-1).
+2. **🔴 "결과 비교" 판정은 SHELL_DONE.result에서 렌더(STEP(compare) 아님)**: SPEC 5-1의 `(N개 줄 차이)`·`└─ 첫 차이`는 `diff_lines`에서 나오는데, `diff_lines`는 `STEP(compare)`엔 없고 `SHELL_DONE.result`에만 있다. 따라서 load/run 단계 줄만 STEP 이벤트로 실시간 렌더하고, **compare 판정 줄 전체(상태·개수·첫 차이)는 SHELL_DONE에서** 렌더한다. `STEP(compare)`는 표시에 쓰지 않는다(데이터가 result의 부분집합 — 여기서 그리면 inline 개수 split/silent drop). SHELL_DONE은 compare STEP 직후라 실시간성(SPEC 9) 손상 없음. (자가검증 ①/④)
+3. **ERROR 렌더**: 판정 줄을 만들지 않고 `└─ 오류: {error_message}`만 출력 — 실패 단계 STEP이 이미 `→ ERROR`를 표시했으므로(D-024 STEP(failing,"ERROR")). MISSING_*는 `▸ 결과 비교 → MISSING_TOBE` + 한 줄 설명.
+4. **색상 3중 가드(SPEC 9)**: `should_use_color(config_color, stream) = config.output.cli_color AND ("NO_COLOR" not in env) AND stream.isatty()`. 파이프/파일 리다이렉트·NO_COLOR·비TTY에서 ANSI가 새지 않는다. 색은 표시 전용이라 판정·바이트 비교와 무관(자가검증 ⑤).
+5. **🟡 verbose 계약 갭(deferred 명시, silent drop 금지)**: SPEC 5-3 verbose 3종 중 **diff 상세(모든 줄)만** 이벤트로 받을 수 있다(`result.diff_lines`). 배치 stdout/stderr·SQL 적재 로그는 ProgressEvent 계약에 없다(실패 시 stderr는 RunnerError→`error_message`에 일부 포함). → T3-2 verbose는 '모든 diff 줄 + 전체 error_message'로 한정. SQL/배치 stdout 로깅은 Core가 `logging`으로 내보내야 가능(CLAUDE 5 허용)하며 **T3-3에서 `--verbose` 시 logging 레벨 조정으로 배선**(deferred). 여기서 가짜로 만들지 않는다. (자가검증 ①/④)
+6. **소요 시간 = 인터페이스(T3-3)가 측정해 주입**: `print_summary(summary, elapsed_seconds)`. 실행을 소유하는 쪽이 타이밍도 소유(단일 출처). output.py는 타이밍 부작용 없이 순수.
+
+**검증 결과** (T3-2 완료):
+- `tests/test_output.py` 15개(색 3중 조건·OK/NG/ERROR/MISSING 렌더·NG inline 개수+첫 차이·verbose 전체 diff·ANSI 유무·요약 포맷·D-016 합 항등) 통과. 기본 스위트 **86 passed / 10 skipped**, DB 통합 **96 passed / 0 skipped**.
+- 시각 확인: SPEC 5-1 진행 표시(`[i/total]`·`▸`·`└─ 첫 차이`·색)·5-2 요약 배너 충실 재현.
+
+**한계 / 후속**: argparse 진입점·`should_use_color`/`CliReporter` 배선·종료코드·소요시간 측정·`--verbose` logging 배선은 T3-3. 시연 샘플 데이터는 T4-1.
+
+## D-026. CLI 진입점(`main.py`) 정책 — T3-3
+
+**결정**: 사용자 실행 진입점을 아래로 확정(T3-3). 보고 전 자가검증 6항 실행 + 사용자 피드백 3건(①②③) 반영.
+
+1. **흐름**: argparse → `load_config` → (`--report-dir`/`--shells`/`--verbose` 반영) → `CliReporter`를 `on_progress`로 배선 → `run_full_comparison` 호출 → `print_summary`. Core/Interface 분리(ARCHITECTURE 5) 유지. `run.sh`는 이미 완성(`exec python -m src.cli.main "$@"`)이라 불변.
+2. **종료 코드**: `0`=전부 OK / `1`=NG·ERROR·**MISSING** 하나라도(=not all OK) / `2`=fatal 설정·접속 오류(ConfigError/DefinitionError/OrchestratorError → stderr 메시지, SPEC 8, 정상 요약과 분리). **① D-025의 종료코드 배선 메모(“ng+error>0이면 1”)를 supersede** — MISSING도 실패로 보아 1에 포함(D-016이 MISSING을 1급 카운트로 둔 것과 정합, “모두 OK면 0” 충족).
+3. **`--shells` = 명시 선택(D-024 정합)**: `settings.parse_shell_selector(value)`가 `"1-10"`(inclusive)·`"001,002,005"`(목록)를 파싱 — 내부에서 **기존 `_normalize_shell_ids` 재사용**(zero-pad·inclusive·검증 규칙 드리프트 0, 자가검증 ①). 결과를 `run_full_comparison(config, shell_ids=...)`로 명시 전달.
+4. **orchestrator에 `shell_ids` opt-in 파라미터 추가**: `run_full_comparison(config, on_progress=None, shell_ids: list[str] | None = None)`. None=전체(D-024), 주어지면 정의 중 해당 test_id만 **정의 파일 순서로** 처리. **정의에 없는 id 요청은 `DefinitionError`(fatal)** — silent drop 금지(자가검증 ④). 기존 호출/테스트는 None이라 무영향(additive).
+5. **단일 진실**: 셸 선택 출처는 *정의 파일(메타데이터 정본) + `--shells`(명시 선택)* 둘뿐. config의 `shells:` 블록은 D-024 이후 **선택에 미사용(vestigial)** — 두 출처 혼동 방지차 명시(인수 시 config.shells 제거/재정의 검토 가능).
+6. **`--report-dir`**: 주어지면 cwd 기준 절대화해 `config.report_dir` override(사용자 호출 위치 기준이 직관적).
+7. **`--verbose`**: `CliReporter(verbose=True)`(모든 diff 줄) + **② 앱 네임스페이스 로거만 DEBUG**(`logging.getLogger("src")`에 전용 StreamHandler) — `basicConfig(DEBUG)`가 부르는 서드파티 로그 소음을 차단. 배치 stdout/SQL 적재 로그는 Core가 아직 `logging`으로 안 내보내므로 **여전히 deferred**(D-025 §5 일관, 가짜 생성 안 함).
+8. **③ `--config` 기본 `./config.yaml`** 유지(SPEC 1-2 표).
+
+**검증 결과** (T3-3 완료):
+- `tests/test_main.py`(parse_shell_selector 4 + 배선/종료코드 9) + `test_orchestrator.py`에 shell_ids 필터 3개 추가. 기본 스위트 **103 passed / 10 skipped**, DB 통합 **113 passed / 0 skipped**.
+- **실 CLI E2E 스모크**(dc-pg, 실 stub): `python -m src.cli.main`이 DB입력→DB출력(export)·DB입력→파일출력 2셸을 적재→배치→비교로 완주. 골든 부재 1차=MISSING_ASIS(exit 1) → To-Be를 골든화한 2차=OK ✓(exit 0). 연속 DB셸 트랜잭션 경계(D-023 ②)도 실 CLI에서 무블로킹 확인. 진행 표시·요약 배너·리포트 CSV 생성 SPEC 5 충실.
+
+**한계 / 후속**: `--clean`(골든 생성)은 CLI 인자로 노출 안 함 — 골든 생성은 T4-1(시연 샘플 데이터) 단계의 책임. 시연용 asis 입력/정답지 CSV 작성이 T4-1.
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:

@@ -189,3 +189,26 @@ def _pad_shell_id(value: object) -> str:
     """셸 ID를 3자리 zero-pad 문자열로. 정수/문자열 모두 수용."""
     text = str(value).strip()
     return text.zfill(_SHELL_ID_WIDTH) if text.isdigit() else text
+
+
+def parse_shell_selector(value: str) -> list[str]:
+    """CLI `--shells` 문자열을 셸 ID 목록으로 파싱한다(인터페이스용, T3-3).
+
+    `"1-10"`(inclusive 범위) 또는 `"001,002,005"`(쉼표 목록)를 받는다. zero-pad·inclusive·
+    검증 규칙은 `_normalize_shell_ids`를 **그대로 재사용**해 config 셸 규칙과 드리프트를 막는다.
+    형식 오류는 ConfigError(CLI가 잡아 즉시 종료 + 메시지).
+    """
+    text = value.strip()
+    if not text:
+        raise ConfigError("--shells 값이 비어 있습니다.")
+    if "-" in text:
+        parts = [p.strip() for p in text.split("-")]
+        if len(parts) != 2 or not all(p.isdigit() for p in parts):
+            raise ConfigError(f"--shells 범위는 'N-M'(정수) 형식이어야 합니다: {value}")
+        block = {"range": [int(parts[0]), int(parts[1])]}
+    else:
+        ids = [p.strip() for p in text.split(",") if p.strip()]
+        if not ids:
+            raise ConfigError(f"--shells 목록이 비어 있습니다: {value}")
+        block = {"ids": ids}
+    return _normalize_shell_ids(block, Path("--shells"))  # Path는 에러 메시지용 라벨

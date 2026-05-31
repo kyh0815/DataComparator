@@ -134,8 +134,13 @@ def _output_path(definition: ShellDefinition, config: Config) -> Path:
     return path
 
 
-def _input_file_path(definition: ShellDefinition, config: Config) -> Path:
-    """파일 입력 셸의 복사된 raw 파일 경로(오케스트레이터가 copy_input_file로 둔 위치)."""
+def resolve_input_dir(definition: ShellDefinition, config: Config) -> Path:
+    """파일 입력 셸의 raw 복사 디렉토리를 결정한다 — **단일 진실**.
+
+    오케스트레이터(T3-1)의 copy_input_file *복사처*와 Runner의 *읽기처*가 반드시
+    일치해야 한다(드리프트 시 파일셸 전멸). 그래서 양쪽이 이 헬퍼를 공유한다.
+    우선순위: config.tobe_input_dir > definition.input_dest_dir. 둘 다 없으면 RunnerError.
+    """
     base = config.tobe_input_dir
     if base is None:
         if not definition.input_dest_dir:
@@ -144,4 +149,9 @@ def _input_file_path(definition: ShellDefinition, config: Config) -> Path:
                 " (tobe_input_dir/input_dest_dir 누락)."
             )
         base = Path(definition.input_dest_dir)
-    return base / definition.input_csv
+    return base
+
+
+def _input_file_path(definition: ShellDefinition, config: Config) -> Path:
+    """파일 입력 셸의 복사된 raw 파일 경로(오케스트레이터가 copy_input_file로 둔 위치)."""
+    return resolve_input_dir(definition, config) / definition.input_csv
