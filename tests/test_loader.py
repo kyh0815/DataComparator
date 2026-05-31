@@ -10,9 +10,29 @@ from pathlib import Path
 
 import pytest
 
-from src.core.loader import LoaderError, _parse_rows, load_input_csv
+from src.core.loader import LoaderError, _parse_rows, copy_input_file, load_input_csv
 
 # --- 순수 단위 테스트 (항상 실행) ------------------------------------------------
+
+
+def test_copy_input_file_byte_exact(tmp_path):
+    """파일 입력 흐름: 원본을 바이트 그대로 dest_dir에 복사하고 경로를 반환한다."""
+    src = tmp_path / "src" / "006.csv"
+    src.parent.mkdir()
+    payload = "tx_id,memo\nT001,給与振込\n".encode("shift_jis")  # Shift-JIS 바이트 유지 확인
+    src.write_bytes(payload)
+    dest_dir = tmp_path / "tobe_input"
+
+    dest = copy_input_file(src, dest_dir)
+
+    assert dest == dest_dir / "006.csv"
+    assert dest.read_bytes() == payload  # 인코딩 변환 없이 동일 바이트
+
+
+def test_copy_input_file_missing_source(tmp_path):
+    """원본이 없으면 LoaderError."""
+    with pytest.raises(LoaderError, match="복사할 입력 파일이 없"):
+        copy_input_file(tmp_path / "nope.csv", tmp_path / "dest")
 
 
 def test_parse_rows_basic():

@@ -1,0 +1,95 @@
+"""T2-3 정의 파일 파서(load_definitions) 단위 테스트 — 항상 실행(DB 의존 0)."""
+
+from pathlib import Path
+
+import pytest
+
+from src.config.definition import DefinitionError, load_definitions
+
+_VALID = """
+tests:
+  - test_id: 1
+    test_name: "결제 - DB입력/DB출력"
+    input:   { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 30 }
+    output:  { type: database, table: tobe_result, export_csv: 001.csv }
+    expected_output_csv: 001.csv
+  - test_id: "006"
+    test_name: "야간배치 - 파일입력/파일출력"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 006.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py }
+    output:  { type: file, file: 006.csv }
+    expected_output_csv: 006.csv
+"""
+
+
+def _write(tmp_path: Path, text: str) -> Path:
+    p = tmp_path / "test_definition.yaml"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_load_valid_definitions(tmp_path):
+    """정상 정의 → ShellDefinition 목록, test_id 3자리 정규화·필드 매핑."""
+    defs = load_definitions(_write(tmp_path, _VALID))
+    assert [d.test_id for d in defs] == ["001", "006"]  # 정수 1도 "001"로 정규화
+
+    db = defs[0]
+    assert db.input_type == "database"
+    assert db.input_table == "transaction_log"
+    assert db.output_type == "database"
+    assert db.output_table == "tobe_result"
+    assert db.export_csv == "001.csv"
+    assert db.shell_program == "stub_batch/run_batch_db.py"
+    assert db.timeout_seconds == 30
+
+    f = defs[1]
+    assert f.input_type == "file"
+    assert f.input_dest_dir == "./out/tobe_input/"
+    assert f.output_type == "file"
+    assert f.output_file == "006.csv"
+    assert f.timeout_seconds == 60  # 기본값
+
+
+def test_file_not_found_raises(tmp_path):
+    with pytest.raises(DefinitionError, match="찾을 수 없"):
+        load_definitions(tmp_path / "nope.yaml")
+
+
+def test_missing_tests_key_raises(tmp_path):
+    with pytest.raises(DefinitionError, match="tests"):
+        load_definitions(_write(tmp_path, "foo: bar\n"))
+
+
+def test_invalid_input_type_raises(tmp_path):
+    text = _VALID.replace("type: database, table", "type: nosql, table")
+    with pytest.raises(DefinitionError, match="type"):
+        load_definitions(_write(tmp_path, text))
+
+
+def test_database_output_requires_export_csv(tmp_path):
+    """output.type=database인데 export_csv 누락 → DefinitionError."""
+    text = """
+tests:
+  - test_id: "001"
+    input:   { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: x.py }
+    output:  { type: database, table: tobe_result }
+    expected_output_csv: 001.csv
+"""
+    with pytest.raises(DefinitionError, match="export_csv"):
+        load_definitions(_write(tmp_path, text))
+
+
+def test_database_input_requires_table(tmp_path):
+    """input.type=database인데 table 누락 → DefinitionError."""
+    text = """
+tests:
+  - test_id: "001"
+    input:   { type: database, csv: 001.csv }
+    execution: { shell_program: x.py }
+    output:  { type: file, file: 001.csv }
+    expected_output_csv: 001.csv
+"""
+    with pytest.raises(DefinitionError, match="table"):
+        load_definitions(_write(tmp_path, text))

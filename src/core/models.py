@@ -96,6 +96,29 @@ class OutputConfig:
 
 
 @dataclass
+class ShellDefinition:
+    """정의 파일(test_definition.yaml)의 테스트 1건 메타데이터 (D-021·D-022).
+
+    Boss 기획 7.1 구조의 경량 버전. 입력·출력 각각 'database'|'file' 유형을 갖는다.
+    프로토 미사용 필드(comparison_rules·success_criteria 등)는 자리만 채운다.
+    """
+
+    test_id: str  # 3자리 zero-pad 셸 ID (예: "001")
+    test_name: str
+    input_type: str  # "database" | "file"
+    input_csv: str  # asis_input_dir 기준 입력 CSV 파일명
+    output_type: str  # "database" | "file"
+    expected_output_csv: str  # asis_output_dir 기준 정답지 파일명
+    shell_program: str  # 기동할 stub(=shell) 경로
+    timeout_seconds: int = 60
+    input_table: str | None = None  # input_type == database
+    input_dest_dir: str | None = None  # input_type == file (복사 대상; 없으면 config.tobe_input_dir)
+    output_table: str | None = None  # output_type == database (결과 테이블)
+    output_file: str | None = None  # output_type == file (배치가 직접 생성하는 파일명)
+    export_csv: str | None = None  # output_type == database (다운로드 CSV 파일명)
+
+
+@dataclass
 class Config:
     """실행 설정 전체. config.yaml을 로드해 만든다 (T0-3에서 채움)."""
 
@@ -108,3 +131,6 @@ class Config:
     batch: BatchConfig
     shell_ids: list[str]  # range/ids를 해석한 최종 셸 ID 목록 (예: ["001", "002", ...])
     output: OutputConfig
+    # D-021·D-022로 추가 (선택적; 없으면 None → range/ids 폴백, 파일흐름 미사용)
+    tobe_input_dir: Path | None = None  # 파일 입력(야간 배치) raw 복사 대상
+    definition_file: Path | None = None  # 셸별 정의 파일 경로

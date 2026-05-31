@@ -20,6 +20,7 @@
 -- =============================================================================
 
 -- 재적용 가능하도록 기존 테이블을 먼저 제거한다 (시연 환경 초기화용).
+DROP TABLE IF EXISTS tobe_result;
 DROP TABLE IF EXISTS transaction_log;
 DROP TABLE IF EXISTS customer_master;
 
@@ -52,6 +53,27 @@ CREATE TABLE transaction_log (
     balance_after BIGINT  NOT NULL,         -- 거래후잔액 (엔)
     branch_code   TEXT    NOT NULL,         -- 취급지점
     memo          TEXT,                     -- 적요 (비어있을 수 있음)
+    PRIMARY KEY (tx_id)
+);
+
+-- -----------------------------------------------------------------------------
+-- 3) tobe_result — TOBE 배치의 "DB 출력" 결과 테이블 (D-022)
+--    출력이 DB 유형인 셸에서 stub 배치가 이 테이블에 결과를 INSERT하고,
+--    오케스트레이터(exporter)가 이를 CSV로 다운로드(export)해 비교한다.
+--    셸마다 TRUNCATE 후 재사용한다. 더미 데이터는 두지 않는다(런타임 채움).
+--    컬럼명은 출력 CSV 헤더와 동일(ASCII) — exporter가 컬럼명을 그대로 헤더로 쓴다.
+-- -----------------------------------------------------------------------------
+--    이 테이블은 배치 출력의 *staging* 용도이므로 모든 컬럼을 TEXT로 둔다
+--    (CSV는 어차피 텍스트 비교 — 타입 캐스팅 마찰 제거, 빈칸/NULL 처리 단순).
+CREATE TABLE tobe_result (
+    tx_id         TEXT    NOT NULL,          -- 거래번호
+    customer_id   TEXT    NOT NULL,          -- 고객번호
+    customer_name TEXT,                      -- 고객 성명 (마스터 조인, 없으면 빈칸)
+    tx_date       TEXT    NOT NULL,          -- 거래일
+    tx_type       TEXT    NOT NULL,          -- 거래구분
+    amount        TEXT    NOT NULL,          -- 거래금액
+    balance_after TEXT    NOT NULL,          -- 거래후잔액
+    memo          TEXT,                      -- 적요 (비어있을 수 있음)
     PRIMARY KEY (tx_id)
 );
 

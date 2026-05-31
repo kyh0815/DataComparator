@@ -1,0 +1,101 @@
+# 테스트 정의 파일 (셸별 메타데이터) — Boss 기획 7.1 구조의 경량 버전 (D-021·D-022).
+#
+# 입력 type(database|file) · 출력 type(database|file)로 두 흐름 × 두 출력 = 4사분면을
+# 데이터 주도로 라우팅한다. comparison_rules/success_criteria는 프로토에선 자리만 채운다.
+#
+# === 인수인계 시 교체 포인트 ===
+# 시연용 정의. 실 운영에서는 고객의 실제 스키마·셸 목록으로 교체한다(도구의 동적 적응 지점).
+# 입력→출력 매핑은 SPEC 6-5 표를 따른다.
+
+tests:
+  # --- 결제 도메인 (DB 입력) : 001~005, 모두 OK, 출력 DB/파일 혼합 ---
+  - test_id: "001"
+    test_name: "결제 - 거래명세 (DB입력/DB출력)"
+    input:   { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output:  { type: database, table: tobe_result, export_csv: 001.csv }
+    expected_output_csv: 001.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "002"
+    test_name: "결제 - 거래명세 (DB입력/파일출력)"
+    input:   { type: database, table: transaction_log, csv: 002.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output:  { type: file, file: 002.csv }
+    expected_output_csv: 002.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "003"
+    test_name: "결제 - 거래명세 (DB입력/DB출력)"
+    input:   { type: database, table: transaction_log, csv: 003.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output:  { type: database, table: tobe_result, export_csv: 003.csv }
+    expected_output_csv: 003.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "004"
+    test_name: "결제 - 거래명세 (DB입력/파일출력)"
+    input:   { type: database, table: transaction_log, csv: 004.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output:  { type: file, file: 004.csv }
+    expected_output_csv: 004.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "005"
+    test_name: "결제 - 거래명세 (DB입력/DB출력)"
+    input:   { type: database, table: transaction_log, csv: 005.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output:  { type: database, table: tobe_result, export_csv: 005.csv }
+    expected_output_csv: 005.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  # --- 야간 배치 시뮬 (파일 입력) : 006~010, NG/ERROR 집중 ---
+  - test_id: "006"
+    test_name: "야간배치 - 일일명세 (파일입력/파일출력, 정상)"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 006.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, timeout: 60 }
+    output:  { type: file, file: 006.csv }
+    expected_output_csv: 006.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "007"
+    test_name: "야간배치 - 일일명세 (NG: 한 줄 데이터 차이)"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 007.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, timeout: 60 }
+    output:  { type: file, file: 007.csv }
+    expected_output_csv: 007.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "008"
+    test_name: "야간배치 - 일일명세 (파일입력/DB출력, NG: 전각 공백)"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 008.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, timeout: 60 }
+    output:  { type: database, table: tobe_result, export_csv: 008.csv }
+    expected_output_csv: 008.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "009"
+    test_name: "야간배치 - 일일명세 (NG: 여러 줄 차이)"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 009.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, timeout: 60 }
+    output:  { type: file, file: 009.csv }
+    expected_output_csv: 009.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }
+
+  - test_id: "010"
+    test_name: "야간배치 - 일일명세 (ERROR: 배치 실행 실패)"
+    input:   { type: file, dest_dir: ./out/tobe_input/, csv: 010.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, timeout: 60 }
+    output:  { type: file, file: 010.csv }
+    expected_output_csv: 010.csv
+    comparison_rules: { type: byte_exact }
+    success_criteria: { pass_condition: all_exact_match }

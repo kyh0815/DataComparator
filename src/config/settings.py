@@ -67,6 +67,10 @@ def load_config(path: Path) -> Config:
     tobe_output_dir = _resolve_path(paths, "tobe_output_dir", base_dir, path)
     report_dir = _resolve_path(paths, "report_dir", base_dir, path)
 
+    # 선택적 경로 (D-021·D-022). 없으면 None — 파일 흐름/정의 파일 미사용으로 동작.
+    tobe_input_dir = _resolve_optional_path(paths, "tobe_input_dir", base_dir)
+    definition_file = _resolve_optional_path(paths, "definition_file", base_dir)
+
     database = _build_database(_require(raw, "database", path), path)
     batch = _build_batch(raw.get("batch") or {}, base_dir)
     output = _build_output(raw.get("output") or {})
@@ -82,6 +86,8 @@ def load_config(path: Path) -> Config:
         batch=batch,
         shell_ids=shell_ids,
         output=output,
+        tobe_input_dir=tobe_input_dir,
+        definition_file=definition_file,
     )
 
 
@@ -98,6 +104,15 @@ def _resolve_path(block: dict, key: str, base_dir: Path, path: Path) -> Path:
     value = block.get(key)
     if value is None:
         raise ConfigError(f"필수 경로 키 'paths.{key}'가 없습니다: {path}")
+    candidate = Path(str(value))
+    return candidate if candidate.is_absolute() else (base_dir / candidate).resolve()
+
+
+def _resolve_optional_path(block: dict, key: str, base_dir: Path) -> Path | None:
+    """선택적 경로 키를 base_dir 기준 절대경로화한다. 없으면 None(예외 아님)."""
+    value = block.get(key)
+    if value is None:
+        return None
     candidate = Path(str(value))
     return candidate if candidate.is_absolute() else (base_dir / candidate).resolve()
 

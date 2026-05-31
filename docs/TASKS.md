@@ -72,6 +72,8 @@
 
 **의존**: T0-2.
 
+> 추가(D-021): T2-3에서 Config에 `definition_file`·`tobe_input_dir` 경로를 더한다(미세 수정, config 디렉토리 기준 절대경로화). 정의 파일 파서는 `src/config`에 둔다.
+
 ---
 
 ## Phase 1. 핵심 비교 엔진 (Core)
@@ -166,30 +168,33 @@
 
 ---
 
-### T2-3. Stub 배치 작성 `[ ]`
+### T2-3. Stub 배치 작성 `[x]`
 
-**목적**: 진짜 Net COBOL 배치 대신 시연용 가짜 배치.
+**목적**: 진짜 Net COBOL 배치 대신 시연용 가짜 배치. **입력 2종(DB/파일) × 출력 2종(DB/파일) = 4사분면**과 **정의 파일 라우팅**을 시연 (D-021·D-022 / `docs/T2-3_alignment.md`·`docs/AlignmentCheck/` 반영).
 
 **작업**:
-- `stub_batch/run_batch.py`
-  - 인자: `--shell-id`, `--output-path`, DB 접속 정보
-  - DB에서 input 읽어 단순 변환 후 CSV로 출력 (Shift-JIS)
-  - **시연용 NG 패턴**: 특정 shell_id에서 의도적으로 다르게 동작
-    - 007: 한 줄 값 변경
-    - 008: 공백/포맷 차이
-    - 009: 여러 줄 차이
-    - 010: 의도적 종료 코드 1 (실행 실패 시연)
-- 코드 최상단에 명시:
-  ```
-  # === 인수인계 시 교체 포인트 ===
-  # 이 파일은 시연용 stub 배치. 실 운영에서는 Net COBOL 배치 호출로 교체.
-  # 입출력 계약(--shell-id, --output-path)은 유지.
-  ```
+- `test_definition.yaml` 작성 (테스트 10건, SPEC 7-2 Boss 구조). 입력→출력 매핑은 SPEC 6-5표(001 DB→DB … 008 file→DB … 010 ERROR).
+- `db/schema.sql`에 결과 테이블 `tobe_result` 추가 (DB 출력 셸이 INSERT, TRUNCATE per shell, PK·NOT NULL만 — D-022).
+- `stub_batch/run_batch_db.py` — DB 입력 흐름 (셸 001~005)
+  - 인자: `--shell-id --output-path --output-type {file|database} --input-table --encoding --db-*` + `POSTGRES_PASSWORD` env, `--clean`
+  - `transaction_log` SELECT + `customer_master` 조인 → 取引明細レポート. 출력: file이면 CSV 직접, database면 `tobe_result` INSERT.
+- `stub_batch/run_batch_file.py` — 파일 입력 흐름 = 야간 배치 시뮬 (셸 006~010)
+  - 인자: `--shell-id --output-path --output-type --input-file --encoding --db-*` + env, `--clean`
+  - 복사된 raw 파일 read + `customer_master` 조인 → 동일 출력 분기.
+- `src/core/loader.py`에 `copy_input_file(csv_path, dest_dir) -> Path` 추가 (파일 입력용 바이트 복사).
+- `src/core/exporter.py` 신규: `export_table_to_csv(conn, table_name, output_path, encoding, columns=None) -> Path` (DB 출력 다운로드, 결정론적·바이트비교 호환 — D-022).
+- `src/config`에 정의 파일 파서(Boss 구조 → `ShellDefinition` 등) + Config에 `definition_file`·`tobe_input_dir` 추가.
+- `run.sh` — 얇은 CLI 기동 래퍼 (Boss "Shell로 기동" 충족, D-022). *(엔트리 완성은 T3-3과 함께여도 됨 — 최소 자리 확보.)*
+- **시연용 NG 패턴** (SPEC 6-5): 007 한 줄 값 / 008 전각 공백(顧客名, file→DB export 경로) / 009 여러 줄 / 010 종료코드 1
+  - 순수 함수 `_apply_ng_pattern(shell_id, rows)`로 분리 (위치 기반·결정론적, DB 없이 테스트).
+- 각 stub 최상단에 교체 포인트 주석 강화 (`--shell-id/--output-path/입출력 종류` 계약 유지).
 
 **완료 기준**:
-- 단독으로 실행 가능 (`python stub_batch/run_batch.py --shell-id 001 ...`)
-- 정상 케이스에서 적절한 CSV 생성
-- 의도된 NG 패턴이 SPEC.md대로 동작
+- 두 stub 모두 단독 실행 가능, `--output-type` file/database 양쪽 동작, `--clean` 모드 동작.
+- DB 출력 셸: stub→`tobe_result` INSERT → `export_table_to_csv()`→CSV→비교가 E2E로 도는지 확인.
+- 4사분면(DB→DB, DB→file, file→DB, file→file) 전부 정상 + NG/ERROR가 SPEC 6-5대로 동작.
+- 순수 NG 주입 로직 단위 테스트(DB 없이 항상 실행) + DB/파일/export 통합 테스트(`RUN_DB_TESTS=1` 조건부).
+- D-021·D-022 검증 결과 기록 / 정렬 문서 반영 자체 점검.
 
 **의존**: T2-1, T2-2.
 
@@ -202,9 +207,11 @@
 **작업**:
 - `src/core/runner.py`
   - `run_batch(shell_id: str, config: Config) -> Path`
+  - 정의 파일의 `execution.shell_program`에 따라 호출 stub·인자(`--output-type` 포함) 분기 (D-021·D-022)
   - `subprocess`로 stub 실행, stdout/stderr 캡쳐
-  - 종료 코드 0이 아니면 예외
-  - 반환: 생성된 To-Be 출력 CSV 경로
+  - 종료 코드 0이 아니면 예외 (010 ERROR 시연 경로)
+  - `output.type == database`면 stub 실행 후 `exporter.export_table_to_csv()`로 다운로드(Boss 출력 다운로드 단계)
+  - 반환: 생성된/다운로드된 To-Be 출력 CSV 경로
 - 코드 상단에 교체 포인트 주석.
 
 **완료 기준**:
@@ -225,8 +232,8 @@
 **작업**:
 - `src/core/__init__.py` 또는 `src/core/orchestrator.py`
   - `run_full_comparison(config: Config, on_progress: Callable | None = None) -> RunSummary`
-  - 셸 ID 목록 결정 (config의 range 또는 ids)
-  - 각 셸에 대해 loader → runner → comparator 순서로 호출
+  - 테스트 목록·메타데이터를 **정의 파일(test_definition.yaml)에서 로드** (없으면 config range/ids 폴백, D-021)
+  - 각 테스트에 대해 `input.type`에 따라 loader 분기(load_input_csv / copy_input_file) → runner(+`output.type==database`면 exporter 다운로드) → comparator 순서로 호출 (D-022)
   - 각 단계 후 `on_progress` 콜백으로 진행 보고
   - 예외 발생 시 해당 셸은 ERROR로 기록하고 다음 진행
   - 최종적으로 reporter 호출 → RunSummary 반환
@@ -271,6 +278,7 @@
   - `core.run_full_comparison(config, on_progress=cb)` 호출
   - 최종 요약 출력
   - 종료 코드: NG/ERROR가 있으면 1, 모두 OK면 0
+- `run.sh` — 얇은 Shell 기동 래퍼 완성(Boss "Shell 스크립트로 기동" 기대 충족, D-022). 내부는 `python -m src.cli.main "$@"` 위임.
 
 **완료 기준**:
 - `python -m src.cli.main --config config.yaml` 한 줄로 E2E 실행
@@ -290,10 +298,10 @@
 **작업**:
 - `samples/asis/input/001.csv ~ 010.csv` 생성
   - 일본어 데이터 포함 (Shift-JIS 인코딩)
-  - 실제 메인프레임 배치 결과처럼 보이는 형태 (예: 고객 마스터, 거래 명세 등)
+  - **001~005 DB 입력**(헤더 = `transaction_log` 컬럼) / **006~010 파일 입력**(야간 배치 raw). 출력 유형은 SPEC 6-5 4사분면 매핑대로 — 정의 파일과 일치 (D-021·D-022)
 - `samples/asis/output/001.csv ~ 010.csv` 생성
-  - stub 배치가 *정상 케이스*에서 만들어낼 결과와 동일
-  - 단, 007/008/009는 stub과 *의도된 차이*를 갖도록 설계
+  - 각 stub을 `--clean` 모드로 돌려 골든 생성 → 정상 셸 바이트 동일 보장
+  - 007/008/009는 stub의 NG 주입분만큼 *의도된 차이*를 갖도록 설계
 
 **완료 기준**:
 - 전체 E2E 실행 시 6 OK / 3 NG / 1 ERROR로 결과가 나옴 (SPEC 6-2 표대로)

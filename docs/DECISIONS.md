@@ -254,6 +254,65 @@
 
 **검증**: 기본 스위트 37 passed / 3 skipped. Docker PostgreSQL 16에 `RUN_DB_TESTS=1`로 통합 9개(일본어+NULL 왕복, TRUNCATE 재적재, 헤더 불일치) 전부 통과.
 
+## D-021. 사장님 기획서 정렬 — 정의 파일 도입, 두 입력 흐름, 2 도메인
+
+> 근거 문서: `docs/T2-3_alignment.md`(외주 작업자가 직접 판단해 확정). D-018/D-020에서 "T2-3에서 정의"로 미뤄둔 셸→데이터 매핑을 본 결정으로 확정한다.
+
+**결정**:
+- 사장님 기획서 검토 결과 4개 불일치 식별, 그중 3개를 프로토에 반영(100건은 10건 유지).
+- **`test_definition.yaml` 도입**으로 셸별 메타데이터를 코드 밖으로 외부화(사장님 기획 7.1절 경량 버전). 셸마다 `input_type`(database/file)이 다를 수 있다.
+- **입력 흐름 2가지** 모두 구현: DB 입력(셸 001~005) + 파일 입력=야간 배치 시뮬(셸 006~010).
+- **시연 도메인 2개**로 최소화: 결제(DB 입력) + 야간 배치 시뮬(파일 입력). 추가 도메인(인사·근무 등) 만들지 않음.
+- **stub 배치 2종**: `run_batch_db.py`(DB 입력) / `run_batch_file.py`(파일 입력). 공통 CLI 계약 유지(`--shell-id`/`--output-path`/`--clean`).
+- **새 Loader 함수 `copy_input_file(csv_path, dest_dir) -> Path`** 추가: 파일 입력 흐름에서 As-Is 입력 CSV를 야간 배치 입력 디렉토리로 **바이트 복사**(인코딩 변환 없음 — stub이 읽을 때 디코드). 실패 시 `LoaderError`(D-020과 일관).
+- ~~**schema.sql 변경 없음**~~ → **D-022로 보정**: 출력 DB 유형 시연을 위해 결과 테이블 `tobe_result` 1개를 추가한다(아래 D-022 참조).
+- **Config 확장**: `definition_file`(정의 파일 경로) + `tobe_input_dir`(파일 입력 복사 대상) 추가. config 디렉토리 기준 절대경로화(D-019 5항과 일관).
+- NG/ERROR는 야간 배치 흐름에 배치(007 한 줄 / 008 전각 공백 / 009 여러 줄 / 010 종료코드 1). 골든은 `--clean` 출력.
+- 100건 풀 구현 / 추가 도메인 / 직접 DB 비교 / 정교한 비교 알고리즘은 인수 후 단계.
+
+**이유**:
+- 사장님 그림의 핵심(데이터 주도 메커니즘, 야간 배치)을 프로토에 반영해야 인수 시 정합성 확보.
+- 시간 여유(외주 일정 2주~한달)로 두 입력 흐름 모두 구현 가능.
+- 도구의 진짜 가치는 *우리가 도메인을 많이 만드는 것*이 아니라 *정의 파일로 스키마·입력 방식을 받아 처리하는 동적 적응 능력*. 실 운영은 고객 스키마를 따른다.
+- 통짜 바이트 비교(D-004) 유지: 검증 도구는 엄격에서 관대로 푸는 게 안전. "DB 비교"는 CSV export 후 파일 비교와 사실상 동일(export 단계 명시화).
+
+**한계 / 인수 시 교체 대상**:
+- 시연용 도메인 2개·stub 2종은 시연 한정. 실 운영은 고객 스키마 + 진짜 Net COBOL 배치로 교체.
+- 정의 파일은 경량 스키마. 사장님 기획 7.1절 풀 스키마(comparison_rules, success_criteria 등)는 인수 후 단계 — 자리만 비워둠.
+
+**검증 결과** (T2-3 완료):
+- 정의 파일 파서(Boss 구조)·copy_input_file·stub NG 주입 단위 테스트 통과. test_definition.yaml 10건이 SPEC 6-5 매핑대로 로드됨(001 DB→DB … 010 ERROR).
+
+## D-022. Boss Requirements 정렬 — 출력 다운로드(export) 단계 추가, 정의 파일 Boss 구조 채택, 4사분면 시연
+
+> 근거 문서: `docs/AlignmentCheck/Requirements.md`(Boss 원 지시) + `InitialPlanning.md`(초기 기획) 대조. D-021을 Boss 명세에 맞춰 정밀화한다. 100건은 적은 케이스로 줄여 "프로그램이 실제 Working함"만 증명한다(사용자 합의).
+
+**결정**:
+1. **Exporter 추가**: `src/core/exporter.py`에 `export_table_to_csv(conn, table_name, output_path, encoding="shift_jis", columns=None) -> Path`. TOBE 배치가 DB 결과 테이블에 쓴 출력을 **CSV로 다운로드**(현신비교용 TOBE 디렉토리)한다. Boss가 명시한 처리단계 *"SHELL프로그램이 출력한 데이터(DB,파일)를 TOBE 디렉토리에 다운로드"*를 충족. 결정론 보장(명시 컬럼 순서·PK ORDER BY·NULL→빈칸·Shift-JIS·`\n`)으로 export 후 **바이트 비교**(D-004 일관, 출력 DB 비교 = export+파일비교, D-021 §2-5).
+2. **결과 테이블 `tobe_result` 추가**(schema.sql): DB 출력 셸은 stub이 여기에 INSERT → exporter가 CSV로 내림. 파일 출력 셸은 stub이 직접 CSV 생성. TRUNCATE per shell, 제약 PK·NOT NULL만(D-018 정책 일관).
+3. **입력2 × 출력2 = 4사분면 전부 시연**(10셸, 적은 케이스). 도메인 분리(결제=DB입력 001~005 / 야간배치=파일입력 006~010)는 유지하되 출력 유형을 혼합:
+   - 001 DB→DB, 002 DB→file, 003 DB→DB, 004 DB→file, 005 DB→DB (전부 OK, 결제)
+   - 006 file→file OK / 007 file→file NG(1줄) / 008 file→**DB** NG(전각공백, export 경로의 NG 검출 시연) / 009 file→file NG(다줄) / 010 file→ERROR(종료코드 1)
+   - 4사분면 커버: DB→DB(001,003,005), DB→file(002,004), file→file(006,007,009), file→DB(008).
+4. **정의 파일을 Boss 7.1 구조에 가깝게**(경량 채움): `test_id / input{type,table,csv} / execution{shell_program,timeout} / output{type,table,file,export_csv} / comparison_rules / success_criteria`. 구조·필드명을 맞춰 인수 시 풀스키마 전환이 매끄럽게. 프로토에서 미사용 필드(comparison_rules 등)는 자리만 채움.
+5. **오케스트레이션은 Python CLI 유지**(D-006) + 얇은 **`run.sh` 래퍼** 추가로 Boss "Shell 스크립트로 기동" 기대를 값싸게 충족.
+
+**이유**:
+- Boss가 명시한 입출력 4유형·다운로드 단계를 프로토에서 *실제 Working*으로 증명해야 인수 정합성·신뢰 확보.
+- 정의 파일을 Boss 구조로 두면 도구의 핵심 가치(정의 파일 동적 적응)가 그대로 드러나고 풀스키마 전환 비용이 낮음.
+
+**한계 / 인수 후 단계(deferred)**:
+- HTML/Excel 리포트, `test_validation_results`·`mismatch_details` **DB 결과 저장**, InitialPlanning 7.2의 **정교 비교**(행/열·정렬·숫자 공차·날짜 정규화), pandas/jinja2/openpyxl 의존 → 인수 후. 프로토는 CSV+`.diff`+바이트 비교 유지(D-004/D-011, CLAUDE 3-5 의존 최소화).
+- 결과 테이블·시연 도메인·stub은 시연 한정 — 실 운영은 고객 스키마·진짜 Net COBOL로 교체.
+
+**D-021 보정**: D-021의 "schema.sql 변경 없음"·"flat 경량 정의 파일"은 본 결정으로 대체(결과 테이블 1개 추가 / Boss 구조 경량 정의 파일).
+
+**검증 결과** (T2-3 완료):
+- 기본 스위트(DB 없이) **53 passed / 6 skipped**. Docker PostgreSQL 16 + `RUN_DB_TESTS=1`로 **59 passed / 0 skipped**.
+- 통합 검증된 경로: DB입력→파일출력(50건 CSV, 顧客名 조인), 파일입력→DB출력(`tobe_result`)→`export_table_to_csv` 다운로드(008 전각 공백 NG가 export까지 반영), 010 종료코드 1.
+- E2E 시연 본질 확인: 같은 입력에 `--clean` 골든 vs NG 주입 출력 → comparator가 **007 NG(1줄, balance 1700000→1700001)** / 정상→**OK** 판정. Shift-JIS 일본어 왕복 정상.
+- exporter 포맷(헤더=컬럼명·NULL→빈칸·`\n`·Shift-JIS)은 가짜 커서로 DB 없이 결정론 검증.
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:

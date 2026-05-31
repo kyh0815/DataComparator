@@ -78,9 +78,9 @@
 1. 고객(또는 마이그레이션 팀)이 **As-Is 입력 CSV + As-Is 출력 CSV** 두 종을 메일/USB로 전달
    - 이미 **외부 변환 툴**로 EBCDIC → Shift-JIS CSV 변환이 끝난 상태
 2. 검증팀이 받아서 도구에 세팅
-3. 도구가 As-Is 입력을 **To-Be의 PostgreSQL에 적재**
+3. 도구가 As-Is 입력을 **To-Be에 준비**: 입력이 DB면 PostgreSQL 테이블에 적재, 파일이면 To-Be 디렉토리에 복사 (D-021)
 4. **To-Be 배치** 실행 (이미 마이그레이션된 Net COBOL 배치)
-5. To-Be 출력 CSV 생성
+5. To-Be 출력을 **비교용 디렉토리로 다운로드**: 출력이 파일이면 그대로, DB 테이블이면 CSV로 export (D-022)
 6. **As-Is 출력 vs To-Be 출력** 통짜 바이트 비교
 7. 리포트로 결과 제공
 
