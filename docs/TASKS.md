@@ -200,7 +200,7 @@
 
 ---
 
-### T2-4. Runner 구현 `[ ]`
+### T2-4. Runner 구현 `[x]`
 
 **목적**: Core에서 stub 배치를 호출.
 
@@ -235,7 +235,8 @@
   - 테스트 목록·메타데이터를 **정의 파일(test_definition.yaml)에서 로드** (없으면 config range/ids 폴백, D-021)
   - 각 테스트에 대해 `input.type`에 따라 loader 분기(load_input_csv / copy_input_file) → runner(+`output.type==database`면 exporter 다운로드) → comparator 순서로 호출 (D-022)
   - 각 단계 후 `on_progress` 콜백으로 진행 보고
-  - 예외 발생 시 해당 셸은 ERROR로 기록하고 다음 진행
+  - 예외(RunnerError 등) 발생 시 해당 셸은 ERROR로 기록하고 다음 진행
+  - **셸 단위 트랜잭션 경계 필수** (D-023 발견): ① DB 입력은 `load_input_csv` 후 **commit**해야 stub(별도 connection)이 본다. ② 출력=database의 exporter read가 남긴 트랜잭션을 **셸 종료 시 commit/rollback**해야 다음 셸 stub의 `TRUNCATE tobe_result`가 막히지 않는다.
   - 최종적으로 reporter 호출 → RunSummary 반환
 
 **완료 기준**:

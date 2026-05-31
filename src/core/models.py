@@ -82,6 +82,9 @@ class BatchConfig:
     """배치 실행 설정. type은 'stub'(현재) 또는 'netcobol'(추후)."""
 
     type: str = "stub"
+    # DEPRECATED(D-023): 셸별 stub은 test_definition.yaml의 execution.shell_program이 선택한다.
+    # 이 단일 stub_path는 더 이상 Runner가 쓰지 않으나, 기존 설정/테스트 호환을 위해 남겨둔다.
+    # 정식 제거는 별도 정리 Task(연관 test_settings 단언도 함께 갱신).
     stub_path: Path = Path("./stub_batch/run_batch.py")
     timeout_seconds: int = 60
 

@@ -52,7 +52,8 @@ def build_common_parser(description: str) -> argparse.ArgumentParser:
     """두 stub이 공유하는 공통 인자를 가진 파서를 만든다."""
     p = argparse.ArgumentParser(description=description)
     p.add_argument("--shell-id", required=True, help="셸 ID (예: 001)")
-    p.add_argument("--output-path", required=True, help="To-Be 출력 CSV 경로(파일 출력 시 직접 기록)")
+    # --output-path는 출력=file일 때만 필요(=database면 테이블에 쓰고 Runner가 export). dead-arg 방지.
+    p.add_argument("--output-path", help="To-Be 출력 CSV 경로(출력=file일 때 직접 기록)")
     p.add_argument("--output-type", choices=("file", "database"), default="file")
     p.add_argument("--output-table", default="tobe_result", help="출력=database일 때 결과 테이블")
     p.add_argument("--encoding", default="shift_jis")
@@ -210,6 +211,10 @@ def run(args, read_rows) -> None:
     if is_failure_shell(shell_id) and not args.clean:
         print(f"[stub] shell {shell_id}: 의도된 배치 실패 시연 → 종료코드 1", file=sys.stderr)
         sys.exit(1)
+
+    if args.output_type == "file" and not args.output_path:
+        print("[stub] 출력=file이면 --output-path가 필요합니다.", file=sys.stderr)
+        sys.exit(2)
 
     conn = connect(args)
     try:

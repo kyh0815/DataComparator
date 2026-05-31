@@ -186,17 +186,20 @@ class RunSummary:
 
 ### 4-3. `core/runner.py`
 
-- **책임**: stub 배치 실행 → To-Be 출력 CSV 생성
-- **인터페이스**:
+- **책임**: stub 배치 실행 → To-Be 출력 CSV 확보(파일 직접 / DB출력은 exporter로 다운로드).
+- **인터페이스** (D-023):
   ```python
-  def run_batch(shell_id: str, conn, output_dir: Path) -> Path
-  # 반환: 생성된 to-be 출력 CSV 경로
+  def run_batch(definition: ShellDefinition, config: Config, conn=None, *, clean=False) -> Path
+  # 반환: To-Be 출력 CSV 경로. conn은 출력=database(export)에서만 사용(파일출력은 None 허용).
   ```
-- **stub 구현**: 정의 파일의 `execution.shell_program`(`run_batch_db.py`/`run_batch_file.py`)을 subprocess로 호출하고, `--output-type`(file/database)을 함께 전달(D-021·D-022).
+- **stub 구현**: 정의 파일의 `execution.shell_program`(`run_batch_db.py`/`run_batch_file.py`)을 **실행파일로 직접 호출**(파이썬 하드코딩 금지, 교체 seam 보존), `--output-type`(file/database) 전달(D-021·D-022·D-023).
   - DB 흐름: DB에서 input을 읽어 변환 후 output 생성.
   - 파일 흐름: 복사된 raw 파일을 읽고 마스터 조인 후 output 생성(야간 배치 시뮬).
+  - 출력=database면 stub은 `tobe_result`에 INSERT → Runner가 `export_table_to_csv`로 CSV 다운로드.
   - 시연용으로 일부 셸에서 *의도적으로 다른 결과* 생성(NG 시연, SPEC 6-5).
-- **인수인계 시 교체 포인트**: 이 함수가 호출하는 stub을 진짜 Net COBOL 배치 호출로 교체.
+  - 종료코드≠0/timeout → `RunnerError`(오케스트레이터가 `ComparisonResult.ERROR`로 매핑). 비밀번호는 env로만 전달.
+  - `clean=True`면 stub에 `--clean` 전달(골든 생성) — 골든·To-Be가 동일 경로를 타 false-NG를 구조적 차단.
+- **인수인계 시 교체 포인트**: `execution.shell_program`을 진짜 Net COBOL 배치(실행 가능 파일)로 교체. Runner는 직접 호출하므로 런처 수정 불필요. 실 배치의 *본질* 계약은 `--shell-id`.
 
 ### 4-3b. `core/exporter.py` (Boss 정렬, D-022)
 

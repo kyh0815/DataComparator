@@ -313,6 +313,32 @@
 - E2E 시연 본질 확인: 같은 입력에 `--clean` 골든 vs NG 주입 출력 → comparator가 **007 NG(1줄, balance 1700000→1700001)** / 정상→**OK** 판정. Shift-JIS 일본어 왕복 정상.
 - exporter 포맷(헤더=컬럼명·NULL→빈칸·`\n`·Shift-JIS)은 가짜 커서로 DB 없이 결정론 검증.
 
+## D-023. Runner(`run_batch`) 정책
+
+**결정**: stub 배치 실행기를 아래로 확정(T2-4). 리뷰 피드백 검토 후 결정.
+
+1. **시그니처**: `run_batch(definition: ShellDefinition, config: Config, conn=None, *, clean=False) -> Path`.
+   - ARCHITECTURE 4-3의 `run_batch(shell_id, ...)` 대신 **ShellDefinition을 받는다** — 입력/출력 type·shell_program 분기 정보를 재조회 없이 전달(더 깨끗).
+   - `conn`은 **출력=database(export 다운로드)에서만** 사용. 파일 출력 셸은 `None` 허용(타입 `conn=None`).
+2. **ERROR는 예외(RunnerError)로**: 종료코드≠0/timeout → `RunnerError`. 오케스트레이터(T3-1)가 셸별 try/except로 잡아 `ComparisonResult.ERROR`로 매핑한다. *예상된 ERROR도 '구조화된 결과'는 경계(comparator/orchestrator)에서 만들어지며*, Runner는 "산출물 유무"만 신호한다. → `RunResult` 구조체 도입은 `ComparisonResult`와 책임 중복이라 채택 안 함.
+3. **shell_program은 실행파일로 직접 호출**(`[program, ...]`, 파이썬 하드코딩 금지). 실 Net COBOL 배치로 교체 시 런처 수정이 불필요해 교체 seam이 보존된다(우분투 전제 D-003, shebang+실행비트; Windows 범위 밖). 실 배치의 *본질* 계약은 `--shell-id` 하나이며 나머지 인자는 stub scaffolding.
+4. **clean 플래그로 골든·To-Be 직렬화 통일**: 골든 생성(T4-1)은 `clean=True`로 **같은 Load→Run→export 경로**를 탄다. OK 셸은 `apply_ng_pattern`이 no-op이라 자동 byte-동일 → false-NG가 구조적으로 불가능. (DB 출력 셸의 To-Be는 exporter 직렬화이므로, 골든을 손으로/다른 도구로 만들면 통짜 바이트 비교가 깨진다 — 이를 원천 차단.)
+5. **출력=database → exporter 후처리**: `export_table_to_csv(conn, output_table, output_path, encoding=config.encoding)`. 인코딩을 config에서 주입(하드코딩 금지, CLAUDE 3-3).
+6. **비밀번호는 env로만**: argv가 아니라 `POSTGRES_PASSWORD` 환경변수로 전달(ps 노출 방지). 단위 테스트로 "argv에 비밀번호 없음" 회귀 가드.
+7. **stub `--output-path` dead-arg 제거**: 출력=file일 때만 stub에 `--output-path`, 출력=database면 `--output-table`만 전달(진짜 배치 작성자가 I/O 계약을 명확히 읽도록).
+8. **`BatchConfig.stub_path`는 deprecate(제거 보류)**: 셸별 stub은 `execution.shell_program`이 선택. 단 `test_settings`가 아직 단언하므로 T2-4에서 제거하지 않고 주석만(정식 제거는 별도 정리 Task).
+
+**오케스트레이터(T3-1) 함의 — 통합 검증 중 발견**:
+- exporter의 read SELECT는 `conn`에 열린 트랜잭션(`tobe_result` ACCESS SHARE 락)을 남긴다. 다음 셸 stub의 `TRUNCATE tobe_result`가 이와 충돌해 블로킹된다. → **오케스트레이터는 셸 단위로 트랜잭션 경계를 commit/rollback**해야 한다(SPEC 3-1 재확인).
+- stub은 **별도 connection**으로 DB를 읽으므로, DB 입력 셸은 **loader 적재분을 stub 실행 전에 commit**해야 stub이 본다(load → commit → run → export → 셸 경계 정리).
+
+**이유**: 리뷰의 🔴(골든-To-Be 직렬화 일치)을 clean 플래그로 구조적 해소. ERROR-예외는 기존 아키텍처(SPEC 8·T3-1)와 일관. 실행파일 직접 호출은 "재작업 없는 인수인계" 메타 기준 충족.
+
+**검증 결과** (T2-4 완료):
+- 기본 스위트 **63 passed / 9 skipped**, Docker PostgreSQL 16 + `RUN_DB_TESTS=1` **72 passed / 0 skipped**.
+- mock 단위: db/file 입력 × file/db 출력 argv 정확성, 비밀번호 argv 미포함·env 전달, 종료코드≠0·timeout→RunnerError, db출력→exporter 호출, conn 없음→RunnerError.
+- DB 통합: **OK db-출력 셸 골든(clean) vs To-Be(non-clean) byte 동일 → comparator OK**(false-NG 가드), 008 file→DB export 경로 NG 1줄 검출, 010 종료코드 1→RunnerError.
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:
