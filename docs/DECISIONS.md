@@ -432,7 +432,9 @@
 
 **검증**: `tests/test_gui.py` 14개 통과(직렬화·라우팅·SSE/NDJSON·traversal·prepare_job), 기본 스위트 123 passed. 실 스택 스모크(Flask+dc-pg): `/run` OK6/NG3/ERROR1, `/verify/run` 샘플 001 OK·변조 시 NG.
 
-**⚠️ 환경 이슈 메모(2026-06-01)**: 이 작업 환경에서 **`pytest` 실행 직후 작업 디렉토리가 `.pytest_cache`만 남고 통째로 삭제되는 현상**이 3회 재현됨(홈 git repo의 untracked 삭제 또는 하네스 정리 추정, 위치·sandbox 무관). 그래서 GUI는 `/private/tmp`에서 재생성 후 **pytest 없이 즉시 origin push**로 보전. 인수 환경에선 이 현상·홈-git-repo 위험을 별도 점검 권장.
+**🔴 버그 메모(2026-06-01) — pytest 시 작업트리 삭제, 원인 규명·수정 완료**: GUI 작업 중 `pytest`(전체 suite) 실행 직후 작업 디렉토리가 통째로 삭제되는 현상이 수 차례 발생. **원인은 하네스/홈-git-repo가 아니라 본 코드의 테스트 버그였음**: `tests/test_gui.py`의 `test_verify_run_streams_then_summary`가 `web.prepare_job`을 `(_, Path("."))`로 mock → `verify_run`의 cleanup이 `shutil.rmtree(Path("."))`=**cwd(repo 루트)를 통째 삭제**. pytest가 repo 루트에서 돌아 repo 전체가 날아감(`.pytest_cache`만 직후 재생성). **일회용 클론 전체 suite 실행으로 재현 확정.**
+- **수정**: ① `web._cleanup_tmpdir()` 도입 — `tempfile.gettempdir()` **하위 경로만** 삭제(잘못된 경로·cwd는 거부). ② 테스트 mock이 `Path(".")` 대신 **실제 `mkdtemp()`** 반환. ③ 회귀 가드 테스트 2개(`test_cleanup_tmpdir_*`). 이후 전체 suite 실행해도 작업트리 안전.
+- (홈이 git repo인 것은 별개의 잠재 위험으로 점검 권장이나, 이 삭제의 원인은 아니었음.)
 
 ---
 

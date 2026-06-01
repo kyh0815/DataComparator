@@ -6,6 +6,7 @@ run_full_comparison/load_config/prepare_job를 monkeypatch해 라우팅·SSE/NDJ
 
 import io
 import json
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -182,7 +183,11 @@ def test_verify_run_streams_then_summary(client, monkeypatch):
         )
         return RunSummary(1, 0, 1, 0, 0, [], Path("out/reports/report_u.csv"))
 
-    monkeypatch.setattr(web, "prepare_job", lambda *a, **k: (SimpleNamespace(), Path(".")))
+    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
+    monkeypatch.setattr(
+        web, "prepare_job",
+        lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_"))),
+    )
     monkeypatch.setattr(web, "run_full_comparison", fake_run)
 
     data = {
@@ -198,9 +203,36 @@ def test_verify_run_streams_then_summary(client, monkeypatch):
 
 
 def test_verify_run_requires_both_files(client, monkeypatch):
-    monkeypatch.setattr(web, "prepare_job", lambda *a, **k: (SimpleNamespace(), Path(".")))
+    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
+    monkeypatch.setattr(
+        web, "prepare_job",
+        lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_"))),
+    )
     data = {"asis_input": (io.BytesIO(b"x"), "in.csv"),
             "input_type": "database", "output_type": "file"}
     msgs = _ndjson_messages(client.post("/verify/run", data=data,
                                         content_type="multipart/form-data").get_data())
     assert any(m["type"] == "error" and "올려주세요" in m["message"] for m in msgs)
+
+
+# --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------
+
+
+def test_cleanup_tmpdir_deletes_real_tempdir():
+    d = Path(tempfile.mkdtemp(prefix="dc_clean_"))
+    (d / "f").write_text("x")
+    web._cleanup_tmpdir(d)
+    assert not d.exists()  # 시스템 임시 하위 → 정상 삭제
+
+
+def test_cleanup_tmpdir_refuses_outside_tempdir(tmp_path, monkeypatch):
+    """임시 디렉토리 *밖* 경로는 절대 삭제하지 않는다 — cwd('.') 통째 삭제 재발 차단."""
+    fake_tmp = tmp_path / "fake_tmp"
+    fake_tmp.mkdir()
+    monkeypatch.setattr(web.tempfile, "gettempdir", lambda: str(fake_tmp))
+    outside = tmp_path / "outside"  # fake_tmp 밖
+    outside.mkdir()
+    (outside / "keep").write_text("x")
+    web._cleanup_tmpdir(outside)
+    assert outside.exists()  # 보호됨(삭제 거부)
+    web._cleanup_tmpdir(Path("."))  # cwd도 거부 — 예외/삭제 없이 통과해야 함

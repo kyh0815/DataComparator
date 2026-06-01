@@ -23,9 +23,11 @@ import json
 import os
 import queue
 import shutil
+import tempfile
 import threading
 import time
 import webbrowser
+from pathlib import Path
 
 from flask import Flask, Response, abort, render_template, request, send_file
 from werkzeug.utils import secure_filename
@@ -160,8 +162,7 @@ def verify_run():
                     break
         finally:
             _run_lock.release()
-            if tmpdir is not None:
-                shutil.rmtree(tmpdir, ignore_errors=True)  # 임시 작업폴더 정리(리포트는 out/reports라 보존)
+            _cleanup_tmpdir(tmpdir)  # 임시 작업폴더만 정리(리포트는 out/reports라 보존)
 
     return Response(stream(), mimetype="application/x-ndjson")
 
@@ -188,6 +189,21 @@ def _sse(payload: dict) -> str:
 def _ndjson(payload: dict) -> str:
     """dict를 NDJSON 한 줄로 직렬화한다(업로드 /verify/run용, POST 스트림)."""
     return json.dumps(payload, ensure_ascii=False) + "\n"
+
+
+def _cleanup_tmpdir(tmpdir) -> None:
+    """업로드 임시 작업폴더를 삭제한다. **시스템 임시 디렉토리 하위만** 삭제하는 안전장치.
+
+    prepare_job은 tempfile.mkdtemp() 경로를 돌려주므로 정상 동작하며, 혹시라도 잘못된 경로
+    (예: cwd '.')가 넘어와도 임시 디렉토리 밖이면 삭제하지 않는다(작업트리 보호).
+    """
+    if tmpdir is None:
+        return
+    tmp_root = Path(tempfile.gettempdir()).resolve()
+    target = Path(tmpdir).resolve()
+    if target == tmp_root or tmp_root not in target.parents:
+        return  # 임시 디렉토리 하위가 아니면 절대 삭제하지 않음
+    shutil.rmtree(target, ignore_errors=True)
 
 
 def main() -> None:
