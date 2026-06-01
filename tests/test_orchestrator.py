@@ -34,8 +34,12 @@ def _config(tmp_path, password="secret-pw"):
         tobe_output_dir=tmp_path / "tobe_output",
         report_dir=tmp_path / "reports",
         database=DatabaseConfig(
-            host="localhost", port=5432, dbname="compare_proto",
-            user="postgres", password=password,
+            # db_conn fixture와 동일하게 env에서 읽어 포트 비종속(병렬 DB 가동 대응).
+            host=os.environ.get("PGHOST", "localhost"),
+            port=int(os.environ.get("PGPORT", "5432")),
+            dbname=os.environ.get("PGDATABASE", "compare_proto"),
+            user=os.environ.get("PGUSER", "postgres"),
+            password=password,
         ),
         batch=BatchConfig(),
         shell_ids=["001"],
