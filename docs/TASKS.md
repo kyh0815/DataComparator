@@ -377,6 +377,30 @@
 
 ---
 
+## Phase 5. GUI (프로토 이후 — 사용자 요청)
+
+### T5-1. 로컬 웹 UI + 업로드 검증 `[x]`
+
+**목적**: CLI 외에 브라우저에서 클릭으로 실행하는 GUI. ① 데모 10셸 자동 실행 ② 업로드 1쌍 풀체인 검증.
+
+**작업** (D-028):
+- `src/gui/web.py` — Flask. `/`·`/run`(SSE 데모)·`/verify/run`(POST 업로드, NDJSON)·`/report/<name>`(다운로드, traversal 차단).
+- `src/gui/serialize.py` — Core 객체 → dict(gui에만, models 불변).
+- `src/gui/upload.py` — `prepare_job`: 업로드 1쌍 → 임시 config+1셸 정의 → `run_full_comparison` 재사용.
+- `src/gui/templates/index.html` — 탭 2개(데모/업로드), 실시간 진행·배지·차이·요약·리포트 다운로드.
+- `run_gui.sh`(브라우저 자동 오픈) + `requirements.txt`에 `flask>=3.0`.
+- **Core 무수정**. 동시 실행 락(try/finally), 비밀번호 env만.
+
+**완료 기준**:
+- `POSTGRES_PASSWORD=… ./run_gui.sh` → 브라우저에서 데모 실행 / 업로드 검증 모두 동작.
+- DB 불요 단위·스모크 테스트 통과(`tests/test_gui.py`).
+
+**의존**: T3-1~T3-3. **실행 시** DB 필요.
+
+**후속(Phase B, 실 검증 지향)**: 업로드 UI에서 입력 테이블·배치·출력 테이블 직접 지정(데모 도메인 탈피) + 무시 규칙·정교 비교(D-022).
+
+---
+
 ## 권장 작업 순서 요약
 
 ```

@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>현·신 비교 자동화 도구</title>
+<style>
+  :root { --ok:#1a7f37; --ng:#cf222e; --warn:#9a6700; --bg:#f6f8fa; --line:#d0d7de; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+         margin: 0; background: var(--bg); color: #1f2328; }
+  header { background:#24292f; color:#fff; padding:16px 24px; }
+  header h1 { font-size:18px; margin:0; }
+  header p { margin:4px 0 0; font-size:13px; opacity:.8; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .tabs { display:flex; gap:4px; margin-bottom:16px; }
+  .tabs button { background:#eaeef2; color:#57606a; font-weight:600; border:1px solid var(--line);
+                 border-radius:6px 6px 0 0; padding:8px 16px; cursor:pointer; }
+  .tabs button.active { background:#fff; color:#1f2328; border-bottom-color:#fff; }
+  .controls { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  .controls label { font-size:12px; color:#57606a; display:block; margin-bottom:4px; }
+  .controls input[type=text], .controls input[type=file] {
+    padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:14px; background:#fff; }
+  #config, #u-config { width:240px; } #shells { width:140px; } #u-encoding { width:120px; }
+  .radio { font-size:13px; display:flex; gap:10px; align-items:center; }
+  button.run { background:#1f883d; color:#fff; border:0; border-radius:6px; padding:9px 18px;
+           font-size:14px; font-weight:600; cursor:pointer; }
+  button.run:disabled { background:#94d3a2; cursor:default; }
+  .chk { display:flex; align-items:center; gap:6px; font-size:14px; }
+  .note { font-size:12px; color:#57606a; background:#fff8c5; border:1px solid #d4a72c66;
+          border-radius:6px; padding:8px 10px; margin-top:12px; line-height:1.5; }
+  .shell { border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+  .shell .head { font-weight:600; display:flex; align-items:center; gap:8px; }
+  .steps { margin-top:6px; font-size:13px; color:#57606a; display:flex; gap:16px; flex-wrap:wrap; }
+  .steps .done { color:var(--ok); } .steps .err { color:var(--warn); }
+  .badge { font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; color:#fff; }
+  .b-OK { background:var(--ok); } .b-NG { background:var(--ng); }
+  .b-ERROR, .b-MISSING_TOBE, .b-MISSING_ASIS { background:var(--warn); }
+  .detail { margin-top:8px; font-size:13px; font-family:ui-monospace,Menlo,monospace;
+            background:#f6f8fa; border-left:3px solid var(--ng); padding:8px 10px; white-space:pre-wrap; }
+  .detail.err { border-left-color:var(--warn); }
+  #summary { display:none; }
+  .cards { display:flex; gap:10px; flex-wrap:wrap; }
+  .card { flex:1; min-width:90px; text-align:center; border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .card .n { font-size:24px; font-weight:700; } .card .l { font-size:12px; color:#57606a; }
+  #report a { color:#0969da; }
+  #banner { display:none; color:var(--ng); font-weight:600; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>현·신 비교 자동화 도구</h1>
+  <p>메인프레임 → 리눅스 배치 출력 동등성 자동 검증 (Working 프로토타입)</p>
+</header>
+<main>
+  <div class="tabs">
+    <button id="tab-demo" class="active" onclick="switchTab('demo')">데모 실행</button>
+    <button id="tab-upload" onclick="switchTab('upload')">업로드 검증</button>
+  </div>
+
+  <!-- 탭 1: 데모 10셸 자동 실행 -->
+  <div class="panel" id="panel-demo">
+    <div class="controls">
+      <div>
+        <label for="config">설정 파일</label>
+        <input type="text" id="config" value="{{ default_config }}" />
+      </div>
+      <div>
+        <label for="shells">셸 (예: 1-10 / 007)</label>
+        <input type="text" id="shells" placeholder="전체" />
+      </div>
+      <label class="chk"><input type="checkbox" id="verbose" /> 상세(모든 차이 줄)</label>
+      <button class="run" id="run">▶ 실행</button>
+    </div>
+  </div>
+
+  <!-- 탭 2: 업로드 검증 (입력+정답 한 쌍) -->
+  <div class="panel" id="panel-upload" style="display:none">
+    <div class="controls">
+      <div>
+        <label for="u-input">As-Is 입력 CSV (배치에 먹일 데이터)</label>
+        <input type="file" id="u-input" accept=".csv" />
+      </div>
+      <div>
+        <label for="u-output">As-Is 출력 CSV (정답지)</label>
+        <input type="file" id="u-output" accept=".csv" />
+      </div>
+    </div>
+    <div class="controls" style="margin-top:12px">
+      <div class="radio"><b>입력</b>
+        <label><input type="radio" name="itype" value="database" checked> DB</label>
+        <label><input type="radio" name="itype" value="file"> 파일</label>
+      </div>
+      <div class="radio"><b>출력</b>
+        <label><input type="radio" name="otype" value="file" checked> 파일</label>
+        <label><input type="radio" name="otype" value="database"> DB</label>
+      </div>
+      <div>
+        <label for="u-encoding">인코딩</label>
+        <input type="text" id="u-encoding" value="Shift_JIS" />
+      </div>
+      <div>
+        <label for="u-config">설정 파일</label>
+        <input type="text" id="u-config" value="{{ default_config }}" />
+      </div>
+      <label class="chk"><input type="checkbox" id="u-verbose" /> 상세</label>
+      <button class="run" id="u-run">▶ 검증 실행</button>
+    </div>
+    <div class="note">
+      ⚠️ 현재 "신환경 배치"는 <b>stub(시연용 가짜)</b>입니다 — 진짜 검증은 실 배치 교체 후(인수 단계).
+      그래서 <b>입력 CSV는 데모 스키마</b>(<code>tx_id,customer_id,tx_date,tx_type,amount,balance_after,branch_code,memo</code>),
+      <b>정답 CSV는 Shift-JIS</b>여야 OK가 납니다. 샘플은 <code>samples/asis/input/001.csv</code>·<code>samples/asis/output/001.csv</code>.
+      DB 입력 실행은 <code>transaction_log</code>를 덮어씁니다(다음 "데모 실행" 시 복구).
+    </div>
+  </div>
+
+  <div id="banner" class="panel"></div>
+
+  <div id="summary" class="panel">
+    <div class="cards">
+      <div class="card"><div class="n" id="s-total">0</div><div class="l">총</div></div>
+      <div class="card"><div class="n" style="color:var(--ok)" id="s-ok">0</div><div class="l">OK</div></div>
+      <div class="card"><div class="n" style="color:var(--ng)" id="s-ng">0</div><div class="l">NG</div></div>
+      <div class="card"><div class="n" style="color:var(--warn)" id="s-err">0</div><div class="l">ERROR</div></div>
+      <div class="card"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
+    </div>
+    <p style="margin:12px 0 0; font-size:13px; color:#57606a;">
+      소요 <span id="s-elapsed">0</span>초 · <span id="report"></span>
+    </p>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STEP_LABEL = { load: "입력 적재", run: "배치 실행", compare: "결과 비교" };
+let es = null;
+let lastConfig = "{{ default_config }}";
+let verboseFlag = false;
+
+function switchTab(which) {
+  $("tab-demo").classList.toggle("active", which === "demo");
+  $("tab-upload").classList.toggle("active", which === "upload");
+  $("panel-demo").style.display = which === "demo" ? "block" : "none";
+  $("panel-upload").style.display = which === "upload" ? "block" : "none";
+}
+
+function reset() {
+  $("results").innerHTML = "";
+  $("summary").style.display = "none";
+  $("banner").style.display = "none";
+}
+
+function shellRow(id, index, total) {
+  const el = document.createElement("div");
+  el.className = "shell";
+  el.id = "shell-" + id;
+  el.innerHTML =
+    `<div class="head">[${index}/${total}] ${id}번 셸 <span class="badge" id="badge-${id}"></span></div>
+     <div class="steps">
+       <span data-step="load">▸ 입력 적재</span>
+       <span data-step="run">▸ 배치 실행</span>
+       <span data-step="compare">▸ 결과 비교</span>
+     </div>
+     <div class="detail" id="detail-${id}" style="display:none"></div>`;
+  $("results").appendChild(el);
+  return el;
+}
+
+function setStep(id, step, text, cls) {
+  const row = $("shell-" + id);
+  if (!row) return;
+  const span = row.querySelector(`[data-step="${step}"]`);
+  if (span) { span.textContent = `▸ ${STEP_LABEL[step]} → ${text}`; span.className = cls; }
+}
+
+function onProgress(m) {
+  if (m.kind === "shell_start") {
+    shellRow(m.shell_id, m.index, m.total);
+  } else if (m.kind === "step") {
+    if (m.step === "load" || m.step === "run") {
+      setStep(m.shell_id, m.step, m.step_status, m.step_status === "ERROR" ? "err" : "done");
+    }
+  } else if (m.kind === "shell_done") {
+    renderDone(m.result);
+  }
+}
+
+function renderDone(r) {
+  const badge = $("badge-" + r.shell_id);
+  if (badge) { badge.textContent = r.status; badge.className = "badge b-" + r.status; }
+  if (r.status === "OK") {
+    setStep(r.shell_id, "compare", "OK ✓", "done");
+  } else if (r.status === "NG") {
+    setStep(r.shell_id, "compare", `NG ✗ (${r.diff_lines.length}개 줄 차이)`, "err");
+    const lines = verboseFlag ? r.diff_lines : r.diff_lines.slice(0, 1);
+    const txt = lines.map(d =>
+      `${d.line_number}행\n  As-Is: ${d.asis_content}\n  To-Be: ${d.tobe_content}`).join("\n");
+    showDetail(r.shell_id, txt, false);
+  } else if (r.status === "MISSING_TOBE" || r.status === "MISSING_ASIS") {
+    setStep(r.shell_id, "compare", r.status, "err");
+    showDetail(r.shell_id, r.status === "MISSING_TOBE" ? "To-Be 출력이 없습니다" : "As-Is 정답지가 없습니다", true);
+  } else if (r.status === "ERROR") {
+    showDetail(r.shell_id, "오류: " + (r.error_message || ""), true);
+  }
+}
+
+function showDetail(id, text, isErr) {
+  const d = $("detail-" + id);
+  if (!d) return;
+  d.textContent = text;
+  d.className = "detail" + (isErr ? " err" : "");
+  d.style.display = "block";
+}
+
+function onSummary(m) {
+  $("s-total").textContent = m.total;
+  $("s-ok").textContent = m.ok_count;
+  $("s-ng").textContent = m.ng_count;
+  $("s-err").textContent = m.error_count;
+  $("s-miss").textContent = m.missing_count;
+  $("s-elapsed").textContent = m.elapsed_seconds;
+  const cfg = encodeURIComponent(lastConfig);
+  $("report").innerHTML =
+    `리포트: <a href="/report/${encodeURIComponent(m.report_name)}?config=${cfg}">${m.report_name} ⬇</a>`;
+  $("summary").style.display = "block";
+}
+
+// 데모(SSE)·업로드(NDJSON) 공통 메시지 처리
+function handleMsg(m) {
+  if (m.type === "progress") onProgress(m);
+  else if (m.type === "summary") onSummary(m);
+  else if (m.type === "error") { $("banner").textContent = "오류: " + m.message; $("banner").style.display = "block"; }
+}
+
+function setRunning(on) { $("run").disabled = on; $("u-run").disabled = on; }
+function finish() { if (es) { es.close(); es = null; } setRunning(false); }
+
+// --- 데모 실행 (GET + EventSource) ---
+$("run").addEventListener("click", () => {
+  reset(); setRunning(true);
+  verboseFlag = $("verbose").checked;
+  lastConfig = $("config").value;
+  const params = new URLSearchParams();
+  params.set("config", $("config").value);
+  if ($("shells").value.trim()) params.set("shells", $("shells").value.trim());
+  if (verboseFlag) params.set("verbose", "1");
+  es = new EventSource("/run?" + params.toString());
+  es.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === "done") finish(); else handleMsg(m);
+  };
+  es.onerror = () => finish();
+});
+
+// --- 업로드 검증 (POST multipart + NDJSON 스트림) ---
+$("u-run").addEventListener("click", async () => {
+  const fin = $("u-input").files[0], fout = $("u-output").files[0];
+  if (!fin || !fout) { alert("As-Is 입력 CSV와 정답 CSV를 모두 선택하세요."); return; }
+  reset(); setRunning(true);
+  verboseFlag = $("u-verbose").checked;
+  lastConfig = $("u-config").value;
+  const fd = new FormData();
+  fd.append("asis_input", fin);
+  fd.append("asis_output", fout);
+  fd.append("input_type", document.querySelector('input[name=itype]:checked').value);
+  fd.append("output_type", document.querySelector('input[name=otype]:checked').value);
+  fd.append("encoding", $("u-encoding").value);
+  fd.append("config", $("u-config").value);
+  try {
+    const resp = await fetch("/verify/run", { method: "POST", body: fd });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const m = JSON.parse(line);
+        if (m.type !== "done") handleMsg(m);
+      }
+    }
+  } catch (err) {
+    $("banner").textContent = "오류: " + err; $("banner").style.display = "block";
+  } finally {
+    setRunning(false);
+  }
+});
+</script>
+</body>
+</html>

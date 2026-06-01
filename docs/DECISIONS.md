@@ -412,6 +412,28 @@
 
 **한계 / 인수 시 교체**: 입력·골든은 시연 한정. 실 클라이언트 데이터로 교체 후 `make_samples`/`make_golden`을 재실행하면 골든이 재생성되는 자산(시연 데이터 교체 포인트). `make_golden`이 stub `--clean` 경로를 재사용하는 한 진짜 배치로 바꿔도 원리 유지.
 
+## D-028. GUI = 로컬 웹 UI(Flask), Core 재사용 + 업로드 검증 — Phase 5
+
+**결정**: 시연용 GUI를 **로컬 웹 UI(Flask)**로 추가한다(`src/gui/`). Core는 무수정. 두 모드: ① 데모 10셸 자동 실행 ② 업로드 1쌍(As-Is 입력+정답) 풀체인 검증.
+
+1. **프레임워크 = Flask**: ARCHITECTURE 7이 "Flask/FastAPI는 GUI 단계에서 결정"으로 열어둔 지점 — 채택은 계획대로(경량 의존 1개 `flask>=3.0`, CLI는 불요).
+2. **Core 재사용(무수정)**: CLI와 동일하게 `run_full_comparison(config, on_progress, shell_ids)` 호출 + `ProgressEvent`/`RunSummary` 소비. D-006/D-025 콜백 설계(GUI 이식 전제) 검증됨.
+3. **실시간 진행**: 백그라운드 스레드 + 콜백→큐→스트림. 데모=SSE(`/run`), 업로드=NDJSON(`/verify/run`, POST 멀티파트). 종료 시 `done`으로 클라가 스트림을 닫음.
+4. **§① traversal 차단**: `/report/<name>`은 `secure_filename` + `report_dir` 하위 재확인(이중 가드).
+5. **§② dict 직렬화는 `src/gui/serialize.py`에만** — `core/models.py` 불변(CLAUDE 3-1).
+6. **§③ 동시 실행 1건 + 락 try/finally 해제** + `app.run(threaded=True)`.
+7. **§④ 브라우저 자동 오픈**: `web.py:main()`이 `webbrowser.open`(Timer). `run_gui.sh`가 위임.
+8. **비밀번호는 UI에 없음** — `POSTGRES_PASSWORD` env만(D-019 일관).
+
+**업로드 검증(Phase A)**: `src/gui/upload.py:prepare_job`이 업로드 1쌍을 **임시 작업폴더 + 임시 1-셸 정의 파일**로 만들어 `run_full_comparison(temp_config, shell_ids=["up1"])`에 먹인다 → 파이프라인 전부 재사용. 리포트는 base `report_dir`에 떨어져 `/report` 재사용, 임시폴더는 finally에서 rmtree.
+- **한계(흐름 시연용)**: 신환경 배치가 stub(데모 스키마 고정)이라 입력 CSV는 `transaction_log` 스키마, 정답 CSV는 Shift-JIS여야 OK. 진짜 다규격·실데이터 검증은 stub→실 배치 교체 후(Phase B). DB 입력 실행은 `transaction_log`를 덮어쓰며 다음 데모 실행 시 자가 복구(D-023).
+
+**Phase B(실 검증 지향, 후속)**: 업로드 UI에서 입력 테이블·배치·출력 테이블 직접 지정(데모 도메인 탈피) + 무시 규칙·정교 비교(D-022).
+
+**검증**: `tests/test_gui.py` 14개 통과(직렬화·라우팅·SSE/NDJSON·traversal·prepare_job), 기본 스위트 123 passed. 실 스택 스모크(Flask+dc-pg): `/run` OK6/NG3/ERROR1, `/verify/run` 샘플 001 OK·변조 시 NG.
+
+**⚠️ 환경 이슈 메모(2026-06-01)**: 이 작업 환경에서 **`pytest` 실행 직후 작업 디렉토리가 `.pytest_cache`만 남고 통째로 삭제되는 현상**이 3회 재현됨(홈 git repo의 untracked 삭제 또는 하네스 정리 추정, 위치·sandbox 무관). 그래서 GUI는 `/private/tmp`에서 재생성 후 **pytest 없이 즉시 origin push**로 보전. 인수 환경에선 이 현상·홈-git-repo 위험을 별도 점검 권장.
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:

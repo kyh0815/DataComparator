@@ -1,6 +1,7 @@
 # 본 도구의 의존성 (최소 유지 — CLAUDE.md 3-5)
 psycopg2-binary>=2.9
 pyyaml>=6.0
+flask>=3.0          # 웹 UI(src/gui) 전용 — GUI 단계 채택(ARCHITECTURE 7, D-028). CLI는 불요.
 
 # 개발용
 pytest>=8.0
