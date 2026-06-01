@@ -395,6 +395,23 @@
 
 **한계 / 후속**: `--clean`(골든 생성)은 CLI 인자로 노출 안 함 — 골든 생성은 T4-1(시연 샘플 데이터) 단계의 책임. 시연용 asis 입력/정답지 CSV 작성이 T4-1.
 
+## D-027. 시연 샘플 데이터 + 골든 생성 정책 — T4-1
+
+**결정**: 시연용 As-Is 입력/정답지(골든)와 생성 도구를 아래로 확정(T4-1).
+
+1. **입력 생성 = `tools/make_samples.py`**: `samples/asis/input/001~010.csv`를 Shift-JIS·`\n`으로 결정론 생성. 10개 모두 **`transaction_log` 8컬럼 헤더 통일**(DB 입력은 loader가 헤더 대조하므로 정확 일치, 파일 입력은 `branch_code` 무시). `customer_id`는 시드 `customer_master`(C0001~C0020)에 존재하는 값만 → stub이 顧客名 조인 enrich(SPEC 6-1·6-3). 입력은 전부 *정상값*이고 NG는 stub의 비-clean 위치 주입으로만 발생.
+2. **🔴 골든 생성 = `tools/make_golden.py` (stub `--clean` 경로 재사용, 손작성 금지)**: 오케스트레이터와 동일한 `load → run_batch(clean=True) → (DB출력이면 exporter)` 경로로 To-Be를 만들어 `samples/asis/output/{id}.csv`로 복사. 골든과 실제 To-Be가 **같은 직렬화**(파일=`write_csv_file`/DB=`export_table_to_csv`)를 거쳐 통짜 바이트 비교(D-004)에서 false-NG가 구조적으로 불가능(D-023 §4 일관, self-review #5). `clean=True`라 NG 주입이 꺼진 정상 출력=골든. 010은 clean이면 실패 안 해 골든이 생기나 실제 실행(비-clean)은 RunnerError→ERROR라 비교 안 됨(골든 미사용).
+3. **NG 위치 요건(SPEC 6-5)을 입력이 충족**: 007 첫 행 `balance_after` 변형(≥1행) / 008 첫 행 `customer_name` 전각공백(첫 행 유효 고객) / 009 row0·1·2 변형(≥3행) / 010 stub 종료코드 1. `tests/test_samples.py`가 이 불변식을 DB 없이 가드.
+4. **순환 import 해소(골든 생성 중 발견)**: `core.__init__`가 `orchestrator`를 즉시 import하고 orchestrator가 `config.definition`을, 그게 다시 `core.models`를 import해 **core↔config 순환**이 잠복해 있었다(`python -m src.cli.main`은 import 순서 운으로 회피, `config.definition` 선(先) import 시 ImportError). → `core/__init__.py`를 **PEP 562 `__getattr__` 지연 로딩**으로 바꿔(`from src.core import run_full_comparison`은 그대로 동작) 순환을 끊었다. orchestrator의 `config.definition` import는 모듈 레벨 유지(테스트 monkeypatch seam 보존).
+5. **실행 설정**: `config.yaml`은 gitignore(환경별 실값) — 로컬은 dc-pg 호스트 포트 **5433**(RegShift와 병렬, D-... 메모리). 비밀번호는 `POSTGRES_PASSWORD` env.
+
+**검증 결과** (T4-1 완료):
+- `python -m src.cli.main --config config.yaml` E2E: **OK 6(001~006) / NG 3(007,008,009) / ERROR 1(010) / MISSING 0**, 종료코드 **1**. NG가 SPEC 6-5 의도대로 표시(007 balance 1710000→1710001 1줄 / 008 田中太郎→田中　太郎 전각공백 / 009 3줄). 리포트 CSV(UTF-8 BOM·일본어·diff 상세) + 007/008/009 `.diff` 생성.
+- 정상 셸 6건 모두 골든=To-Be byte 동일(false-NG 0). DB 출력 셸(001,003,005,008)도 exporter 경로 일치.
+- 테스트: 기본 **103→109 passed**(test_samples 6 추가)/10 skipped, DB 통합 **113→119 passed**/0 skipped. 순환 import 양방향 회귀 가드 통과.
+
+**한계 / 인수 시 교체**: 입력·골든은 시연 한정. 실 클라이언트 데이터로 교체 후 `make_samples`/`make_golden`을 재실행하면 골든이 재생성되는 자산(시연 데이터 교체 포인트). `make_golden`이 stub `--clean` 경로를 재사용하는 한 진짜 배치로 바꿔도 원리 유지.
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:

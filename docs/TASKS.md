@@ -292,23 +292,51 @@
 
 ## Phase 4. 시연 데이터와 마무리
 
-### T4-1. 시연용 샘플 데이터 작성 `[ ]`
+### T4-1. 시연용 샘플 데이터 작성 `[x]`
 
-**목적**: 사장님 시연 시 사용할 1~10번 CSV 쌍 준비.
+**목적**: 사장님 시연 시 사용할 1~10번 CSV 쌍(As-Is 입력 + As-Is 출력 정답지) 준비. 이게 갖춰지면 `python -m src.cli.main --config config.yaml` 한 줄로 SPEC 8장 시연 시나리오가 실데이터로 굴러간다(Phase 3 E2E는 이미 동작, 데이터만 비어 있음).
 
-**작업**:
-- `samples/asis/input/001.csv ~ 010.csv` 생성
-  - 일본어 데이터 포함 (Shift-JIS 인코딩)
-  - **001~005 DB 입력**(헤더 = `transaction_log` 컬럼) / **006~010 파일 입력**(야간 배치 raw). 출력 유형은 SPEC 6-5 4사분면 매핑대로 — 정의 파일과 일치 (D-021·D-022)
-- `samples/asis/output/001.csv ~ 010.csv` 생성
-  - 각 stub을 `--clean` 모드로 돌려 골든 생성 → 정상 셸 바이트 동일 보장
-  - 007/008/009는 stub의 NG 주입분만큼 *의도된 차이*를 갖도록 설계
+#### 1. As-Is 입력 CSV — `samples/asis/input/001.csv ~ 010.csv`
 
-**완료 기준**:
-- 전체 E2E 실행 시 6 OK / 3 NG / 1 ERROR로 결과가 나옴 (SPEC 6-2 표대로)
-- 시연용으로 보기 좋은 데이터
+- **인코딩**: Shift-JIS, 줄바꿈 `\n`. 값에 일본어(거래구분 入金/出金/振込, 적요) 포함.
+- **헤더(10개 전부 동일)**: `tx_id,customer_id,tx_date,tx_type,amount,balance_after,branch_code,memo`
+  - = `transaction_log` 스키마 8컬럼(D-018). DB 입력(001~005)은 `load_input_csv`가 이 헤더를 테이블 컬럼과 대조하므로 **정확히 일치 필수**(loader가 불일치 시 LoaderError). 파일 입력(006~010)은 stub의 `rows_from_file`가 `DictReader`로 헤더명 매핑(`tx_id,customer_id,tx_date,tx_type,amount,balance_after,memo` 사용, `branch_code`는 무시) — 동일 헤더로 두면 두 흐름이 같은 입력 포맷을 공유해 단순.
+- **값 제약**:
+  - `customer_id`는 **시드 `customer_master`(C0001~C0020, 田中太郎 등)에 존재하는 값**만 사용 → stub이 顧客名을 조인해 enrich(없으면 빈칸이라 시연 임팩트↓).
+  - `amount`/`balance_after`: 정수(엔). `tx_date`: `YYYY-MM-DD`. `tx_type`: 入金/出金/振込. `memo`: 비어도 됨(빈칸→출력서 빈칸).
+  - `tx_id`는 셸 내 유일·정렬 가능(출력이 tx_id 정렬이므로). 예: `T00101`(001번), `T00701`(007번)…
+- **행 수 / 도메인**:
+  - 001~005(결제 도메인): 셸당 약 3~6행, 보기 좋은 결제 명세.
+  - 006~010(야간 배치 도메인): 셸당 약 3~6행. **NG 주입 위치 요건 충족 필수**(아래):
+    - **007**(1줄 NG): ≥1행. 첫 tx_id 행의 `balance_after`가 변형 대상.
+    - **008**(전각공백 NG): ≥1행, **첫 tx_id 행의 customer_id가 유효 고객**이어야 顧客名이 비지 않아 전각 공백 삽입이 보임(예 田中太郎→田中　太郎).
+    - **009**(다줄 NG): **≥3행**(stub가 row0 `balance_after`+1, row1 `tx_type`+"X", row2 `memo`+"差分" 변형 — row2는 memo가 있으면 더 자연스러움).
+    - **010**(ERROR): 행 내용 무관(stub가 출력 전 종료코드 1로 실패 → To-Be 미생성).
 
-**의존**: T2-3 (stub 동작 확인 후).
+#### 2. As-Is 출력 정답지(골든) — `samples/asis/output/001.csv ~ 010.csv`
+
+- **🔴 손으로 쓰지 말 것 — stub의 `--clean` 직렬화 경로로 생성**(D-023 §4 / self-review #5). 골든과 To-Be가 *다른 writer*를 타면 통짜 바이트 비교(D-004)가 false-NG. 골든은 To-Be와 **동일 직렬화**(파일 출력=`write_csv_file`, DB 출력=`export_table_to_csv`)를 거쳐야 한다.
+- **생성 방법**: 소형 골든 생성 스크립트(`tools/make_golden.py` 신규 제안)가 정의 파일을 읽어 각 셸에 대해 **오케스트레이터와 같은 경로**로
+  `load_input_csv|copy_input_file` → `runner.run_batch(definition, config, conn, clean=True)`(→ DB 출력이면 exporter 다운로드) → 산출된 To-Be CSV를 `samples/asis/output/{id}.csv`로 복사.
+  - `clean=True`라 NG 주입이 꺼져 정상 출력 = 골든. 실행 시 stub 비실패(`is_failure_shell`는 clean이면 통과)라 010 골든도 생성되나 **시연에선 미사용**(010 To-Be는 비-clean 실행서 RunnerError→ERROR라 비교 안 함).
+  - DB 입력/출력 셸이 있으므로 **DB 필요**: dc-pg(현재 호스트 5433) + `db/schema.sql` 시드 적용, `RUN_DB_TESTS` 류 env(`PGPORT=5433` 등)·`POSTGRES_PASSWORD`.
+- **출력 헤더(고정, ASCII)**: `tx_id,customer_id,customer_name,tx_date,tx_type,amount,balance_after,memo`(SPEC 6-3). `customer_name`=마스터 조인값, tx_id 정렬, Shift-JIS, `\n`.
+
+#### 3. 정의 파일 정합
+
+- `test_definition.yaml`은 이미 10셸이 SPEC 6-5 4사분면 매핑대로 존재(001 DB→DB … 010 ERROR). **샘플 파일명·셸 매핑이 정의와 일치**하는지만 확인(추가 편집 최소).
+
+**완료 기준(DoD)**:
+- `python -m src.cli.main --config config.yaml` E2E 실행 결과 **OK 6(001~006) / NG 3(007,008,009) / ERROR 1(010) / MISSING 0**, 종료코드 **1**(D-026: not all OK). 리포트 CSV + 007/008/009 `.diff` 생성.
+- NG 3건이 SPEC 6-5 의도대로 표시: 007 `balance_after` 1자리, 008 顧客名 전각 공백, 009 3줄.
+- 골든이 `--clean` 경로 산출이라 정상 셸(001~006)은 byte 동일(false-NG 0). DB 출력 셸(001,003,005,008)도 exporter 경로로 일치.
+- 시연용으로 읽기 좋은 데이터(현실적 금액·일본어 이름·적요).
+
+**산출물**: `samples/asis/input/{001~010}.csv`, `samples/asis/output/{001~010}.csv`(골든), `tools/make_golden.py`(골든 생성 스크립트, 인수 시 재생성 가능 자산), 골든 생성 스크립트의 결정론(같은 입력→같은 골든) 단위 점검.
+
+**의존**: T2-3·T2-4(stub·runner) + T3-1~T3-3(E2E). DB(dc-pg:5433) 가동 필요.
+
+**설계 메모(구현 시 D-027로 기록 권장)**: 골든 생성을 stub `--clean` 경로 재사용으로 못박는 결정 — 손으로 만든 골든의 직렬화 드리프트(false-NG)를 구조적으로 차단. `tools/make_golden.py`는 인수 후 실 클라이언트 데이터로 골든을 재생성하는 자산이 된다(시연 한정 데이터 교체 포인트).
 
 ---
 
