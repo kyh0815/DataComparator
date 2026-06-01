@@ -55,12 +55,12 @@
 </header>
 <main>
   <div class="tabs">
-    <button id="tab-demo" class="active" onclick="switchTab('demo')">데모 실행</button>
-    <button id="tab-upload" onclick="switchTab('upload')">업로드 검증</button>
+    <button id="tab-upload" class="active" onclick="switchTab('upload')">업로드 검증</button>
+    <button id="tab-demo" onclick="switchTab('demo')">샘플 데모(10건)</button>
   </div>
 
-  <!-- 탭 1: 데모 10셸 자동 실행 -->
-  <div class="panel" id="panel-demo">
+  <!-- 보조 탭: 데모 10셸 자동 실행 (준비물 없이 한 클릭 시연용) -->
+  <div class="panel" id="panel-demo" style="display:none">
     <div class="controls">
       <div>
         <label for="config">설정 파일</label>
@@ -75,8 +75,8 @@
     </div>
   </div>
 
-  <!-- 탭 2: 업로드 검증 (입력+정답 한 쌍) -->
-  <div class="panel" id="panel-upload" style="display:none">
+  <!-- 주 탭: 업로드 검증 (입력+정답 한 쌍 → 실제 제품 flow) -->
+  <div class="panel" id="panel-upload">
     <div class="controls">
       <div>
         <label for="u-input">As-Is 입력 CSV (배치에 먹일 데이터)</label>
