@@ -39,21 +39,19 @@ def test_connection(
     dbname: str,
     user: str,
     password_env: str = "POSTGRES_PASSWORD",
-    input_type: str = "database",
-    output_type: str = "file",
-    input_table: str | None = None,
-    output_table: str | None = None,
 ) -> dict:
-    """접속 + SELECT 1 + (조건부) 테이블 존재를 확인하고 결과 dict를 돌려준다(읽기전용).
+    """접속(SELECT 1) + public 스키마 테이블 목록을 취득해 결과 dict를 돌려준다(읽기전용).
 
-    반환: {ok, message, checks:[{name, ok, detail?}]}. 비밀번호는 env[password_env]에서만 읽는다.
+    반환: {ok, message, checks:[{name, ok, detail}], tables:[...]}. 비밀번호는 env[password_env]에서만.
+    테이블 존재 확인은 따로 하지 않는다 — 화면이 이 목록으로 드롭다운을 채워 사용자가 고르므로,
+    "목록에서 고른 = 존재"가 자명해진다(자유입력·오탐 제거). G: public 스키마 가정(schema-qualify는 deferred).
     """
     password = os.environ.get(password_env)  # 모델 A: 폼이 아니라 env에서만.
 
     try:
         port_int = int(port)
     except (TypeError, ValueError):
-        return {"ok": False, "message": f"ポートが数値ではありません: {port}", "checks": []}
+        return {"ok": False, "message": f"ポートが数値ではありません: {port}", "checks": [], "tables": []}
 
     try:
         conn = psycopg2.connect(
@@ -71,45 +69,32 @@ def test_connection(
                 f"（環境変数 {password_env} が未設定です。"
                 "パスワードはツールに保存せず、DBAが環境変数/.pgpass に設定します）"
             )
-        return {"ok": False, "message": f"DB接続に失敗しました: {exc}{hint}", "checks": []}
+        return {"ok": False, "message": f"DB接続に失敗しました: {exc}{hint}", "checks": [], "tables": []}
 
     checks: list[dict] = []
+    tables: list[str] = []
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
             cur.fetchone()
-        checks.append({"name": "DB接続 (SELECT 1)", "ok": True})
+        checks.append({"name": "DB接続 (SELECT 1)", "ok": True, "detail": f"{host}:{port_int}"})
 
-        # B: type이 database인 쪽의 테이블만 확인(파일 흐름엔 테이블 확인 금지 — 오탐 방지).
-        if input_type == "database" and input_table:
-            checks.append(_table_check(conn, input_table, "入力テーブル"))
-        if output_type == "database" and output_table:
-            checks.append(_table_check(conn, output_table, "出力テーブル"))
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public' ORDER BY table_name"
+            )
+            tables = [row[0] for row in cur.fetchall()]
+        checks.append({"name": "テーブル取得", "ok": len(tables) > 0, "detail": f"{len(tables)}件"})
     finally:
         conn.close()
 
     ok = all(c["ok"] for c in checks)
-    message = "接続OK — すべての確認に成功しました。" if ok else "接続はできましたが、一部の確認に失敗しました。"
-    return {"ok": ok, "message": message, "checks": checks}
-
-
-def _table_check(conn, table_name: str, label: str) -> dict:
-    """테이블 존재를 information_schema에서 확인한다(읽기전용).
-
-    G: public 스키마 가정(스키마 한정 미적용). loader/exporter와 동일하게 table_name만으로
-    조회하므로, 동명 테이블이 여러 스키마에 있으면 모호 — schema-qualify는 deferred(설치 시).
-    """
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_name = %s LIMIT 1",
-            (table_name,),
-        )
-        exists = cur.fetchone() is not None
-    return {
-        "name": f"{label} '{table_name}' の存在",
-        "ok": exists,
-        "detail": None if exists else "テーブルが見つかりません",
-    }
+    message = (
+        "接続OK — テーブル一覧を取得しました。" if ok
+        else "接続できましたが、public スキーマにテーブルがありません。"
+    )
+    return {"ok": ok, "message": message, "checks": checks, "tables": tables}
 
 
 def save_connection(

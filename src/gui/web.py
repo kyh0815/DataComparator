@@ -107,24 +107,17 @@ def _too_large(_exc):
 
 @app.route("/connection/test", methods=["POST"])
 def connection_test():
-    """접속 + SELECT 1 + (조건부)테이블 존재를 확인한다(읽기전용). 비번은 env에서만(모델 A)."""
+    """접속(SELECT 1) + public 테이블 목록을 취득한다(읽기전용). 비번은 env에서만(모델 A).
+
+    응답의 tables로 화면이 입력/출력 테이블 드롭다운을 채운다(목록에서 고르므로 존재가 자명).
+    """
     f = request.form
-    input_type = f.get("input_type") or "database"
-    output_type = f.get("output_type") or "file"
-    # 빈 테이블칸은 데모 기본값으로 채워 테스트도 빈칸으로 동작하게 한다(verify와 동일 규칙).
-    input_table, output_table = _resolve_tables(
-        input_type, output_type, f.get("input_table") or None, f.get("output_table") or None
-    )
     result = connection.test_connection(
         host=f.get("host", ""),
         port=f.get("port", ""),
         dbname=f.get("dbname", ""),
         user=f.get("user", ""),
         password_env=f.get("password_env") or "POSTGRES_PASSWORD",
-        input_type=input_type,
-        output_type=output_type,
-        input_table=input_table,
-        output_table=output_table,
     )
     return jsonify(result)
 

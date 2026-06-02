@@ -172,42 +172,23 @@ def test_connection_test_endpoint_wires(client, monkeypatch):
     assert r["ok"] and r["checks"][0]["name"] == "x"
 
 
-def test_connection_test_table_check_conditional(monkeypatch):
-    """B: type이 file인 쪽은 테이블을 확인하지 않는다(파일 흐름 오탐 방지)."""
+def test_connection_test_returns_table_list(monkeypatch):
+    """접속(SELECT 1) + public 테이블 목록을 취득해 tables로 돌려준다(드롭다운 채움용)."""
     class FakeCur:
         def __enter__(self): return self
         def __exit__(self, *a): return False
-        def execute(self, *a): self.q = a
+        def execute(self, q, *a): self.q = q
         def fetchone(self): return (1,)
+        def fetchall(self): return [("transaction_log",), ("tobe_result",), ("customer_master",)]
     class FakeConn:
         def cursor(self): return FakeCur()
         def close(self): pass
 
     monkeypatch.setattr(conn_mod.psycopg2, "connect", lambda **k: FakeConn())
-    r = conn_mod.test_connection(
-        host="h", port=5433, dbname="d", user="u",
-        input_type="database", output_type="file",
-        input_table="transaction_log", output_table="tobe_result",
-    )
+    r = conn_mod.test_connection(host="h", port=5433, dbname="d", user="u")
+    assert r["ok"] and "transaction_log" in r["tables"] and len(r["tables"]) == 3
     names = [c["name"] for c in r["checks"]]
-    assert any("入力テーブル" in n for n in names)
-    assert not any("出力テーブル" in n for n in names)  # output=file이므로 확인 안 함
-
-
-def test_connection_test_fills_demo_default_when_blank(client, monkeypatch):
-    """빈 테이블칸 + DB 타입 → 데모 기본값으로 채워 test_connection에 넘긴다(빈칸=기본)."""
-    captured = {}
-    monkeypatch.setattr(
-        web.connection, "test_connection",
-        lambda **k: (captured.update(k) or {"ok": True, "message": "", "checks": []}),
-    )
-    client.post(
-        "/connection/test",
-        data={"host": "h", "port": "5433", "dbname": "d", "user": "u",
-              "input_type": "database", "output_type": "database"},  # 테이블칸 비움
-    )
-    assert captured.get("input_table") == "transaction_log"
-    assert captured.get("output_table") == "tobe_result"
+    assert any("DB接続" in n for n in names) and any("テーブル取得" in n for n in names)
 
 
 def test_verify_run_fills_demo_default_when_blank(client, monkeypatch):

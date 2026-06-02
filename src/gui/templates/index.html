@@ -111,13 +111,14 @@
   .grid.cols2 { grid-template-columns:1fr 1fr; }
   .field label.lab { font-size:11.5px; color:var(--muted); display:block; margin-bottom:6px; font-weight:600; letter-spacing:.2px; }
   .field label.lab .opt { color:var(--muted-2); font-weight:500; }
-  .field input[type=text], .field input[type=number] {
+  .field input[type=text], .field input[type=number], .field select {
     width:100%; padding:9px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm);
     font-size:13.5px; background:var(--field-bg); color:var(--ink); transition:border-color .14s, box-shadow .14s;
     font-variant-numeric:tabular-nums;
   }
   .field input::placeholder { color:#aeb7c2; }
-  .field input:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(29,111,196,.16); }
+  .field input:focus, .field select:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(29,111,196,.16); }
+  .field select:disabled { background:#f5f7f9; color:var(--muted-2); cursor:not-allowed; }
   .field .hint { font-size:11px; color:var(--muted-2); margin-top:5px; }
   .field input[readonly]{ background:#f5f7f9; color:var(--muted); }
 
@@ -381,8 +382,8 @@
       </div>
       <div class="panel-body">
         <div class="grid">
-          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
-          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><select id="c-intable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint">接続テスト後に一覧から選択</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><select id="c-outtable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint">接続テスト後に一覧から選択</div></div>
         </div>
         <div class="radio-group" style="margin-top:18px">
           <div class="radio">
@@ -406,7 +407,7 @@
         </div>
         <div class="callout info">
           
-          <div>ここの I/Oタイプ・テーブルは <b>「接続テスト」の確認対象</b>です（読み取り専用 — 接続 + <code>SELECT 1</code> + DBタイプ側のテーブル存在確認のみ）。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（それらを使う場合この設定は無視 / 定義なしの簡易検証時のみ既定として使用）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
+          <div><b>「接続テスト」</b>は接続確認（<code>SELECT 1</code>）＋ public スキーマのテーブル一覧取得（読み取り専用）。取得後、入力/出力テーブルを一覧から選択します。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（定義なしの簡易検証時のみ、ここの選択が既定として使われます）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
         </div>
         <div class="checks" id="c-checks"></div>
         <div class="toast" id="c-toast"></div>
@@ -567,6 +568,7 @@ function restoreLocal(){
 }
 function toast(id,msg,ok){ const t=$(id); t.textContent=msg; t.className="toast "+(ok?"ok":"bad"); t.style.display="block"; }
 function connForm(){
+  // 접속 테스트·저장은 DB 접속 정보만 필요(테이블·타입은 불요 — 테이블은 응답 목록으로 채움).
   const fd=new FormData();
   fd.append("host",$("c-host").value);
   fd.append("port",$("c-port").value);
@@ -575,11 +577,21 @@ function connForm(){
   fd.append("password_env",$("c-pwenv").value);
   fd.append("encoding",$("c-encoding").value);
   fd.append("config",$("c-config").value);
-  fd.append("input_type",ioType("itype"));
-  fd.append("output_type",ioType("otype"));
-  fd.append("input_table",$("c-intable").value);
-  fd.append("output_table",$("c-outtable").value);
   return fd;
+}
+
+// 접속 테스트 응답의 테이블 목록으로 드롭다운을 채운다(자유입력 없음). 데모 기본값/이전 선택을 자동 선택.
+const TABLE_DEFAULTS={ "c-intable":"transaction_log", "c-outtable":"tobe_result" };
+function fillTableSelect(id, tables){
+  const sel=$(id);
+  let stored; try{ stored=JSON.parse(localStorage.getItem("dc_conn")||"{}")[id]; }catch(e){}
+  const prev = sel.value || stored || TABLE_DEFAULTS[id];
+  sel.innerHTML="";
+  const ph=document.createElement("option"); ph.value=""; ph.textContent="— 選択 —"; sel.appendChild(ph);
+  for(const t of (tables||[])){ const o=document.createElement("option"); o.value=t; o.textContent=t; sel.appendChild(o); }
+  sel.disabled = !(tables && tables.length);
+  if (prev && (tables||[]).includes(prev)) sel.value=prev;
+  saveLocal();
 }
 
 /* ───────── 接続テスト（実 /connection/test, 読み取り専用） ───────── */
@@ -599,6 +611,9 @@ $("c-test").addEventListener("click", async () => {
       `<span class="dt">${escapeHtml(c.detail||(c.ok?"OK":""))}</span></div>`).join("");
     cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
       (rows || `<div class="c bad"><span class="mk">✗</span><span class="nm">確認できませんでした</span><span class="dt"></span></div>`);
+    // 취득한 테이블 목록으로 입력/출력 드롭다운을 채운다(접속 성공 시).
+    fillTableSelect("c-intable", r.tables);
+    fillTableSelect("c-outtable", r.tables);
     toast("c-toast", r.message || (r.ok?"接続テスト成功":"接続テスト失敗"), !!r.ok);
   }catch(err){ toast("c-toast","通信エラー: "+err,false); }
   finally{ btn.disabled=false; btn.classList.remove("busy"); btn.textContent="接続テスト"; }
