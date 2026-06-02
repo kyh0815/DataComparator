@@ -328,10 +328,11 @@ def _definition_entry_from(d) -> dict:
 _MAPPING_REQUIRED = ("shell_id", "input_type", "output_type")
 
 # 고객 배포용 빈 양식(필수열 + 기입 예시 2행: DB→DB, file→file). 고객은 예시를 지우고 자기 셸을 적는다.
+# 예시 ID는 순차(001/002) — 데모의 4사분면 분포와 무관하게 "그냥 예시 2행"임을 명확히.
 MAPPING_TEMPLATE_CSV = (
     "shell_id,input_type,input_table,output_type,output_table\n"
     "001,database,transaction_log,database,tobe_result\n"
-    "006,file,,file,\n"
+    "002,file,,file,\n"
 )
 
 
