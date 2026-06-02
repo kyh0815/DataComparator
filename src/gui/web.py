@@ -75,12 +75,12 @@ _run_lock = threading.Lock()
 
 @app.route("/")
 def index():
-    """단일 페이지. 기본 config 경로 + 연결 초기값(비번 제외)을 폼 초기값으로 내린다."""
-    return render_template(
-        "index.html",
-        default_config="./config.yaml",
-        conn=_connection_defaults("./config.yaml"),
-    )
+    """단일 페이지. 기본 config 경로 + 연결 초기값(비번 제외) + 검증정의 기본 테이블을 폼에 내린다."""
+    conn = _connection_defaults("./config.yaml")
+    # 검증정의 테이블은 미리 채워 보여준다(빈칸 placeholder보다 명확). 실납품은 실테이블명으로 수정.
+    conn["input_table"] = _DEMO_INPUT_TABLE
+    conn["output_table"] = _DEMO_OUTPUT_TABLE
+    return render_template("index.html", default_config="./config.yaml", conn=conn)
 
 
 @app.errorhandler(RequestEntityTooLarge)

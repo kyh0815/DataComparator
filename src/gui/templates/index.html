@@ -381,8 +381,8 @@
       </div>
       <div class="panel-body">
         <div class="grid">
-          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" placeholder="transaction_log"><div class="hint">空欄なら既定値 <code>transaction_log</code></div></div>
-          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" placeholder="tobe_result"><div class="hint">空欄なら既定値 <code>tobe_result</code></div></div>
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
           <div class="field"><label class="lab">バッチ経路 <span class="opt">(空欄=同梱stub)</span></label><input type="text" id="c-batch" placeholder="stub_batch/run_batch_db.py"><div class="hint">空欄なら同梱 stub を自動選択</div></div>
         </div>
         <div class="radio-group" style="margin-top:18px">
