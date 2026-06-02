@@ -364,11 +364,11 @@
           <div class="field"><label class="lab">設定ファイル</label><input type="text" id="c-config" value="{{ default_config }}"></div>
         </div>
         <div class="callout sec">
-          <span class="ico">🔐</span>
+          
           <div>パスワードはツールに入力・保存しません（<b>モデルA</b>）。DBA が環境変数 <code>{{ conn.password_env }}</code> または <code>.pgpass</code> に設定し、ツールはそこから取得します。</div>
         </div>
         <div class="callout warn">
-          <span class="ico">⚠️</span>
+          
           <div>検証専用の <b>最小権限アカウント</b> と <b>検証専用 DB / スキーマ</b> を使用してください。本ツールは入力テーブルを TRUNCATE+INSERT、結果テーブルに INSERT するため、<b>本番 DB を指すと汚染します</b>。</div>
         </div>
       </div>
@@ -405,7 +405,7 @@
           <button class="ghost" id="c-save">保存</button>
         </div>
         <div class="callout info">
-          <span class="ico">▸</span>
+          
           <div>ここの I/Oタイプ・テーブルは <b>「接続テスト」の確認対象</b>です（読み取り専用 — 接続 + <code>SELECT 1</code> + DBタイプ側のテーブル存在確認のみ）。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（それらを使う場合この設定は無視 / 定義なしの簡易検証時のみ既定として使用）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
         </div>
         <div class="checks" id="c-checks"></div>
@@ -423,18 +423,18 @@
       </div>
       <div class="panel-body">
         <div class="callout sec" style="margin-top:0;margin-bottom:14px">
-          <span class="ico">▸</span>
+          
           <div>実行には DB 接続が必要です。初回は「<b>接続設定</b>」タブで接続情報を保存してください。シェル定義は下の<b>定義ファイル／マッピング表</b>が正本です。</div>
         </div>
         <div class="filebox" style="margin-bottom:14px">
           <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
           <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。マッピング表の <code style="background:#00000010;padding:1px 4px;border-radius:3px">batch_program</code> 列に各シェルの<b>新環境バッチ経路（＝旧↔新の対応）</b>を記入します（空欄＝同梱stub）。</div>
           <div class="frow">
-            <label class="file-btn">＋ 定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
-            <a class="file-btn" href="/definition/mapping-template" style="text-decoration:none;color:var(--muted);border-color:var(--line-2)">📄 マッピング表テンプレートDL</a>
-            <label class="file-btn">📋 マッピング表(CSV)から生成<input type="file" id="u-map" accept=".csv"></label>
-            <a class="file-btn" id="u-def-dl" style="display:none;text-decoration:none" download="test_definition.yaml">⬇ 定義YAMLをダウンロード</a>
-            <button class="file-btn" type="button" id="u-def-clear" style="display:none;color:var(--muted);border-color:var(--line-2)">✕ 解除</button>
+            <label class="file-btn">定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
+            <a class="file-btn" href="/definition/mapping-template" style="text-decoration:none;color:var(--muted);border-color:var(--line-2)">マッピング表テンプレートDL</a>
+            <label class="file-btn">マッピング表(CSV)から生成<input type="file" id="u-map" accept=".csv"></label>
+            <a class="file-btn" id="u-def-dl" style="display:none;text-decoration:none" download="test_definition.yaml">定義YAMLをダウンロード</a>
+            <button class="file-btn" type="button" id="u-def-clear" style="display:none;color:var(--muted);border-color:var(--line-2)">解除</button>
           </div>
           <div class="count" id="u-def-info"></div>
         </div>
@@ -443,8 +443,8 @@
             <span class="fh">As-Is 入力CSV</span>
             <div class="fsub">バッチに投入するデータ</div>
             <div class="frow">
-              <label class="file-btn">＋ ファイル選択<input type="file" id="u-in-files" accept=".csv" multiple></label>
-              <label class="file-btn">📁 フォルダ選択<input type="file" id="u-in-dir" webkitdirectory directory></label>
+              <label class="file-btn">ファイル選択<input type="file" id="u-in-files" accept=".csv" multiple></label>
+              <label class="file-btn">フォルダ選択<input type="file" id="u-in-dir" webkitdirectory directory></label>
             </div>
             <div class="count" id="u-in-count"></div>
           </div>
@@ -452,8 +452,8 @@
             <span class="fh">As-Is 正解CSV</span>
             <div class="fsub">期待される出力</div>
             <div class="frow">
-              <label class="file-btn">＋ ファイル選択<input type="file" id="u-out-files" accept=".csv" multiple></label>
-              <label class="file-btn">📁 フォルダ選択<input type="file" id="u-out-dir" webkitdirectory directory></label>
+              <label class="file-btn">ファイル選択<input type="file" id="u-out-files" accept=".csv" multiple></label>
+              <label class="file-btn">フォルダ選択<input type="file" id="u-out-dir" webkitdirectory directory></label>
             </div>
             <div class="count" id="u-out-count"></div>
           </div>
@@ -461,14 +461,14 @@
         <div class="actions">
           <label class="chk"><input type="checkbox" id="u-verbose"> 詳細（すべての差分行）</label>
           <span class="grow"></span>
-          <button class="run" id="u-run">▶ 検証実行</button>
+          <button class="run" id="u-run">検証実行</button>
         </div>
         <div class="callout info">
-          <span class="ico">🔗</span>
+          
           <div><b>入力と正解は同じファイル名で対応づけられます</b>（例: <code>003.csv</code> ↔ <code>003.csv</code>）。これは顧客側の命名規約です。ペアにならないファイルは実行前に明示表示し、除外します（マッチ0件はエラー）。I/Oタイプ・テーブル・バッチ経路は「接続設定」タブの値を使用します。</div>
         </div>
         <div class="callout warn">
-          <span class="ico">⚠️</span>
+          
           <div>現在「新環境バッチ」は <b>stub（デモ用）</b> です — 実検証は実バッチ置換後（導入段階）。そのため <b>正解CSVは Shift-JIS</b>、stub の想定スキーマに一致している必要があります。サンプルは <code>samples/asis/input/001.csv</code>・<code>samples/asis/output/001.csv</code>。</div>
         </div>
       </div>
@@ -491,10 +491,10 @@
         <div class="actions">
           <label class="chk"><input type="checkbox" id="verbose"> 詳細（すべての差分行）</label>
           <span class="grow"></span>
-          <button class="run" id="run">▶ 実行</button>
+          <button class="run" id="run">実行</button>
         </div>
         <div class="callout sec">
-          <span class="ico">▸</span>
+          
           <div>同梱サンプル <code>samples/asis/</code> を用いて 10件のシェルを順次実行します。各シェルの <b>入力ロード → バッチ実行 → 結果比較</b> がリアルタイムに表示されます。</div>
         </div>
       </div>
@@ -507,7 +507,6 @@
 
   <div id="summary" class="panel">
     <div class="panel-head">
-      <span class="num" style="background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok)">✓</span>
       <h2>検証サマリー</h2>
       <span class="sub" id="s-verdict"></span>
     </div>
@@ -625,7 +624,7 @@ function reset(){
   $("warnbar").classList.remove("show");
   $("results-wrap").classList.remove("show");
 }
-function showBanner(id, html){ const b=$(id); b.innerHTML=`<span class="ico">${id==="banner"?"⛔":"⚠"}</span><div>${html}</div>`; b.classList.add("show"); }
+function showBanner(id, html){ const b=$(id); b.innerHTML=`<div>${html}</div>`; b.classList.add("show"); }
 
 function shellRow(id,index,total){
   const el=document.createElement("div");
@@ -740,10 +739,10 @@ function renderSummary(s){
   $("s-elapsed").textContent=Number(s.elapsed_seconds).toFixed(1);
   const bad=s.ng_count+s.error_count+s.missing_count;
   const verdict=$("s-verdict");
-  if (bad===0){ verdict.textContent="✓ 全件一致"; verdict.style.color="var(--ok)"; }
+  if (bad===0){ verdict.textContent="全件一致"; verdict.style.color="var(--ok)"; }
   else { verdict.textContent=`要確認 — NG/ERROR/MISSING ${bad} 件`; verdict.style.color="var(--ng)"; }
   const cfg=encodeURIComponent(lastConfig);
-  $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)} ⬇</a>`;
+  $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)}</a>`;
   $("summary").classList.add("show");
 }
 
