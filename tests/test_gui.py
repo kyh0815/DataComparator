@@ -553,10 +553,32 @@ def test_mapping_template_downloads_and_is_valid(client):
     body = resp.get_data()
     assert body.startswith(b"\xef\xbb\xbf")  # BOM(Excel 대비)
     assert b"shell_id,input_type" in body
+    assert b"batch_program" in body  # 구↔신 배치 매핑 열이 양식에 노출
     assert "attachment" in resp.headers["Content-Disposition"]
     # 템플릿 자체가 유효한 매핑표여야 한다(고객이 그대로 올려도 동작).
     r = definition_from_mapping(MAPPING_TEMPLATE_CSV.encode("utf-8"))
     assert r["ok"] and r["count"] == 2
+
+
+def test_definition_from_mapping_honors_batch_program():
+    """batch_program 열에 적은 신환경 배치 경로가 생성 yaml의 shell_program이 된다(구↔신 매핑)."""
+    csv = (
+        b"shell_id,input_type,input_table,output_type,output_table,batch_program\n"
+        b"001,database,transaction_log,file,,/opt/batch/job001\n"
+    )
+    r = definition_from_mapping(csv)
+    assert r["ok"]
+    doc = yaml.safe_load(r["yaml"])
+    assert doc["tests"][0]["execution"]["shell_program"] == "/opt/batch/job001"
+
+
+def test_definition_from_mapping_blank_batch_uses_stub():
+    """batch_program 공란이면 입력타입별 동봉 stub을 채운다(데모용 기본)."""
+    csv = b"shell_id,input_type,input_table,output_type,output_table,batch_program\n001,file,,file,,\n"
+    r = definition_from_mapping(csv)
+    assert r["ok"]
+    doc = yaml.safe_load(r["yaml"])
+    assert doc["tests"][0]["execution"]["shell_program"].endswith("run_batch_file.py")
 
 
 # --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------

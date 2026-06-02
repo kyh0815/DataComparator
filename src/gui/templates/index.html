@@ -428,7 +428,7 @@
         </div>
         <div class="filebox" style="margin-bottom:14px">
           <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
-          <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。</div>
+          <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。マッピング表の <code style="background:#00000010;padding:1px 4px;border-radius:3px">batch_program</code> 列に各シェルの<b>新環境バッチ経路（＝旧↔新の対応）</b>を記入します（空欄＝同梱stub）。</div>
           <div class="frow">
             <label class="file-btn">＋ 定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
             <a class="file-btn" href="/definition/mapping-template" style="text-decoration:none;color:var(--muted);border-color:var(--line-2)">📄 マッピング表テンプレートDL</a>
