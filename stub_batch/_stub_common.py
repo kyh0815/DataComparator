@@ -209,7 +209,7 @@ def run(args, read_rows) -> None:
     """
     shell_id = args.shell_id
     if is_failure_shell(shell_id) and not args.clean:
-        print(f"[stub] shell {shell_id}: 의도된 배치 실패 시연 → 종료코드 1", file=sys.stderr)
+        print(f"[stub] shell {shell_id}: 意図的なバッチ失敗のデモ → 終了コード 1", file=sys.stderr)
         sys.exit(1)
 
     if args.output_type == "file" and not args.output_path:

@@ -125,7 +125,7 @@ def test_timeout_uses_definition(tmp_path):
 
 def test_nonzero_exit_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: _Proc(returncode=1, stderr="boom"))
-    with pytest.raises(runner.RunnerError, match="종료코드 1"):
+    with pytest.raises(runner.RunnerError, match="終了コード 1"):
         runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
 
 
@@ -249,5 +249,5 @@ def test_file_input_db_output_ng_detected(db_conn, tmp_path):
 def test_failure_shell_raises(tmp_path):
     """010: 의도된 종료코드 1 → RunnerError (오케스트레이터가 ERROR로 매핑)."""
     cfg = _real_config(tmp_path)
-    with pytest.raises(runner.RunnerError, match="종료코드 1"):
+    with pytest.raises(runner.RunnerError, match="終了コード 1"):
         runner.run_batch(_def("010", "file", "file"), cfg, conn=None)

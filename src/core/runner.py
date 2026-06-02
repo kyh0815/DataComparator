@@ -54,19 +54,19 @@ def run_batch(
         )
     except subprocess.TimeoutExpired as exc:
         raise RunnerError(
-            f"[{definition.test_id}] 배치 시간초과({timeout}s): {definition.shell_program}"
+            f"[{definition.test_id}] バッチタイムアウト({timeout}s): {definition.shell_program}"
         ) from exc
 
     if proc.returncode != 0:
         raise RunnerError(
-            f"[{definition.test_id}] 배치 실행 실패(종료코드 {proc.returncode}): "
+            f"[{definition.test_id}] バッチ実行失敗(終了コード {proc.returncode}): "
             f"{definition.shell_program}\nstderr: {proc.stderr.strip()}"
         )
 
     if definition.output_type == "database":
         if conn is None:
             raise RunnerError(
-                f"[{definition.test_id}] 출력=database인데 DB 연결(conn)이 없습니다."
+                f"[{definition.test_id}] 出力=database ですが DB 接続(conn)がありません。"
             )
         export_table_to_csv(
             conn, definition.output_table, output_path, encoding=config.encoding
@@ -145,8 +145,8 @@ def resolve_input_dir(definition: ShellDefinition, config: Config) -> Path:
     if base is None:
         if not definition.input_dest_dir:
             raise RunnerError(
-                f"[{definition.test_id}] 파일 입력 대상 디렉토리를 알 수 없습니다"
-                " (tobe_input_dir/input_dest_dir 누락)."
+                f"[{definition.test_id}] ファイル入力先ディレクトリが不明です"
+                "（tobe_input_dir/input_dest_dir 不足）。"
             )
         base = Path(definition.input_dest_dir)
     return base
