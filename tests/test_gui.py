@@ -322,13 +322,15 @@ def test_verify_run_requires_both_sides(client, monkeypatch):
 
 
 def test_verify_run_rejects_duplicate_stems(client, monkeypatch):
+    from werkzeug.datastructures import MultiDict
+
     monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], [], [])))
-    data = [  # 같은 stem 입력 2건 → 모호성 거부
+    data = MultiDict([  # 같은 stem 입력 2건 → 모호성 거부(중복 키라 MultiDict 필요)
         ("asis_inputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
         ("asis_inputs", (io.BytesIO(b"a\n2\n"), "001.csv")),
         ("asis_outputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
         ("input_type", "file"), ("output_type", "file"),
-    ]
+    ])
     msgs = _ndjson_messages(
         client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
     )

@@ -438,6 +438,27 @@
 
 ---
 
+## D-029. 웹 GUI "납품 대비 제품" 격상 — 연결설정·다건업로드·일본어UI — Phase 6
+
+**결정**: Phase 5 GUI(D-028)를 **납품 대비 수준**으로 격상한다. Core·`models.Config`는 **무수정** 유지하고 `src/gui/`만 확장한다. (단 *진짜 납품급 QA*는 실 배치·실데이터 없이는 불가 — 작은 샘플로 "납품 대비 구조"를 갖추는 것이 목표, 사용자 합의.)
+
+1. **연결 설정(신규 핵심) — `src/gui/connection.py`**: 화면에서 비-비밀 접속정보(host/port/dbname/user/password_env)·인코딩·검증정의(입력/출력 테이블·배치경로·I/O타입)를 받는다 = `config.yaml`/`test_definition.yaml`을 손으로 안 쓰는 정의 자동생성.
+   - **`test_connection`(읽기전용)**: `psycopg2.connect(connect_timeout=3)` + `SELECT 1` + **조건부** 테이블 존재 확인 — `input_type==database`면 입력 테이블만, `output_type==database`면 출력 테이블만(파일 흐름은 확인 안 함, 오탐 방지). DDL·쓰기 없음(운영 DB 오염 차단). 테이블 확인은 **public 스키마 가정**(loader/exporter와 동일하게 `table_name`만 조회) — schema-qualify는 deferred(설치 시).
+   - **비밀번호 = 모델 A(D-019 §6 확장)**: 폼은 비밀번호를 **받지도 저장도 안 한다**. 서버 env[`password_env`]에서만 끌어오고, 없으면 `.pgpass`/trust에 위임(안내만). 일본 보안심사 유리.
+2. **저장 분리(★Core 무수정 보존)**: `save_connection`은 **DB 접속·인코딩만** `config.yaml`에 **원자적 저장**(`.bak` 백업 → tmp write → `os.replace`). 검증정의값(테이블·배치·타입)은 `Config` 필드가 아니라 `ShellDefinition` 값이라 저장 시 `models.Config` 확장이 필요 → 저장하지 않고 `/verify/run` **폼으로 전달**(+클라 localStorage 기억). 평문 비밀번호는 절대 기록 안 함(`password_env` 이름만).
+3. **다건 업로드 — `prepare_job` → `prepare_jobs`**: N쌍을 받아 **N-셸 임시 정의**를 만들고 엔진(`run_full_comparison`)이 순차 처리. 입력/출력 테이블·배치경로를 **인자로 파라미터화**해 D-028 PhaseB가 예고한 `_DEMO_*` 하드코딩(`transaction_log`/`tobe_result`)을 제거. 짝짓기는 **파일명 stem 일치**(고객 규약 — UI 명시). 짝 안 맞는 파일은 **silent drop 금지** — `PairingInfo`로 돌려줘 화면에 warning으로 명시 노출, 매칭 0건은 `UploadError`. 같은 stem 중복 업로드는 모호성 거부.
+4. **UI 전면 일본어**: `index.html` 표시 문구 + `web.py` 사용자向け 메시지(업로드 누락·중복·413 등)를 일본어로. **Core 예외·CLI·리포트 문구는 deferred**(한국어 유지) — 배치 실패 등 Core 한국어 메시지가 JP 화면에 노출되는 건 용인(사용자 합의). 코드/주석도 한국어 유지.
+5. **라이트 UI 세련화**(다크 철회): 짙은 헤더→라이트 헤더(흰 배경+보더+액센트 바), 여백·타이포·카드 정돈. 3탭 재구성(접속설정/업로드검증/데모), 연결설정 2섹션 분리(DB접속/검증정의). diff 하이라이트 로직(d760188)은 보존.
+6. **온프레미스 경량 유지**: 바닐라 HTML/CSS/JS, **CDN·웹폰트·빌드 0**, 의존성 `flask>=3.0` 1개. 폴더(`webkitdirectory`)+다중파일 업로드. **MAX_CONTENT_LENGTH + 413 친절 에러**. `_cleanup_tmpdir` 임시-하위-only 가드 유지(작업트리 삭제 재발 차단, D-028 §버그메모).
+
+**이유**: 도구 가치는 "As-Is==To-Be" 판정이고 stub은 "이행된 배치" 대역이라 E2E QA가 stub으로 가능 — 실제와 다른 건 **운영 연결**(고객 계정·실 배치·실 스키마)뿐이라 ①연결설정이 핵심. Core 무수정·정의 파일 주도 계약을 유지하는 한 GUI는 독립 격상 가능(D-006/D-028).
+
+**범위 밖 = deferred**: 정교 비교·무시 규칙(D-022), 대용량·성능·인코딩 엣지 QA, 진짜 Net COBOL 배치 연결(설치 시 `shell_program` 교체), Core 예외·CLI·리포트 일본어화, 실 설치 패키징(휠·인스톨러), schema-qualify, 다중 DB 도메인.
+
+**검증**: `tests/test_gui.py` 25개(직렬화·라우팅·다건 짝짓기/미매칭/중복·connection 저장/조건부테이블·413·cleanup 가드) 통과, 전체 144 passed(DB 통합 포함, dc-pg 5433). 실 스택 라이브 스모크: `/connection/test` OK+조건부 테이블·잘못된 포트 친절 실패 / `/verify/run` 다건 001 OK+002 NG(diff)·미매칭 003·099 명시 제외.
+
+---
+
 > 새로운 결정이 생기면 아래에 추가:
 >
 > ## D-XXX. (제목)

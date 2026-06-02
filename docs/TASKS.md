@@ -401,6 +401,26 @@
 
 ---
 
+## Phase 6. GUI 납품 대비 격상 (사용자 요청)
+
+### T6-1. 연결설정 + 다건업로드 + 일본어UI + 라이트 세련화 `[x]`
+
+**목적**: Phase 5 GUI를 "시연용"에서 **납품 대비 제품**으로 격상. Core·`models.Config` 무수정, `src/gui/`만 확장.
+
+**작업** (D-029):
+- `src/gui/connection.py` — `test_connection`(읽기전용: SELECT 1 + 조건부 테이블 존재) + `save_connection`(DB·인코딩만 원자적 저장+.bak, 비번 미기록=모델A).
+- `src/gui/upload.py` — `prepare_job`→`prepare_jobs`: N쌍 stem 짝짓기, 미매칭 명시 반환, 입력/출력 테이블·배치경로 파라미터화(_DEMO_* 제거).
+- `src/gui/web.py` — `/connection/test`·`/connection/save` 신규, `/verify/run` 다건화, MAX_CONTENT_LENGTH+413, 사용자 메시지 일본어.
+- `src/gui/templates/index.html` — 3탭(접속설정/업로드검증/데모), 연결설정 2섹션 분리, 폴더+다중파일, 짝짓기 안내, 일본어 전면, 라이트 세련화, localStorage 영속화.
+
+**완료 기준**:
+- 연결테스트 OK+조건부 테이블 / 잘못된 접속 친절 실패. 다건 OK/NG 혼합·미매칭 명시·매칭0건 에러.
+- `tests/test_gui.py` 25개 + 전체 144 passed(DB 포함). 실 스택 라이브 스모크 통과.
+
+**deferred**: 정교비교/무시규칙(D-022), 실 배치 연결, Core/CLI/리포트 일본어화, 실 설치 패키징, schema-qualify.
+
+---
+
 ## 권장 작업 순서 요약
 
 ```
