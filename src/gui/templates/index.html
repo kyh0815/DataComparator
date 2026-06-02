@@ -340,13 +340,13 @@
 
 <main>
   <nav class="tabs" role="tablist">
-    <button id="tab-conn" class="active" onclick="switchTab('conn')"><span class="ix">1</span>接続設定</button>
-    <button id="tab-upload" onclick="switchTab('upload')"><span class="ix">2</span>アップロード検証</button>
+    <button id="tab-upload" class="active" onclick="switchTab('upload')"><span class="ix">1</span>アップロード検証</button>
+    <button id="tab-conn" onclick="switchTab('conn')"><span class="ix">2</span>接続設定</button>
     <button id="tab-demo" onclick="switchTab('demo')"><span class="ix">3</span>サンプルデモ</button>
   </nav>
 
-  <!-- ① 接続設定 -->
-  <section id="panel-conn">
+  <!-- ② 接続設定 -->
+  <section id="panel-conn" style="display:none">
     <div class="panel">
       <div class="panel-head">
         <span class="num">1</span>
@@ -377,13 +377,12 @@
     <div class="panel">
       <div class="panel-head">
         <span class="num">2</span>
-        <h2>検証定義（テーブル・バッチ・I/Oタイプ）</h2>
+        <h2>接続テスト用テーブル <span class="opt" style="font-weight:500;color:var(--muted-2)">／ 簡易モード既定</span></h2>
       </div>
       <div class="panel-body">
         <div class="grid">
-          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
-          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
-          <div class="field"><label class="lab">バッチ経路 <span class="opt">(同梱stub / 実バッチ)</span></label><input type="text" id="c-batch" placeholder="stub_batch/run_batch_db.py"><div class="hint">入力タイプに応じた同梱 stub を自動表示。実バッチは経路を入力</div></div>
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
         </div>
         <div class="radio-group" style="margin-top:18px">
           <div class="radio">
@@ -407,7 +406,7 @@
         </div>
         <div class="callout info">
           <span class="ico">▸</span>
-          <div><b>接続テスト</b>は読み取り専用です（接続 + <code>SELECT 1</code> + DBタイプ側のテーブル存在確認のみ、書き込みなし）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。検証定義は保存せず、検証実行時にフォームで渡します。</div>
+          <div>ここの I/Oタイプ・テーブルは <b>「接続テスト」の確認対象</b>です（読み取り専用 — 接続 + <code>SELECT 1</code> + DBタイプ側のテーブル存在確認のみ）。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（それらを使う場合この設定は無視 / 定義なしの簡易検証時のみ既定として使用）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
         </div>
         <div class="checks" id="c-checks"></div>
         <div class="toast" id="c-toast"></div>
@@ -415,14 +414,18 @@
     </div>
   </section>
 
-  <!-- ② アップロード検証 -->
-  <section id="panel-upload" style="display:none">
+  <!-- ① アップロード検証 -->
+  <section id="panel-upload">
     <div class="panel">
       <div class="panel-head">
-        <span class="num">2</span>
+        <span class="num">1</span>
         <h2>アップロード検証（複数ペア対応）</h2>
       </div>
       <div class="panel-body">
+        <div class="callout sec" style="margin-top:0;margin-bottom:14px">
+          <span class="ico">▸</span>
+          <div>実行には DB 接続が必要です。初回は「<b>接続設定</b>」タブで接続情報を保存してください。シェル定義は下の<b>定義ファイル／マッピング表</b>が正本です。</div>
+        </div>
         <div class="filebox" style="margin-bottom:14px">
           <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
           <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。</div>
@@ -550,7 +553,7 @@ function switchTab(which) {
 }
 
 /* ───────── 接続設定: 永続化 + フォーム ───────── */
-const CONN_FIELDS = ["c-host","c-port","c-dbname","c-user","c-pwenv","c-encoding","c-config","c-intable","c-outtable","c-batch"];
+const CONN_FIELDS = ["c-host","c-port","c-dbname","c-user","c-pwenv","c-encoding","c-config","c-intable","c-outtable"];
 function ioType(name){ return document.querySelector(`input[name=${name}]:checked`).value; }
 function saveLocal(){
   const o={}; for (const id of CONN_FIELDS) o[id]=$(id).value;
@@ -846,7 +849,6 @@ $("u-run").addEventListener("click", async () => {
   fd.append("config", $("c-config").value);
   fd.append("input_table", $("c-intable").value);
   fd.append("output_table", $("c-outtable").value);
-  fd.append("batch_program", $("c-batch").value);
   const defFile=$("u-def").files[0];
   if (defFile) fd.append("definition", defFile, defFile.name);            // 업로드 정의 우선
   else if (genDefYaml) fd.append("definition", new File([genDefYaml], "generated_definition.yaml"), "generated_definition.yaml");  // 매핑 생성 정의
@@ -877,24 +879,10 @@ $("u-run").addEventListener("click", async () => {
   }
 });
 
-/* ───────── バッチ経路: 入力タイプに応じた stub を自動表示 ─────────
-   값이 비었거나 알려진 stub이면 입력타입에 맞는 stub으로 동기화한다(사용자가
-   실제 배치 경로를 직접 입력하면 그 값을 보존). 입력=DB→db stub, 입력=ファイル→file stub. */
-const STUB_DB="stub_batch/run_batch_db.py", STUB_FILE="stub_batch/run_batch_file.py";
-function syncBatchDefault(){
-  const el=$("c-batch"); const v=el.value.trim();
-  if (v==="" || v===STUB_DB || v===STUB_FILE){
-    el.value = ioType("itype")==="database" ? STUB_DB : STUB_FILE;
-  }
-}
-
 /* ───────── 初期化 ───────── */
 restoreLocal();
-syncBatchDefault();
 for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
-for (const r of document.querySelectorAll('input[name=itype]'))
-  r.addEventListener("change", () => { syncBatchDefault(); saveLocal(); });
-for (const r of document.querySelectorAll('input[name=otype]')) r.addEventListener("change", saveLocal);
+for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", saveLocal);
 </script>
 </body>
 </html>
