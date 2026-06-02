@@ -143,7 +143,7 @@ def mapping_template():
     """고객 배포용 매핑표 빈 양식(CSV)을 내려준다. Excel 대비 BOM(utf-8-sig) 부착."""
     return Response(
         "﻿" + MAPPING_TEMPLATE_CSV,  # BOM: Excel(일/한)에서 깨짐 방지
-        mimetype="text/csv; charset=utf-8",
+        content_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=shell_mapping_template.csv"},
     )
 
