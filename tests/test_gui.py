@@ -545,6 +545,20 @@ def test_definition_from_mapping_endpoint(client):
     assert r["ok"] and r["count"] == 3 and r["yaml"]
 
 
+def test_mapping_template_downloads_and_is_valid(client):
+    from src.gui.upload import MAPPING_TEMPLATE_CSV, definition_from_mapping
+
+    resp = client.get("/definition/mapping-template")
+    assert resp.status_code == 200
+    body = resp.get_data()
+    assert body.startswith(b"\xef\xbb\xbf")  # BOM(Excel 대비)
+    assert b"shell_id,input_type" in body
+    assert "attachment" in resp.headers["Content-Disposition"]
+    # 템플릿 자체가 유효한 매핑표여야 한다(고객이 그대로 올려도 동작).
+    r = definition_from_mapping(MAPPING_TEMPLATE_CSV.encode("utf-8"))
+    assert r["ok"] and r["count"] == 2
+
+
 # --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------
 
 

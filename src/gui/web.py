@@ -40,6 +40,7 @@ from src.core import run_full_comparison
 from . import connection
 from .serialize import event_to_dict, summary_to_dict
 from .upload import (
+    MAPPING_TEMPLATE_CSV,
     definition_from_mapping,
     prepare_jobs,
     prepare_jobs_from_definition,
@@ -135,6 +136,16 @@ def definition_parse():
     if not f or not f.filename:
         return jsonify(ok=False, count=0, shells=[], message="定義ファイルを選択してください。"), 400
     return jsonify(summarize_definition(f.read()))
+
+
+@app.route("/definition/mapping-template")
+def mapping_template():
+    """고객 배포용 매핑표 빈 양식(CSV)을 내려준다. Excel 대비 BOM(utf-8-sig) 부착."""
+    return Response(
+        "﻿" + MAPPING_TEMPLATE_CSV,  # BOM: Excel(일/한)에서 깨짐 방지
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=shell_mapping_template.csv"},
+    )
 
 
 @app.route("/definition/from-mapping", methods=["POST"])
