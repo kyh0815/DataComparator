@@ -419,6 +419,21 @@
 
 **deferred**: 정교비교/무시규칙(D-022), 실 배치 연결, Core/CLI/리포트 일본어화, 실 설치 패키징, schema-qualify.
 
+### T6-2. 정의 파일 주도 업로드 검증 `[x]`
+
+**목적**: 셸마다 타입·테이블·배치가 다른 실무 케이스를 위해 `test_definition.yaml` 업로드로 N셸 검증(정의 주도). 화면 3칸(동질 묶음)과 양립.
+
+**작업** (D-030):
+- `src/gui/upload.py` — `summarize_definition`(파싱 미리보기), `prepare_jobs_from_definition`(yml 정본, 파일명 매칭, 누락 셸 제외, shell_program 절대화).
+- `src/gui/web.py` — `/definition/parse` 신규(읽기전용), `/verify/run`을 `definition` 파일 유무로 분기(있으면 정의 우선).
+- `src/gui/templates/index.html` — 업로드 탭에 "定義ファイル(任意)" 픽커 + 파싱 미리보기(N셸·타입) + 우선순위 안내 + 해제.
+
+**완료 기준**:
+- `/definition/parse`로 10셸 인식, 정의 주도 `/verify/run`이 입력/정답 매칭해 N셸 실행, 누락 셸 명시.
+- `tests/test_gui.py` 34개 통과. 실 스택 라이브: 실 yaml+샘플20 → OK6/NG3/ERROR1.
+
+**deferred**: 정의 파일이 참조하는 CSV의 원격/경로 참조(현재는 함께 업로드), 그 외 D-029 deferred 동일.
+
 ---
 
 ## 권장 작업 순서 요약

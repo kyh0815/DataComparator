@@ -459,6 +459,24 @@
 
 ---
 
+## D-030. 정의 파일 주도 업로드 검증 — 셸별 정의 yml 업로드 (Phase B 일부 선반영)
+
+**결정**: 업로드 검증에 **정의 파일(`test_definition.yaml`) 주도 모드**를 추가한다(D-028 Phase B의 "셸별 정의" 일부 선반영). 정의 파일을 업로드하면 그것이 **정본**이 되어 셸별 입력/출력 타입·테이블·배치를 정의대로 N셸 검증한다. Core·`models` 무수정, `src/gui/`만 확장.
+
+1. **두 모드 양립**: ① **개별 업로드(폼 3칸)** — 동질 묶음(D-029) / ② **정의 파일 주도** — 셸마다 타입·테이블·배치가 다른 실무 케이스. `/verify/run`이 `definition` 파일 유무로 분기한다. 정의 파일이 있으면 폼 3칸(타입·테이블·배치)은 **무시**되고 정의가 우선한다.
+2. **파싱·재사용**: `summarize_definition`(파싱 미리보기, 읽기전용 `/definition/parse`) + `prepare_jobs_from_definition`이 `load_definitions()`로 검증 후, 정의의 `input_csv`/`expected_output_csv` **파일명을 업로드 CSV(stem)와 매칭**해 임시 작업폴더에 배치하고 정규화 정의를 만들어 `run_full_comparison`에 먹인다(엔진 무수정).
+3. **shell_program 절대화**: 업로드 정의의 상대 배치경로(`stub_batch/...`)는 **repo 루트 기준 절대경로**로 정규화해 임시 디렉토리 기준 오해석을 막는다(`prepare_jobs`와 동일 규칙, 자가검증 ⑤). 절대경로(실 배치)는 그대로 둔다.
+4. **silent drop 금지(④)**: 정의의 셸 중 입력/정답 CSV가 빠진 셸은 조용히 버리지 않고 `DefIngestInfo.excluded`로 돌려줘 화면에 warning으로 명시한다(유효 셸만 실행, 0건이면 `UploadError`).
+5. **단일 진실**: 정의 파일이 정본이라는 D-021/022 원칙을 GUI로 노출한 것일 뿐 — 엔진/정의 로더/트랜잭션 경계는 그대로 재사용(드리프트 없음).
+
+**이유**: 실무 검증은 셸이 수십~수백 개이고 셸마다 정의가 다르다. 화면 3칸으로는 동질 묶음만 처리되므로, **고객이 가진 정의 파일을 그대로 받는 것**이 가장 실무적이고 우리 정의-주도 아키텍처와 정확히 맞는다(사용자 요청).
+
+**범위 밖 = deferred(유지)**: 정교 비교·무시 규칙(D-022), 진짜 Net COBOL 배치 연결(설치 시 `shell_program` 교체), Core/CLI/리포트 일본어화, 실 설치 패키징, schema-qualify, 다중 DB 도메인. 정의 파일에 매칭되는 입력/정답 CSV는 여전히 함께 업로드해야 한다(원격 경로 참조는 deferred).
+
+**검증**: `tests/test_gui.py` 34개(정의 파싱·정의주도 빌드·누락제외·zero-match·`/definition/parse`·`/verify/run` 분기 포함) 통과. 실 스택 라이브 스모크(dc-pg 5433): 실 `test_definition.yaml` 업로드 → `/definition/parse` 10셸 인식, `/verify/run` 정의 주도로 입력10+정답10 → **OK6/NG3/ERROR1**(데모 SPEC 6-5 매핑과 일치), 누락 셸 warning 노출.
+
+---
+
 > 새로운 결정이 생기면 아래에 추가:
 >
 > ## D-XXX. (제목)
