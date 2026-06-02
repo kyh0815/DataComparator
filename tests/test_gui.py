@@ -186,6 +186,47 @@ def test_connection_test_table_check_conditional(monkeypatch):
     assert not any("出力テーブル" in n for n in names)  # output=file이므로 확인 안 함
 
 
+def test_connection_test_fills_demo_default_when_blank(client, monkeypatch):
+    """빈 테이블칸 + DB 타입 → 데모 기본값으로 채워 test_connection에 넘긴다(빈칸=기본)."""
+    captured = {}
+    monkeypatch.setattr(
+        web.connection, "test_connection",
+        lambda **k: (captured.update(k) or {"ok": True, "message": "", "checks": []}),
+    )
+    client.post(
+        "/connection/test",
+        data={"host": "h", "port": "5433", "dbname": "d", "user": "u",
+              "input_type": "database", "output_type": "database"},  # 테이블칸 비움
+    )
+    assert captured.get("input_table") == "transaction_log"
+    assert captured.get("output_table") == "tobe_result"
+
+
+def test_verify_run_fills_demo_default_when_blank(client, monkeypatch):
+    """빈 입력테이블 + 입력=DB → prepare_jobs에 transaction_log가 채워져 전달된다. 출력=file은 미채움."""
+    captured = {}
+
+    def fake_prepare(*a, **k):
+        captured.update(k)
+        return (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")), PairingInfo(["001"], [], []))
+
+    monkeypatch.setattr(web, "prepare_jobs", fake_prepare)
+    monkeypatch.setattr(
+        web, "run_full_comparison",
+        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
+    )
+    data = {
+        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "input_type": "database", "output_type": "file",  # input_table 미지정
+    }
+    _ndjson_messages(
+        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
+    )
+    assert captured.get("input_table") == "transaction_log"
+    assert captured.get("output_table") is None  # output=file이라 채우지 않음
+
+
 # --- 업로드 검증: prepare_jobs (DB 불요, config.yaml.example 베이스) ----------------
 
 

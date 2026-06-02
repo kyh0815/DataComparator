@@ -50,6 +50,25 @@ app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXAMPLE_CONFIG = str(_REPO_ROOT / "config.yaml.example")
 
+# 데모 편의: 검증정의 테이블칸이 비면 동봉 stub 스키마로 채운다(빈칸=기본값).
+# 실납품은 화면에서 실제 테이블명을 입력하면 그 값이 우선한다(하드코딩 아님 — 폴백일 뿐).
+_DEMO_INPUT_TABLE = "transaction_log"
+_DEMO_OUTPUT_TABLE = "tobe_result"
+
+
+def _resolve_tables(
+    input_type: str, output_type: str, input_table: str | None, output_table: str | None
+) -> tuple[str | None, str | None]:
+    """DB 타입인데 테이블칸이 비면 데모 기본값으로 채운다(GUI 폴백, 단일 진실).
+
+    파일 타입 쪽은 건드리지 않는다(테이블 불필요). 비-DB에서는 None 유지.
+    """
+    if input_type == "database" and not input_table:
+        input_table = _DEMO_INPUT_TABLE
+    if output_type == "database" and not output_table:
+        output_table = _DEMO_OUTPUT_TABLE
+    return input_table, output_table
+
 # 동시 실행 1건 제한(데모용). 해제는 스트림 제너레이터의 finally에서(§③).
 _run_lock = threading.Lock()
 
@@ -84,16 +103,22 @@ def _too_large(_exc):
 def connection_test():
     """접속 + SELECT 1 + (조건부)테이블 존재를 확인한다(읽기전용). 비번은 env에서만(모델 A)."""
     f = request.form
+    input_type = f.get("input_type") or "database"
+    output_type = f.get("output_type") or "file"
+    # 빈 테이블칸은 데모 기본값으로 채워 테스트도 빈칸으로 동작하게 한다(verify와 동일 규칙).
+    input_table, output_table = _resolve_tables(
+        input_type, output_type, f.get("input_table") or None, f.get("output_table") or None
+    )
     result = connection.test_connection(
         host=f.get("host", ""),
         port=f.get("port", ""),
         dbname=f.get("dbname", ""),
         user=f.get("user", ""),
         password_env=f.get("password_env") or "POSTGRES_PASSWORD",
-        input_type=f.get("input_type") or "database",
-        output_type=f.get("output_type") or "file",
-        input_table=f.get("input_table") or None,
-        output_table=f.get("output_table") or None,
+        input_type=input_type,
+        output_type=output_type,
+        input_table=input_table,
+        output_table=output_table,
     )
     return jsonify(result)
 
@@ -184,9 +209,13 @@ def verify_run():
     output_type = request.form.get("output_type") or "file"
     encoding = request.form.get("encoding") or "Shift_JIS"
     base_config = request.form.get("config") or "./config.yaml"
-    input_table = request.form.get("input_table") or None
-    output_table = request.form.get("output_table") or None
     batch_program = request.form.get("batch_program") or None
+    # 빈 테이블칸 → 데모 기본값(빈칸=기본). 실납품은 입력값 우선.
+    input_table, output_table = _resolve_tables(
+        input_type, output_type,
+        request.form.get("input_table") or None,
+        request.form.get("output_table") or None,
+    )
     # 요청 컨텍스트가 살아 있을 때 파일을 읽어 둔다(제너레이터는 나중에 실행됨).
     inputs, dup_in = _collect_csv(request.files.getlist("asis_inputs"))
     outputs, dup_out = _collect_csv(request.files.getlist("asis_outputs"))
