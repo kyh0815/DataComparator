@@ -389,8 +389,8 @@
       </div>
       <div class="panel-body">
         <div class="grid">
-          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><select id="c-intable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint">接続テスト後に一覧から選択</div></div>
-          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><select id="c-outtable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint">接続テスト後に一覧から選択</div></div>
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><select id="c-intable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint" id="c-intable-hint">接続テストで取得</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><select id="c-outtable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint" id="c-outtable-hint">接続テストで取得</div></div>
         </div>
         <div class="radio-group" style="margin-top:18px">
           <div class="radio">
@@ -589,15 +589,27 @@ function connForm(){
 
 // 접속 테스트 응답의 테이블 목록으로 드롭다운을 채운다(자유입력 없음). 데모 기본값/이전 선택을 자동 선택.
 const TABLE_DEFAULTS={ "c-intable":"transaction_log", "c-outtable":"tobe_result" };
-function fillTableSelect(id, tables){
+let tablesCache=[];
+function fillTableOptions(id, tables){
   const sel=$(id);
   let stored; try{ stored=JSON.parse(localStorage.getItem("dc_conn")||"{}")[id]; }catch(e){}
   const prev = sel.value || stored || TABLE_DEFAULTS[id];
   sel.innerHTML="";
   const ph=document.createElement("option"); ph.value=""; ph.textContent="— 選択 —"; sel.appendChild(ph);
   for(const t of (tables||[])){ const o=document.createElement("option"); o.value=t; o.textContent=t; sel.appendChild(o); }
-  sel.disabled = !(tables && tables.length);
   if (prev && (tables||[]).includes(prev)) sel.value=prev;
+}
+// 라디오(DB/파일) AND 접속테스트 목록취득 여부로 테이블 드롭다운 활성/비활성·안내 갱신.
+function syncTableEnabled(){
+  const has=tablesCache.length>0;
+  for(const [id,radio,fileMsg] of [["c-intable","itype","ファイル入力では不要"],["c-outtable","otype","ファイル出力では不要"]]){
+    const isDB=ioType(radio)==="database";
+    const sel=$(id);
+    sel.disabled = !(isDB && has);
+    if(!isDB) sel.value="";                       // 파일 흐름: 테이블 미사용 → 비움
+    const hint=$(id+"-hint");
+    if(hint) hint.textContent = !isDB ? fileMsg : (has ? "一覧から選択" : "接続テストで取得");
+  }
   saveLocal();
 }
 
@@ -618,9 +630,11 @@ $("c-test").addEventListener("click", async () => {
       `<span class="dt">${escapeHtml(c.detail||(c.ok?"OK":""))}</span></div>`).join("");
     cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
       (rows || `<div class="c bad"><span class="mk">✗</span><span class="nm">確認できませんでした</span><span class="dt"></span></div>`);
-    // 취득한 테이블 목록으로 입력/출력 드롭다운을 채운다(접속 성공 시).
-    fillTableSelect("c-intable", r.tables);
-    fillTableSelect("c-outtable", r.tables);
+    // 취득한 테이블 목록으로 옵션 채우고, 라디오에 맞춰 활성/비활성 동기화.
+    tablesCache = r.tables || [];
+    fillTableOptions("c-intable", tablesCache);
+    fillTableOptions("c-outtable", tablesCache);
+    syncTableEnabled();
     toast("c-toast", r.message || (r.ok?"接続テスト成功":"接続テスト失敗"), !!r.ok);
   }catch(err){ toast("c-toast","通信エラー: "+err,false); }
   finally{ btn.disabled=false; btn.classList.remove("busy"); btn.textContent="接続テスト"; }
@@ -903,7 +917,9 @@ $("u-run").addEventListener("click", async () => {
 /* ───────── 初期化 ───────── */
 restoreLocal();
 for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
-for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", saveLocal);
+// 라디오(DB/파일) 변경 시 테이블 드롭다운 활성/비활성 동기화(syncTableEnabled가 saveLocal 포함).
+for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", syncTableEnabled);
+syncTableEnabled();  // 초기: 접속 전이라 비활성 + 라디오에 맞는 안내
 </script>
 </body>
 </html>
