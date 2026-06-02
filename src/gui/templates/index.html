@@ -40,6 +40,9 @@
   .detail { margin-top:8px; font-size:13px; font-family:ui-monospace,Menlo,monospace;
             background:#f6f8fa; border-left:3px solid var(--ng); padding:8px 10px; white-space:pre-wrap; }
   .detail.err { border-left-color:var(--warn); }
+  .detail mark { padding:0 1px; border-radius:2px; font-weight:700; }
+  .detail mark.a { background:#ffd7d5; color:#82071e; }  /* As-Is(현행) 쪽 다른 부분 */
+  .detail mark.b { background:#aceebb; color:#0a5224; }  /* To-Be(신환경) 쪽 다른 부분 */
   #summary { display:none; }
   .cards { display:flex; gap:10px; flex-wrap:wrap; }
   .card { flex:1; min-width:90px; text-align:center; border:1px solid var(--line); border-radius:8px; padding:12px; }
@@ -196,9 +199,11 @@ function renderDone(r) {
   } else if (r.status === "NG") {
     setStep(r.shell_id, "compare", `NG ✗ (${r.diff_lines.length}개 줄 차이)`, "err");
     const lines = verboseFlag ? r.diff_lines : r.diff_lines.slice(0, 1);
-    const txt = lines.map(d =>
-      `${d.line_number}행\n  As-Is: ${d.asis_content}\n  To-Be: ${d.tobe_content}`).join("\n");
-    showDetail(r.shell_id, txt, false);
+    const html = lines.map(d => {
+      const [a, b] = diffMark(d.asis_content, d.tobe_content);  // 다른 구간만 하이라이트
+      return `${d.line_number}행\n  As-Is: ${a}\n  To-Be: ${b}`;
+    }).join("\n");
+    showDetailHtml(r.shell_id, html);
   } else if (r.status === "MISSING_TOBE" || r.status === "MISSING_ASIS") {
     setStep(r.shell_id, "compare", r.status, "err");
     showDetail(r.shell_id, r.status === "MISSING_TOBE" ? "To-Be 출력이 없습니다" : "As-Is 정답지가 없습니다", true);
@@ -212,6 +217,32 @@ function showDetail(id, text, isErr) {
   if (!d) return;
   d.textContent = text;
   d.className = "detail" + (isErr ? " err" : "");
+  d.style.display = "block";
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// As-Is/To-Be의 공통 앞·뒤를 제외한 '바뀐 구간'만 <mark>로 감싼다(문자 단위).
+function diffMark(a, b) {
+  let s = 0;
+  const n = Math.min(a.length, b.length);
+  while (s < n && a[s] === b[s]) s++;
+  let ea = a.length, eb = b.length;
+  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) { ea--; eb--; }
+  const wrap = (t, cls) => (t ? `<mark class="${cls}">${escapeHtml(t)}</mark>` : "");
+  return [
+    escapeHtml(a.slice(0, s)) + wrap(a.slice(s, ea), "a") + escapeHtml(a.slice(ea)),
+    escapeHtml(b.slice(0, s)) + wrap(b.slice(s, eb), "b") + escapeHtml(b.slice(eb)),
+  ];
+}
+
+function showDetailHtml(id, html) {
+  const d = $("detail-" + id);
+  if (!d) return;
+  d.innerHTML = html;
+  d.className = "detail";
   d.style.display = "block";
 }
 
