@@ -30,6 +30,7 @@ from src.gui.upload import (
     DefIngestInfo,
     PairingInfo,
     UploadError,
+    definition_from_mapping,
     prepare_jobs,
     prepare_jobs_from_definition,
     summarize_definition,
@@ -497,6 +498,51 @@ def test_verify_run_uses_definition_when_present(client, monkeypatch):
     assert captured.get("definition_bytes")  # 정의 파일 경로를 탔다
     assert any(m["type"] == "warning" and "002" in m["message"] for m in msgs)  # 누락 셸 명시
     assert any(m["type"] == "summary" for m in msgs)
+
+
+# --- 매핑표(CSV) → 정의 yaml 생성 -------------------------------------------------
+
+_MAPPING_CSV = (
+    b"shell_id,input_type,input_table,output_type,output_table\n"
+    b"001,database,transaction_log,database,tobe_result\n"
+    b"002,database,transaction_log,file,\n"
+    b"006,file,,file,\n"
+)
+
+
+def test_definition_from_mapping_generates_valid_yaml():
+    r = definition_from_mapping(_MAPPING_CSV)
+    assert r["ok"] and r["count"] == 3 and not r["errors"]
+    # 생성된 yaml이 실제 로더를 통과하고(round-trip), 기본값이 관례대로 채워진다.
+    s = summarize_definition(r["yaml"].encode("utf-8"))
+    assert s["ok"] and s["count"] == 3
+    by = {d["test_id"]: d for d in s["shells"]}
+    assert by["001"]["output_table"] == "tobe_result"
+    assert by["002"]["output_type"] == "file" and by["006"]["input_type"] == "file"
+
+
+def test_definition_from_mapping_requires_table_for_db():
+    bad = b"shell_id,input_type,output_type\n001,database,file\n"  # input=DB인데 input_table 없음
+    r = definition_from_mapping(bad)
+    assert r["ok"] is False and any("input_table" in e for e in r["errors"])
+
+
+def test_definition_from_mapping_missing_required_column():
+    bad = b"shell_id,input_type\n001,database\n"  # output_type 열 없음
+    r = definition_from_mapping(bad)
+    assert r["ok"] is False and any("必須列" in e for e in r["errors"])
+
+
+def test_definition_from_mapping_rejects_duplicate_shell_id():
+    dup = b"shell_id,input_type,input_table,output_type\n001,database,t,file\n001,database,t,file\n"
+    r = definition_from_mapping(dup)
+    assert r["ok"] is False and any("重複" in e for e in r["errors"])
+
+
+def test_definition_from_mapping_endpoint(client):
+    data = {"mapping": (io.BytesIO(_MAPPING_CSV), "shell_mapping.csv")}
+    r = client.post("/definition/from-mapping", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] and r["count"] == 3 and r["yaml"]
 
 
 # --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------

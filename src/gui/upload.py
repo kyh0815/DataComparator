@@ -14,7 +14,9 @@ Phase 6 변경(D-028 Phase B 일반화):
 
 from __future__ import annotations
 
+import csv
 import dataclasses
+import io
 import shutil
 import tempfile
 from pathlib import Path
@@ -315,3 +317,130 @@ def _definition_entry_from(d) -> dict:
         "output": out,
         "expected_output_csv": d.expected_output_csv,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 매핑표(CSV) → test_definition.yaml 자동 생성 — "손으로 yaml 안 쓰기"의 완성형.
+# 고객의 셸-테이블 매핑 한 장으로 N셸 정의를 만든다(대량 자동화). 셸별 정의의 *사실*(어느
+# 테이블·배치)은 데이터로 유추 불가라 표로 받되, yaml 문법은 도구가 생성한다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MAPPING_REQUIRED = ("shell_id", "input_type", "output_type")
+
+
+def definition_from_mapping(mapping_bytes: bytes) -> dict:
+    """매핑표 CSV를 test_definition.yaml 텍스트로 변환한다(+round-trip 검증).
+
+    반환 {ok, yaml, count, shells, errors}. 한 행이라도 오류면 ok=False·yaml="" (부분 생성
+    안 함 — 부분만 만들어 '전체 검증' 착시를 막는다, 자가검증 ④). 열 이름은 대소문자 무시.
+    필수 열: shell_id·input_type·output_type. DB 타입 쪽은 input_table/output_table 필수.
+    나머지(input_csv/expected_output_csv/export_csv/output_file/batch_program/test_name/timeout)는
+    비면 관례 기본값({shell_id}.csv 등, 배치 공란→동봉 stub).
+    """
+    text = _decode_mapping(mapping_bytes)
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        return {"ok": False, "yaml": "", "count": 0, "shells": [],
+                "errors": ["空のファイル、またはヘッダー行がありません。"]}
+
+    cols = {(c or "").strip().lower(): c for c in reader.fieldnames}
+    missing_cols = [c for c in _MAPPING_REQUIRED if c not in cols]
+    if missing_cols:
+        return {"ok": False, "yaml": "", "count": 0, "shells": [],
+                "errors": [f"必須列がありません: {missing_cols}（必要: shell_id, input_type, output_type）"]}
+
+    def cell(row: dict, key: str) -> str:
+        src = cols.get(key)
+        return (row.get(src) or "").strip() if src else ""
+
+    tests: list[dict] = []
+    shells: list[dict] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    for line_no, row in enumerate(reader, start=2):  # 2행=첫 데이터행(헤더 다음)
+        sid = cell(row, "shell_id")
+        if not sid:
+            errors.append(f"{line_no}行目: shell_id が空です")
+            continue
+        if sid in seen:
+            errors.append(f"{line_no}行目: shell_id '{sid}' が重複しています")
+            continue
+        seen.add(sid)
+        itype, otype = cell(row, "input_type") or "database", cell(row, "output_type") or "file"
+        if itype not in _VALID_INPUT:
+            errors.append(f"{line_no}行目({sid}): input_type は database|file（受け取り: {itype}）")
+            continue
+        if otype not in _VALID_OUTPUT:
+            errors.append(f"{line_no}行目({sid}): output_type は file|database（受け取り: {otype}）")
+            continue
+        intable, outtable = cell(row, "input_table"), cell(row, "output_table")
+        if itype == "database" and not intable:
+            errors.append(f"{line_no}行目({sid}): input=DB は input_table が必須")
+            continue
+        if otype == "database" and not outtable:
+            errors.append(f"{line_no}行目({sid}): output=DB は output_table が必須")
+            continue
+
+        input_csv = cell(row, "input_csv") or f"{sid}.csv"
+        expected = cell(row, "expected_output_csv") or f"{sid}.csv"
+        batch = cell(row, "batch_program")
+        shell_program = batch or ("stub_batch/" + (_STUB_DB if itype == "database" else _STUB_FILE))
+        execution: dict = {"shell_program": shell_program}
+        if cell(row, "timeout"):
+            try:
+                execution["timeout"] = int(cell(row, "timeout"))
+            except ValueError:
+                errors.append(f"{line_no}行目({sid}): timeout は整数")
+                continue
+
+        inp: dict = {"type": itype, "csv": input_csv}
+        if itype == "database":
+            inp["table"] = intable
+        out: dict = {"type": otype}
+        if otype == "file":
+            out["file"] = cell(row, "output_file") or f"{sid}.csv"
+        else:
+            out["table"] = outtable
+            out["export_csv"] = cell(row, "export_csv") or f"{sid}.csv"
+
+        tests.append({
+            "test_id": sid,
+            "test_name": cell(row, "test_name") or sid,
+            "input": inp,
+            "execution": execution,
+            "output": out,
+            "expected_output_csv": expected,
+        })
+        shells.append({"test_id": sid, "input_type": itype, "output_type": otype,
+                       "input_table": intable or None, "output_table": outtable or None})
+
+    if not tests and not errors:
+        errors.append("データ行がありません。")
+    if errors:
+        return {"ok": False, "yaml": "", "count": 0, "shells": shells, "errors": errors}
+
+    yaml_text = yaml.safe_dump({"tests": tests}, allow_unicode=True, sort_keys=False)
+
+    # round-trip 검증: 생성한 yaml이 실제 로더를 통과하는지 확인(깨진 정의 생성 방지, 자가검증 ⑤).
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as tf:
+        tf.write(yaml_text)
+        p = Path(tf.name)
+    try:
+        load_definitions(p)
+    except DefinitionError as exc:
+        return {"ok": False, "yaml": "", "count": 0, "shells": shells,
+                "errors": [f"生成した定義の検証に失敗: {exc}"]}
+    finally:
+        p.unlink(missing_ok=True)
+
+    return {"ok": True, "yaml": yaml_text, "count": len(tests), "shells": shells, "errors": []}
+
+
+def _decode_mapping(b: bytes) -> str:
+    """매핑표 CSV 바이트를 텍스트로. Excel 한국어/일본어 저장 대비 utf-8-sig→cp932 순 시도."""
+    for enc in ("utf-8-sig", "cp932", "utf-8"):
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return b.decode("utf-8", errors="replace")

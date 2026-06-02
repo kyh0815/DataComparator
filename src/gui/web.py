@@ -39,7 +39,12 @@ from src.core import run_full_comparison
 
 from . import connection
 from .serialize import event_to_dict, summary_to_dict
-from .upload import prepare_jobs, prepare_jobs_from_definition, summarize_definition
+from .upload import (
+    definition_from_mapping,
+    prepare_jobs,
+    prepare_jobs_from_definition,
+    summarize_definition,
+)
 
 app = Flask(__name__)
 
@@ -130,6 +135,16 @@ def definition_parse():
     if not f or not f.filename:
         return jsonify(ok=False, count=0, shells=[], message="定義ファイルを選択してください。"), 400
     return jsonify(summarize_definition(f.read()))
+
+
+@app.route("/definition/from-mapping", methods=["POST"])
+def definition_from_mapping_route():
+    """매핑표 CSV → test_definition.yaml 생성(읽기전용). {ok, yaml, count, shells, errors}."""
+    f = request.files.get("mapping")
+    if not f or not f.filename:
+        return jsonify(ok=False, yaml="", count=0, shells=[],
+                       errors=["マッピング表(CSV)を選択してください。"]), 400
+    return jsonify(definition_from_mapping(f.read()))
 
 
 @app.route("/connection/save", methods=["POST"])

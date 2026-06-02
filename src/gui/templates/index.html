@@ -425,9 +425,11 @@
       <div class="panel-body">
         <div class="filebox" style="margin-bottom:14px">
           <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
-          <div class="fsub">アップロードすると<b>シェル定義（I/O・テーブル・バッチ）がファイルから読み込まれ</b>、接続設定タブのフォーム設定より優先されます。シェルごとに定義が異なる実務ケース向け。</div>
+          <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。</div>
           <div class="frow">
             <label class="file-btn">＋ 定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
+            <label class="file-btn">📋 マッピング表(CSV)から生成<input type="file" id="u-map" accept=".csv"></label>
+            <a class="file-btn" id="u-def-dl" style="display:none;text-decoration:none" download="test_definition.yaml">⬇ 定義YAMLをダウンロード</a>
             <button class="file-btn" type="button" id="u-def-clear" style="display:none;color:var(--muted);border-color:var(--line-2)">✕ 解除</button>
           </div>
           <div class="count" id="u-def-info"></div>
@@ -776,26 +778,54 @@ function refreshCounts(){
 }
 for (const id of ["u-in-files","u-in-dir","u-out-files","u-out-dir"]) $(id).addEventListener("change", refreshCounts);
 
-// 定義ファイル: 선택 시 파싱 미리보기(셸 수·타입). 정의 파일이 있으면 폼 3칸보다 우선.
+// 定義ファイル: 업로드 또는 매핑표(CSV)에서 생성. 정의가 있으면 폼 3칸보다 우선.
 function ioJp(t){ return t==="database" ? "DB" : "ファイル"; }
+let genDefYaml = null;       // 매핑표로 생성한 정의 yaml(있으면 검증 시 정의로 전송)
+let dlUrl = null;            // 생성 yaml 다운로드용 Blob URL
+function shellSummaryHtml(shells, count, head_note){
+  const head=shells.slice(0,8).map(s=>`${escapeHtml(s.test_id)}(${ioJp(s.input_type)}→${ioJp(s.output_type)})`).join("、");
+  return `${head_note}: <b>${count}</b> シェル — ${head}${shells.length>8?" …":""}`+
+    `<br><span style="color:var(--muted);font-weight:500">フォームの I/O・テーブル・バッチ設定は無視され、定義が優先されます</span>`;
+}
+function clearGenerated(){ if(dlUrl){ URL.revokeObjectURL(dlUrl); dlUrl=null; } genDefYaml=null; $("u-def-dl").style.display="none"; }
+function resetDefArea(){ $("u-def").value=""; $("u-map").value=""; clearGenerated(); $("u-def-info").textContent=""; $("u-def-clear").style.display="none"; }
+
+// 既存 yaml 업로드 → 파싱 미리보기
 $("u-def").addEventListener("change", async () => {
   const f=$("u-def").files[0];
-  const info=$("u-def-info"); const clr=$("u-def-clear");
-  if (!f){ info.textContent=""; clr.style.display="none"; return; }
-  clr.style.display="inline-flex";
-  info.textContent="解析中…";
+  if (!f){ if(!genDefYaml){ resetDefArea(); } return; }
+  clearGenerated(); $("u-map").value="";          // 업로드가 우선; 매핑 생성본 해제
+  const info=$("u-def-info"); $("u-def-clear").style.display="inline-flex"; info.textContent="解析中…";
   try{
     const fd=new FormData(); fd.append("definition", f, f.name);
     const r=await (await fetch("/definition/parse",{method:"POST",body:fd})).json();
     if (!r.ok){ info.innerHTML=`<span style="color:var(--ng)">解析エラー: ${escapeHtml(r.message)}</span>`; return; }
-    const head=r.shells.slice(0,8).map(s=>`${escapeHtml(s.test_id)}(${ioJp(s.input_type)}→${ioJp(s.output_type)})`).join("、");
-    info.innerHTML=`定義ファイル使用中: <b>${r.count}</b> シェル — ${head}${r.shells.length>8?" …":""}`+
-      `<br><span style="color:var(--muted);font-weight:500">フォームの I/O・テーブル・バッチ設定は無視され、定義ファイルが優先されます</span>`;
+    info.innerHTML=shellSummaryHtml(r.shells, r.count, "定義ファイル使用中");
   }catch(e){ info.textContent="通信エラー: "+e; }
 });
-$("u-def-clear").addEventListener("click", () => {
-  $("u-def").value=""; $("u-def-info").textContent=""; $("u-def-clear").style.display="none";
+
+// マッピング表(CSV) → yaml 생성 + 다운로드 + 그대로 검증 정의로 사용
+$("u-map").addEventListener("change", async () => {
+  const f=$("u-map").files[0];
+  if (!f){ return; }
+  $("u-def").value=""; clearGenerated();          // 매핑 생성이 우선; 업로드 파일 해제
+  const info=$("u-def-info"); $("u-def-clear").style.display="inline-flex"; info.textContent="生成中…";
+  try{
+    const fd=new FormData(); fd.append("mapping", f, f.name);
+    const r=await (await fetch("/definition/from-mapping",{method:"POST",body:fd})).json();
+    if (!r.ok){
+      info.innerHTML=`<span style="color:var(--ng)">マッピング変換エラー:</span><br>`+
+        (r.errors||["不明なエラー"]).map(e=>`<span style="color:var(--ng)">・${escapeHtml(e)}</span>`).join("<br>");
+      return;
+    }
+    genDefYaml=r.yaml;
+    dlUrl=URL.createObjectURL(new Blob([r.yaml],{type:"text/yaml"}));
+    const dl=$("u-def-dl"); dl.href=dlUrl; dl.style.display="inline-flex";
+    info.innerHTML=shellSummaryHtml(r.shells, r.count, "マッピング表から生成");
+  }catch(e){ info.textContent="通信エラー: "+e; }
 });
+
+$("u-def-clear").addEventListener("click", resetDefArea);
 
 $("u-run").addEventListener("click", async () => {
   if (running) return;
@@ -817,7 +847,8 @@ $("u-run").addEventListener("click", async () => {
   fd.append("output_table", $("c-outtable").value);
   fd.append("batch_program", $("c-batch").value);
   const defFile=$("u-def").files[0];
-  if (defFile) fd.append("definition", defFile, defFile.name);   // 있으면 정의 파일이 정본
+  if (defFile) fd.append("definition", defFile, defFile.name);            // 업로드 정의 우선
+  else if (genDefYaml) fd.append("definition", new File([genDefYaml], "generated_definition.yaml"), "generated_definition.yaml");  // 매핑 생성 정의
 
   try{
     const resp=await fetch("/verify/run",{method:"POST",body:fd});
