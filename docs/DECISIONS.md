@@ -477,6 +477,23 @@
 
 ---
 
+## D-031. 매핑표(CSV) → 정의 yaml 자동 생성 — 수기 yaml 제거
+
+**결정**: 고객의 셸-테이블 **매핑표(CSV)** 한 장으로 `test_definition.yaml`을 자동 생성한다. "정의 파일 주도(D-030)"가 *읽기*였다면, 이건 *생성* — 손으로 yaml 문법을 짜지 않게 한다(대량 셸 자동화).
+
+1. **`definition_from_mapping(csv) -> {ok, yaml, count, shells, errors}`**: 필수 열 `shell_id·input_type·output_type`, DB 타입 쪽은 `input_table`/`output_table` 필수. 나머지(`input_csv`·`expected_output_csv`·`export_csv`·`output_file`·`batch_program`·`test_name`·`timeout`)는 비면 관례 기본값(`{shell_id}.csv` 등, 배치 공란→동봉 stub). 열 이름 대소문자 무시, `utf-8-sig`/`cp932` 디코드(Excel 저장 대비).
+2. **엄격 생성(④)**: 한 행이라도 오류(필수 누락·중복 shell_id·잘못된 타입)면 `ok=False`·`yaml=""`로 **생성 거부** — 부분 생성으로 "전체 검증" 착시를 막는다. 행 번호별 오류 메시지 반환.
+3. **round-trip 검증(⑤)**: 생성한 yaml을 `load_definitions()`로 다시 파싱해 깨진 정의 생성을 차단.
+4. **GUI 흐름**: 업로드 탭의 "マッピング表(CSV)から生成" → `/definition/from-mapping`(읽기전용) → 미리보기 + `定義YAMLダウンロード`(다운로드) + **그대로 검증**(생성 yaml을 definition으로 전송, D-030 경로 재사용). 업로드 yaml과 상호 배타. `samples/shell_mapping.example.csv`(10셸) 동봉.
+
+**이유**: "수기 작성은 자동화가 아니다"(사용자). 셸별 정의의 *사실*(어느 테이블·배치)은 데이터로 유추 불가라 표로 받되, **yaml 문법 작성은 도구가** 한다. 수백 셸이면 표 한 장으로 정의 일괄 생성.
+
+**deferred(유지)**: Excel(.xlsx) 직접 파싱은 안 함(의존 최소화 — "CSV로 저장"; CLAUDE 3-5). 매핑표 자동 추론(파일만으로 테이블 유추)은 불가(설계상). 그 외 D-029/030 deferred 동일.
+
+**검증**: `tests/test_gui.py` 39개(생성·round-trip·필수열·중복·DB테이블·엔드포인트 포함) 통과. 라이브: `samples/shell_mapping.example.csv` → `/definition/from-mapping` 10셸 yaml 생성 → 그 yaml을 정의로 `/verify/run`(샘플20) → **OK6/NG3/ERROR1**(데모와 동일).
+
+---
+
 > 새로운 결정이 생기면 아래에 추가:
 >
 > ## D-XXX. (제목)

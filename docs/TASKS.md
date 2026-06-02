@@ -434,6 +434,20 @@
 
 **deferred**: 정의 파일이 참조하는 CSV의 원격/경로 참조(현재는 함께 업로드), 그 외 D-029 deferred 동일.
 
+### T6-3. 매핑표(CSV) → 정의 yaml 자동 생성 `[x]`
+
+**목적**: 수기 yaml 제거. 고객 셸-테이블 매핑표(CSV) 한 장으로 `test_definition.yaml` 자동 생성(대량 셸).
+
+**작업** (D-031):
+- `src/gui/upload.py` — `definition_from_mapping`(CSV→yaml, 필수열·기본값·엄격·round-trip 검증).
+- `src/gui/web.py` — `/definition/from-mapping` 신규(읽기전용).
+- `src/gui/templates/index.html` — "マッピング表(CSV)から生成" 픽커 + 미리보기 + YAML 다운로드 + 그대로 검증.
+- `samples/shell_mapping.example.csv`(10셸).
+
+**완료 기준**: 매핑표→10셸 yaml 생성→그 정의로 검증 OK6/NG3/ERROR1. `tests/test_gui.py` 39개 통과.
+
+**deferred**: Excel(.xlsx) 직접 파싱(CSV로 저장), 매핑 자동 추론.
+
 ---
 
 ## 권장 작업 순서 요약
