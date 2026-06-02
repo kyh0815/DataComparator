@@ -1,17 +1,20 @@
-"""Phase 5 웹 UI 테스트 — 직렬화 + Flask 엔드포인트 + 업로드 검증 (DB·실서버 불요, 항상 실행).
+"""웹 UI 테스트 — 직렬화 + Flask 엔드포인트 + 업로드(다건) + 연결설정 (DB·실서버 불요, 항상 실행).
 
-run_full_comparison/load_config/prepare_job를 monkeypatch해 라우팅·SSE/NDJSON·traversal 차단·
-업로드 준비만 검증한다.
+run_full_comparison/load_config/prepare_jobs/connection을 monkeypatch해 라우팅·SSE/NDJSON·
+traversal 차단·다건 짝짓기·연결설정 저장/테스트 배선만 검증한다(실 DB 접속 없음).
 """
 
 import io
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
+from src.config.definition import load_definitions
 from src.core.models import (
     ComparisonResult,
     ComparisonStatus,
@@ -20,9 +23,10 @@ from src.core.models import (
     ProgressKind,
     RunSummary,
 )
+from src.gui import connection as conn_mod
 from src.gui import web
 from src.gui.serialize import event_to_dict, result_to_dict, summary_to_dict
-from src.gui.upload import UploadError, prepare_job
+from src.gui.upload import PairingInfo, UploadError, prepare_jobs
 
 _EXAMPLE_CONFIG = str(Path(__file__).resolve().parents[1] / "config.yaml.example")
 
@@ -76,11 +80,11 @@ def _ndjson_messages(raw: bytes) -> list[dict]:
     return [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
 
 
-def test_index_serves_page(client):
+def test_index_serves_japanese_page(client):
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "현·신 비교" in body and "업로드 검증" in body
+    assert "現新比較" in body and "アップロード検証" in body and "接続設定" in body
 
 
 def test_run_streams_progress_then_summary(client, monkeypatch):
@@ -103,7 +107,7 @@ def test_run_streams_progress_then_summary(client, monkeypatch):
 
 def test_run_reports_error_message(client, monkeypatch):
     def boom(p):
-        raise RuntimeError("설정 파일을 찾을 수 없습니다")
+        raise RuntimeError("설정 파일을 찾을 수 없습니다")  # Core/config 메시지는 한국어 유지(D)
 
     monkeypatch.setattr(web, "load_config", boom)
     msgs = _sse_messages(client.get("/run?config=missing.yaml").get_data())
@@ -124,76 +128,162 @@ def test_report_blocks_path_traversal(client, monkeypatch, tmp_path):
     assert client.get("/report/..%2fsecret.csv").status_code == 404
 
 
-# --- 업로드 검증: prepare_job (DB 불요, config.yaml.example을 베이스로) -----------
+# --- 연결 설정: save_connection (DB 불요) ----------------------------------------
 
 
-def test_prepare_job_builds_temp_config_and_definition():
-    from src.config.definition import load_definitions
+def test_save_connection_atomic_with_backup(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    # 1차 저장: 기존 파일 없음 → example 템플릿 사용, .bak 없음.
+    conn_mod.save_connection(
+        str(cfg), host="h1", port=5433, dbname="d", user="u", password_env="PE", encoding="Shift_JIS"
+    )
+    assert cfg.is_file()
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert raw["database"]["host"] == "h1" and raw["database"]["password_env"] == "PE"
+    assert "password" not in raw["database"]  # 모델 A: 평문 비번 미기록
+    assert "paths" in raw  # 템플릿의 다른 블록 보존
+    assert not (tmp_path / "config.yaml.bak").exists()
 
-    config, tmpdir = prepare_job(
+    # 2차 저장: 기존 파일 있음 → .bak 백업 생성, 값 갱신.
+    conn_mod.save_connection(
+        str(cfg), host="h2", port=5433, dbname="d", user="u", password_env="PE", encoding="Shift_JIS"
+    )
+    assert (tmp_path / "config.yaml.bak").is_file()
+    assert yaml.safe_load(cfg.read_text(encoding="utf-8"))["database"]["host"] == "h2"
+
+
+def test_connection_test_endpoint_wires(client, monkeypatch):
+    monkeypatch.setattr(
+        web.connection, "test_connection",
+        lambda **k: {"ok": True, "message": "OK", "checks": [{"name": "x", "ok": True}]},
+    )
+    r = client.post(
+        "/connection/test",
+        data={"host": "h", "port": "5433", "dbname": "d", "user": "u"},
+    ).get_json()
+    assert r["ok"] and r["checks"][0]["name"] == "x"
+
+
+def test_connection_test_table_check_conditional(monkeypatch):
+    """B: type이 file인 쪽은 테이블을 확인하지 않는다(파일 흐름 오탐 방지)."""
+    class FakeCur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, *a): self.q = a
+        def fetchone(self): return (1,)
+    class FakeConn:
+        def cursor(self): return FakeCur()
+        def close(self): pass
+
+    monkeypatch.setattr(conn_mod.psycopg2, "connect", lambda **k: FakeConn())
+    r = conn_mod.test_connection(
+        host="h", port=5433, dbname="d", user="u",
+        input_type="database", output_type="file",
+        input_table="transaction_log", output_table="tobe_result",
+    )
+    names = [c["name"] for c in r["checks"]]
+    assert any("入力テーブル" in n for n in names)
+    assert not any("出力テーブル" in n for n in names)  # output=file이므로 확인 안 함
+
+
+# --- 업로드 검증: prepare_jobs (DB 불요, config.yaml.example 베이스) ----------------
+
+
+def test_prepare_jobs_pairs_by_stem_and_reports_unmatched():
+    config, tmpdir, pairing = prepare_jobs(
         _EXAMPLE_CONFIG,
-        asis_input=b"tx_id,customer_id\nT1,C0001\n",
-        asis_output=b"tx_id,customer_id,customer_name\nT1,C0001,A\n",
+        inputs={"001": b"a\n1\n", "002": b"a\n2\n", "099": b"a\n9\n"},
+        outputs={"001": b"a\n1\n", "002": b"a\n2\n", "777": b"a\n7\n"},
         input_type="database", output_type="file", encoding="Shift_JIS",
+        input_table="transaction_log",
     )
     try:
-        assert (config.asis_input_dir / "up1.csv").read_bytes().startswith(b"tx_id")
-        assert (config.asis_output_dir / "up1.csv").is_file()
+        assert pairing.matched == ["001", "002"]
+        assert pairing.unmatched_input == ["099"] and pairing.unmatched_output == ["777"]
         defs = load_definitions(config.definition_file)
-        assert len(defs) == 1 and defs[0].test_id == "up1"
-        assert defs[0].input_table == "transaction_log" and defs[0].output_file == "up1.csv"
+        assert [d.test_id for d in defs] == ["001", "002"]
+        assert defs[0].input_table == "transaction_log" and defs[0].output_file == "001.csv"
         assert Path(defs[0].shell_program).is_absolute() and Path(defs[0].shell_program).is_file()
     finally:
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def test_prepare_job_db_output_uses_export():
-    from src.config.definition import load_definitions
-
-    config, tmpdir = prepare_job(
-        _EXAMPLE_CONFIG, asis_input=b"a\n1\n", asis_output=b"a\n1\n",
-        input_type="file", output_type="database", encoding="Shift_JIS",
+def test_prepare_jobs_db_output_uses_export_table():
+    config, tmpdir, _ = prepare_jobs(
+        _EXAMPLE_CONFIG, inputs={"001": b"a\n1\n"}, outputs={"001": b"a\n1\n"},
+        input_type="file", output_type="database", encoding="Shift_JIS", output_table="tobe_result",
     )
     try:
         d = load_definitions(config.definition_file)[0]
-        assert d.output_table == "tobe_result" and d.export_csv == "up1.csv"
+        assert d.output_table == "tobe_result" and d.export_csv == "001.csv"
         assert d.shell_program.endswith("run_batch_file.py")
     finally:
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def test_prepare_job_rejects_bad_type():
+def test_prepare_jobs_custom_batch_program():
+    config, tmpdir, _ = prepare_jobs(
+        _EXAMPLE_CONFIG, inputs={"001": b"a\n1\n"}, outputs={"001": b"a\n1\n"},
+        input_type="file", output_type="file", encoding="Shift_JIS",
+        batch_program="stub_batch/run_batch_file.py",
+    )
+    try:
+        d = load_definitions(config.definition_file)[0]
+        assert Path(d.shell_program).is_absolute() and d.shell_program.endswith("run_batch_file.py")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_prepare_jobs_requires_table_for_db():
     with pytest.raises(UploadError):
-        prepare_job(_EXAMPLE_CONFIG, asis_input=b"a", asis_output=b"a",
-                    input_type="ftp", output_type="file", encoding="Shift_JIS")
+        prepare_jobs(
+            _EXAMPLE_CONFIG, inputs={"1": b"a"}, outputs={"1": b"a"},
+            input_type="database", output_type="file", encoding="Shift_JIS", input_table=None,
+        )
 
 
-# --- 업로드 검증: /verify/run 스트리밍 (run_full_comparison mock) ------------------
+def test_prepare_jobs_zero_match_errors():
+    with pytest.raises(UploadError):
+        prepare_jobs(
+            _EXAMPLE_CONFIG, inputs={"a": b"x"}, outputs={"b": b"y"},
+            input_type="file", output_type="file", encoding="Shift_JIS",
+        )
+
+
+def test_prepare_jobs_rejects_bad_type():
+    with pytest.raises(UploadError):
+        prepare_jobs(
+            _EXAMPLE_CONFIG, inputs={"a": b"x"}, outputs={"a": b"y"},
+            input_type="ftp", output_type="file", encoding="Shift_JIS",
+        )
+
+
+# --- 업로드 검증: /verify/run 다건 스트리밍 (prepare_jobs/run_full_comparison mock) --
+
+
+def _fake_prepare(pairing):
+    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
+    return lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")), pairing)
 
 
 def test_verify_run_streams_then_summary(client, monkeypatch):
     def fake_run(config, on_progress=None, shell_ids=None):
-        on_progress(ProgressEvent(ProgressKind.SHELL_START, "up1", 1, 1))
+        on_progress(ProgressEvent(ProgressKind.SHELL_START, "001", 1, 1))
         on_progress(
-            ProgressEvent(ProgressKind.SHELL_DONE, "up1", 1, 1,
-                         result=ComparisonResult("up1", ComparisonStatus.NG,
+            ProgressEvent(ProgressKind.SHELL_DONE, "001", 1, 1,
+                         result=ComparisonResult("001", ComparisonStatus.NG,
                                                   diff_lines=[DiffLine(2, "x", "y")]))
         )
         return RunSummary(1, 0, 1, 0, 0, [], Path("out/reports/report_u.csv"))
 
-    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
-    monkeypatch.setattr(
-        web, "prepare_job",
-        lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_"))),
-    )
+    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], [], [])))
     monkeypatch.setattr(web, "run_full_comparison", fake_run)
 
     data = {
-        "asis_input": (io.BytesIO(b"tx_id\nT1\n"), "in.csv"),
-        "asis_output": (io.BytesIO(b"tx_id\nT1\n"), "out.csv"),
+        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
         "input_type": "database", "output_type": "file", "config": "./config.yaml",
+        "input_table": "transaction_log",
     }
     resp = client.post("/verify/run", data=data, content_type="multipart/form-data")
     msgs = _ndjson_messages(resp.get_data())
@@ -202,17 +292,58 @@ def test_verify_run_streams_then_summary(client, monkeypatch):
     assert next(m for m in msgs if m["type"] == "summary")["ng_count"] == 1
 
 
-def test_verify_run_requires_both_files(client, monkeypatch):
-    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
+def test_verify_run_warns_on_unmatched(client, monkeypatch):
+    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], ["099"], ["777"])))
     monkeypatch.setattr(
-        web, "prepare_job",
-        lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_"))),
+        web, "run_full_comparison",
+        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
     )
-    data = {"asis_input": (io.BytesIO(b"x"), "in.csv"),
-            "input_type": "database", "output_type": "file"}
-    msgs = _ndjson_messages(client.post("/verify/run", data=data,
-                                        content_type="multipart/form-data").get_data())
-    assert any(m["type"] == "error" and "올려주세요" in m["message"] for m in msgs)
+    data = {
+        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "input_type": "file", "output_type": "file",
+    }
+    msgs = _ndjson_messages(
+        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
+    )
+    assert any(m["type"] == "warning" and "099" in m["message"] and "777" in m["message"] for m in msgs)
+
+
+def test_verify_run_requires_both_sides(client, monkeypatch):
+    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo([], [], [])))
+    data = {  # 정답 없이 입력만 → 에러
+        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "input_type": "database", "output_type": "file", "input_table": "t",
+    }
+    msgs = _ndjson_messages(
+        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
+    )
+    assert any(m["type"] == "error" and "アップロード" in m["message"] for m in msgs)
+
+
+def test_verify_run_rejects_duplicate_stems(client, monkeypatch):
+    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], [], [])))
+    data = [  # 같은 stem 입력 2건 → 모호성 거부
+        ("asis_inputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
+        ("asis_inputs", (io.BytesIO(b"a\n2\n"), "001.csv")),
+        ("asis_outputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
+        ("input_type", "file"), ("output_type", "file"),
+    ]
+    msgs = _ndjson_messages(
+        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
+    )
+    assert any(m["type"] == "error" and "重複" in m["message"] for m in msgs)
+
+
+def test_upload_too_large_returns_413(client):
+    saved = web.app.config["MAX_CONTENT_LENGTH"]
+    web.app.config["MAX_CONTENT_LENGTH"] = 10
+    try:
+        data = {"asis_inputs": (io.BytesIO(b"x" * 5000), "001.csv")}
+        resp = client.post("/verify/run", data=data, content_type="multipart/form-data")
+        assert resp.status_code == 413 and resp.get_json()["ok"] is False
+    finally:
+        web.app.config["MAX_CONTENT_LENGTH"] = saved
 
 
 # --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------
