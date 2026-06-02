@@ -219,6 +219,21 @@
   .count { font-size:12px; color:var(--accent); font-weight:700; margin-top:11px; min-height:16px; font-variant-numeric:tabular-nums; }
   .count:empty::before { content:"未選択"; color:var(--muted-2); font-weight:500; }
 
+  /* 정의/매핑 생성 미리보기 — 셸별 칩(타입 흐름 시각화) */
+  .def-head { font-weight:700; color:var(--accent); margin-bottom:9px; display:flex; align-items:center; gap:8px; }
+  .def-head .badge-n { font-family:var(--mono); font-size:12px; background:var(--accent); color:#fff; border-radius:999px; padding:1px 9px; }
+  .shelllist { display:flex; flex-wrap:wrap; gap:6px; }
+  .schip { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:7px;
+           padding:4px 8px; background:#fff; font-size:12px; box-shadow:var(--shadow); }
+  .schip .sid { font-family:var(--mono); font-weight:700; color:var(--ink); }
+  .schip .flow { display:inline-flex; align-items:center; gap:5px; }
+  .schip .arrow { color:var(--muted-2); font-weight:700; }
+  .schip.more { color:var(--muted); font-weight:600; background:#fbfcfd; box-shadow:none; }
+  .ttag { font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:4px; letter-spacing:.2px; border:1px solid; }
+  .ttag.db { background:var(--accent-bg); color:#234e7d; border-color:var(--accent-bd); }
+  .ttag.file { background:#eef2e9; color:#3d5a2b; border-color:#cfe0bd; }
+  .def-note { color:var(--muted); font-weight:500; margin-top:9px; font-size:11.5px; }
+
   /* ---------- banners ---------- */
   .banner { display:none; padding:13px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; margin-bottom:14px; border:1px solid; align-items:flex-start; gap:10px; }
   .banner.show { display:flex; }
@@ -862,10 +877,19 @@ for (const id of ["u-in-files","u-in-dir","u-out-files","u-out-dir"]) $(id).addE
 function ioJp(t){ return t==="database" ? "DB" : "ファイル"; }
 let genDefYaml = null;       // 매핑표로 생성한 정의 yaml(있으면 검증 시 정의로 전송)
 let dlUrl = null;            // 생성 yaml 다운로드용 Blob URL
+function tTag(t){ return t==="database"
+  ? '<span class="ttag db">DB</span>'
+  : '<span class="ttag file">ファイル</span>'; }
 function shellSummaryHtml(shells, count, head_note){
-  const head=shells.slice(0,8).map(s=>`${escapeHtml(s.test_id)}(${ioJp(s.input_type)}→${ioJp(s.output_type)})`).join("、");
-  return `${head_note}: <b>${count}</b> シェル — ${head}${shells.length>8?" …":""}`+
-    `<br><span style="color:var(--muted);font-weight:500">フォームの I/O・テーブル・バッチ設定は無視され、定義が優先されます</span>`;
+  const CAP=24;
+  const chips=shells.slice(0,CAP).map(s=>
+    `<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span>`+
+    `<span class="flow">${tTag(s.input_type)}<span class="arrow">→</span>${tTag(s.output_type)}</span></span>`
+  ).join("");
+  const more = shells.length>CAP ? `<span class="schip more">他 ${shells.length-CAP} 件</span>` : "";
+  return `<div class="def-head">${escapeHtml(head_note)}<span class="badge-n">${count} シェル</span></div>`+
+    `<div class="shelllist">${chips}${more}</div>`+
+    `<div class="def-note">フォームの I/O・テーブル・バッチ設定は無視され、定義が優先されます</div>`;
 }
 function clearGenerated(){ if(dlUrl){ URL.revokeObjectURL(dlUrl); dlUrl=null; } genDefYaml=null; $("u-def-dl").style.display="none"; }
 function resetDefArea(){ $("u-def").value=""; $("u-map").value=""; clearGenerated(); $("u-def-info").textContent=""; $("u-def-clear").style.display="none"; }
