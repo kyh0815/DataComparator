@@ -134,7 +134,7 @@ def test_timeout_raises(tmp_path, monkeypatch):
         raise subprocess.TimeoutExpired(cmd="stub", timeout=1)
 
     monkeypatch.setattr(runner.subprocess, "run", _boom)
-    with pytest.raises(runner.RunnerError, match="시간초과"):
+    with pytest.raises(runner.RunnerError, match="タイムアウト"):
         runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
 
 
