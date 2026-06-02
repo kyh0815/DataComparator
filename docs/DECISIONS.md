@@ -412,6 +412,102 @@
 
 **한계 / 인수 시 교체**: 입력·골든은 시연 한정. 실 클라이언트 데이터로 교체 후 `make_samples`/`make_golden`을 재실행하면 골든이 재생성되는 자산(시연 데이터 교체 포인트). `make_golden`이 stub `--clean` 경로를 재사용하는 한 진짜 배치로 바꿔도 원리 유지.
 
+## D-028. GUI = 로컬 웹 UI(Flask), Core 재사용 + 업로드 검증 — Phase 5
+
+**결정**: 시연용 GUI를 **로컬 웹 UI(Flask)**로 추가한다(`src/gui/`). Core는 무수정. 두 모드: ① 데모 10셸 자동 실행 ② 업로드 1쌍(As-Is 입력+정답) 풀체인 검증.
+
+1. **프레임워크 = Flask**: ARCHITECTURE 7이 "Flask/FastAPI는 GUI 단계에서 결정"으로 열어둔 지점 — 채택은 계획대로(경량 의존 1개 `flask>=3.0`, CLI는 불요).
+2. **Core 재사용(무수정)**: CLI와 동일하게 `run_full_comparison(config, on_progress, shell_ids)` 호출 + `ProgressEvent`/`RunSummary` 소비. D-006/D-025 콜백 설계(GUI 이식 전제) 검증됨.
+3. **실시간 진행**: 백그라운드 스레드 + 콜백→큐→스트림. 데모=SSE(`/run`), 업로드=NDJSON(`/verify/run`, POST 멀티파트). 종료 시 `done`으로 클라가 스트림을 닫음.
+4. **§① traversal 차단**: `/report/<name>`은 `secure_filename` + `report_dir` 하위 재확인(이중 가드).
+5. **§② dict 직렬화는 `src/gui/serialize.py`에만** — `core/models.py` 불변(CLAUDE 3-1).
+6. **§③ 동시 실행 1건 + 락 try/finally 해제** + `app.run(threaded=True)`.
+7. **§④ 브라우저 자동 오픈**: `web.py:main()`이 `webbrowser.open`(Timer). `run_gui.sh`가 위임.
+8. **비밀번호는 UI에 없음** — `POSTGRES_PASSWORD` env만(D-019 일관).
+
+**업로드 검증(Phase A)**: `src/gui/upload.py:prepare_job`이 업로드 1쌍을 **임시 작업폴더 + 임시 1-셸 정의 파일**로 만들어 `run_full_comparison(temp_config, shell_ids=["up1"])`에 먹인다 → 파이프라인 전부 재사용. 리포트는 base `report_dir`에 떨어져 `/report` 재사용, 임시폴더는 finally에서 rmtree.
+- **한계(흐름 시연용)**: 신환경 배치가 stub(데모 스키마 고정)이라 입력 CSV는 `transaction_log` 스키마, 정답 CSV는 Shift-JIS여야 OK. 진짜 다규격·실데이터 검증은 stub→실 배치 교체 후(Phase B). DB 입력 실행은 `transaction_log`를 덮어쓰며 다음 데모 실행 시 자가 복구(D-023).
+
+**Phase B(실 검증 지향, 후속)**: 업로드 UI에서 입력 테이블·배치·출력 테이블 직접 지정(데모 도메인 탈피) + 무시 규칙·정교 비교(D-022).
+
+**검증**: `tests/test_gui.py` 14개 통과(직렬화·라우팅·SSE/NDJSON·traversal·prepare_job), 기본 스위트 123 passed. 실 스택 스모크(Flask+dc-pg): `/run` OK6/NG3/ERROR1, `/verify/run` 샘플 001 OK·변조 시 NG.
+
+**🔴 버그 메모(2026-06-01) — pytest 시 작업트리 삭제, 원인 규명·수정 완료**: GUI 작업 중 `pytest`(전체 suite) 실행 직후 작업 디렉토리가 통째로 삭제되는 현상이 수 차례 발생. **원인은 하네스/홈-git-repo가 아니라 본 코드의 테스트 버그였음**: `tests/test_gui.py`의 `test_verify_run_streams_then_summary`가 `web.prepare_job`을 `(_, Path("."))`로 mock → `verify_run`의 cleanup이 `shutil.rmtree(Path("."))`=**cwd(repo 루트)를 통째 삭제**. pytest가 repo 루트에서 돌아 repo 전체가 날아감(`.pytest_cache`만 직후 재생성). **일회용 클론 전체 suite 실행으로 재현 확정.**
+- **수정**: ① `web._cleanup_tmpdir()` 도입 — `tempfile.gettempdir()` **하위 경로만** 삭제(잘못된 경로·cwd는 거부). ② 테스트 mock이 `Path(".")` 대신 **실제 `mkdtemp()`** 반환. ③ 회귀 가드 테스트 2개(`test_cleanup_tmpdir_*`). 이후 전체 suite 실행해도 작업트리 안전.
+- (홈이 git repo인 것은 별개의 잠재 위험으로 점검 권장이나, 이 삭제의 원인은 아니었음.)
+
+---
+
+## D-029. 웹 GUI "납품 대비 제품" 격상 — 연결설정·다건업로드·일본어UI — Phase 6
+
+**결정**: Phase 5 GUI(D-028)를 **납품 대비 수준**으로 격상한다. Core·`models.Config`는 **무수정** 유지하고 `src/gui/`만 확장한다. (단 *진짜 납품급 QA*는 실 배치·실데이터 없이는 불가 — 작은 샘플로 "납품 대비 구조"를 갖추는 것이 목표, 사용자 합의.)
+
+1. **연결 설정(신규 핵심) — `src/gui/connection.py`**: 화면에서 비-비밀 접속정보(host/port/dbname/user/password_env)·인코딩·검증정의(입력/출력 테이블·배치경로·I/O타입)를 받는다 = `config.yaml`/`test_definition.yaml`을 손으로 안 쓰는 정의 자동생성.
+   - **`test_connection`(읽기전용)**: `psycopg2.connect(connect_timeout=3)` + `SELECT 1` + **조건부** 테이블 존재 확인 — `input_type==database`면 입력 테이블만, `output_type==database`면 출력 테이블만(파일 흐름은 확인 안 함, 오탐 방지). DDL·쓰기 없음(운영 DB 오염 차단). 테이블 확인은 **public 스키마 가정**(loader/exporter와 동일하게 `table_name`만 조회) — schema-qualify는 deferred(설치 시).
+   - **비밀번호 = 모델 A(D-019 §6 확장)**: 폼은 비밀번호를 **받지도 저장도 안 한다**. 서버 env[`password_env`]에서만 끌어오고, 없으면 `.pgpass`/trust에 위임(안내만). 일본 보안심사 유리.
+2. **저장 분리(★Core 무수정 보존)**: `save_connection`은 **DB 접속·인코딩만** `config.yaml`에 **원자적 저장**(`.bak` 백업 → tmp write → `os.replace`). 검증정의값(테이블·배치·타입)은 `Config` 필드가 아니라 `ShellDefinition` 값이라 저장 시 `models.Config` 확장이 필요 → 저장하지 않고 `/verify/run` **폼으로 전달**(+클라 localStorage 기억). 평문 비밀번호는 절대 기록 안 함(`password_env` 이름만).
+3. **다건 업로드 — `prepare_job` → `prepare_jobs`**: N쌍을 받아 **N-셸 임시 정의**를 만들고 엔진(`run_full_comparison`)이 순차 처리. 입력/출력 테이블·배치경로를 **인자로 파라미터화**해 D-028 PhaseB가 예고한 `_DEMO_*` 하드코딩(`transaction_log`/`tobe_result`)을 제거. 짝짓기는 **파일명 stem 일치**(고객 규약 — UI 명시). 짝 안 맞는 파일은 **silent drop 금지** — `PairingInfo`로 돌려줘 화면에 warning으로 명시 노출, 매칭 0건은 `UploadError`. 같은 stem 중복 업로드는 모호성 거부.
+4. **UI 전면 일본어**: `index.html` 표시 문구 + `web.py` 사용자向け 메시지(업로드 누락·중복·413 등)를 일본어로. **Core 예외·CLI·리포트 문구는 deferred**(한국어 유지) — 배치 실패 등 Core 한국어 메시지가 JP 화면에 노출되는 건 용인(사용자 합의). 코드/주석도 한국어 유지.
+5. **라이트 UI 세련화**(다크 철회): 짙은 헤더→라이트 헤더(흰 배경+보더+액센트 바), 여백·타이포·카드 정돈. 3탭 재구성(접속설정/업로드검증/데모), 연결설정 2섹션 분리(DB접속/검증정의). diff 하이라이트 로직(d760188)은 보존.
+6. **온프레미스 경량 유지**: 바닐라 HTML/CSS/JS, **CDN·웹폰트·빌드 0**, 의존성 `flask>=3.0` 1개. 폴더(`webkitdirectory`)+다중파일 업로드. **MAX_CONTENT_LENGTH + 413 친절 에러**. `_cleanup_tmpdir` 임시-하위-only 가드 유지(작업트리 삭제 재발 차단, D-028 §버그메모).
+
+**이유**: 도구 가치는 "As-Is==To-Be" 판정이고 stub은 "이행된 배치" 대역이라 E2E QA가 stub으로 가능 — 실제와 다른 건 **운영 연결**(고객 계정·실 배치·실 스키마)뿐이라 ①연결설정이 핵심. Core 무수정·정의 파일 주도 계약을 유지하는 한 GUI는 독립 격상 가능(D-006/D-028).
+
+**범위 밖 = deferred**: 정교 비교·무시 규칙(D-022), 대용량·성능·인코딩 엣지 QA, 진짜 Net COBOL 배치 연결(설치 시 `shell_program` 교체), Core 예외·CLI·리포트 일본어화, 실 설치 패키징(휠·인스톨러), schema-qualify, 다중 DB 도메인.
+
+**검증**: `tests/test_gui.py` 25개(직렬화·라우팅·다건 짝짓기/미매칭/중복·connection 저장/조건부테이블·413·cleanup 가드) 통과, 전체 144 passed(DB 통합 포함, dc-pg 5433). 실 스택 라이브 스모크: `/connection/test` OK+조건부 테이블·잘못된 포트 친절 실패 / `/verify/run` 다건 001 OK+002 NG(diff)·미매칭 003·099 명시 제외.
+
+---
+
+## D-030. 정의 파일 주도 업로드 검증 — 셸별 정의 yml 업로드 (Phase B 일부 선반영)
+
+**결정**: 업로드 검증에 **정의 파일(`test_definition.yaml`) 주도 모드**를 추가한다(D-028 Phase B의 "셸별 정의" 일부 선반영). 정의 파일을 업로드하면 그것이 **정본**이 되어 셸별 입력/출력 타입·테이블·배치를 정의대로 N셸 검증한다. Core·`models` 무수정, `src/gui/`만 확장.
+
+1. **두 모드 양립**: ① **개별 업로드(폼 3칸)** — 동질 묶음(D-029) / ② **정의 파일 주도** — 셸마다 타입·테이블·배치가 다른 실무 케이스. `/verify/run`이 `definition` 파일 유무로 분기한다. 정의 파일이 있으면 폼 3칸(타입·테이블·배치)은 **무시**되고 정의가 우선한다.
+2. **파싱·재사용**: `summarize_definition`(파싱 미리보기, 읽기전용 `/definition/parse`) + `prepare_jobs_from_definition`이 `load_definitions()`로 검증 후, 정의의 `input_csv`/`expected_output_csv` **파일명을 업로드 CSV(stem)와 매칭**해 임시 작업폴더에 배치하고 정규화 정의를 만들어 `run_full_comparison`에 먹인다(엔진 무수정).
+3. **shell_program 절대화**: 업로드 정의의 상대 배치경로(`stub_batch/...`)는 **repo 루트 기준 절대경로**로 정규화해 임시 디렉토리 기준 오해석을 막는다(`prepare_jobs`와 동일 규칙, 자가검증 ⑤). 절대경로(실 배치)는 그대로 둔다.
+4. **silent drop 금지(④)**: 정의의 셸 중 입력/정답 CSV가 빠진 셸은 조용히 버리지 않고 `DefIngestInfo.excluded`로 돌려줘 화면에 warning으로 명시한다(유효 셸만 실행, 0건이면 `UploadError`).
+5. **단일 진실**: 정의 파일이 정본이라는 D-021/022 원칙을 GUI로 노출한 것일 뿐 — 엔진/정의 로더/트랜잭션 경계는 그대로 재사용(드리프트 없음).
+
+**이유**: 실무 검증은 셸이 수십~수백 개이고 셸마다 정의가 다르다. 화면 3칸으로는 동질 묶음만 처리되므로, **고객이 가진 정의 파일을 그대로 받는 것**이 가장 실무적이고 우리 정의-주도 아키텍처와 정확히 맞는다(사용자 요청).
+
+**범위 밖 = deferred(유지)**: 정교 비교·무시 규칙(D-022), 진짜 Net COBOL 배치 연결(설치 시 `shell_program` 교체), Core/CLI/리포트 일본어화, 실 설치 패키징, schema-qualify, 다중 DB 도메인. 정의 파일에 매칭되는 입력/정답 CSV는 여전히 함께 업로드해야 한다(원격 경로 참조는 deferred).
+
+**검증**: `tests/test_gui.py` 34개(정의 파싱·정의주도 빌드·누락제외·zero-match·`/definition/parse`·`/verify/run` 분기 포함) 통과. 실 스택 라이브 스모크(dc-pg 5433): 실 `test_definition.yaml` 업로드 → `/definition/parse` 10셸 인식, `/verify/run` 정의 주도로 입력10+정답10 → **OK6/NG3/ERROR1**(데모 SPEC 6-5 매핑과 일치), 누락 셸 warning 노출.
+
+---
+
+## D-031. 매핑표(CSV) → 정의 yaml 자동 생성 — 수기 yaml 제거
+
+**결정**: 고객의 셸-테이블 **매핑표(CSV)** 한 장으로 `test_definition.yaml`을 자동 생성한다. "정의 파일 주도(D-030)"가 *읽기*였다면, 이건 *생성* — 손으로 yaml 문법을 짜지 않게 한다(대량 셸 자동화).
+
+1. **`definition_from_mapping(csv) -> {ok, yaml, count, shells, errors}`**: 필수 열 `shell_id·input_type·output_type`, DB 타입 쪽은 `input_table`/`output_table` 필수. 나머지(`input_csv`·`expected_output_csv`·`export_csv`·`output_file`·`batch_program`·`test_name`·`timeout`)는 비면 관례 기본값(`{shell_id}.csv` 등, 배치 공란→동봉 stub). 열 이름 대소문자 무시, `utf-8-sig`/`cp932` 디코드(Excel 저장 대비).
+2. **엄격 생성(④)**: 한 행이라도 오류(필수 누락·중복 shell_id·잘못된 타입)면 `ok=False`·`yaml=""`로 **생성 거부** — 부분 생성으로 "전체 검증" 착시를 막는다. 행 번호별 오류 메시지 반환.
+3. **round-trip 검증(⑤)**: 생성한 yaml을 `load_definitions()`로 다시 파싱해 깨진 정의 생성을 차단.
+4. **GUI 흐름**: 업로드 탭의 "マッピング表(CSV)から生成" → `/definition/from-mapping`(읽기전용) → 미리보기 + `定義YAMLダウンロード`(다운로드) + **그대로 검증**(생성 yaml을 definition으로 전송, D-030 경로 재사용). 업로드 yaml과 상호 배타. `samples/shell_mapping.example.csv`(10셸) 동봉.
+5. **빈 양식 배포(규격 제공)**: 고객이 "뭘 적을지" 고민 않게 **매핑표 템플릿**(`MAPPING_TEMPLATE_CSV` = 필수열 + `batch_program` + 기입 예시 2행)을 `/definition/mapping-template`(GET, BOM 부착 — Excel 깨짐 방지)로 다운로드 제공. 받아서 값만 채워 올리면 정의 자동 생성. 템플릿 자체가 유효 매핑표라 그대로 올려도 동작.
+6. **`batch_program` = 구↔신 배치 매핑(이 표의 핵심)**: 매핑표의 `batch_program` 열에 셸별 **이행된 신환경 배치 실행파일 경로**를 적는다(공란=동봉 stub, 데모). 도구가 끝내 알 수 없는 유일한 사실(메인프레임 잡↔이행 실행파일)을 여기서 1회 받는다(D-032에서 접속탭 배치칸을 뺀 것과 짝 — 배치 매핑의 자리는 매핑표/정의 파일 한 곳). 데이터로 유추 불가·이름 규칙 없음·변환 당사자만 아는 값이라 자동 결정 불가; 도구는 테이블 목록·배치 디렉토리 제시 등 *적기 보조*만 가능(후속 가능).
+
+**이유**: "수기 작성은 자동화가 아니다"(사용자). 셸별 정의의 *사실*(어느 테이블·배치)은 데이터로 유추 불가라 표로 받되, **yaml 문법 작성은 도구가** 한다. 수백 셸이면 표 한 장으로 정의 일괄 생성.
+
+**deferred(유지)**: Excel(.xlsx) 직접 파싱은 안 함(의존 최소화 — "CSV로 저장"; CLAUDE 3-5). 매핑표 자동 추론(파일만으로 테이블 유추)은 불가(설계상). 그 외 D-029/030 deferred 동일.
+
+**검증**: `tests/test_gui.py` 39개(생성·round-trip·필수열·중복·DB테이블·엔드포인트 포함) 통과. 라이브: `samples/shell_mapping.example.csv` → `/definition/from-mapping` 10셸 yaml 생성 → 그 yaml을 정의로 `/verify/run`(샘플20) → **OK6/NG3/ERROR1**(데모와 동일).
+
+---
+
+## D-032. 탭 순서·역할 분리 — 검증 우선, 연결설정 검증정의칸 축소
+
+**결정**: 같은 검증정의를 두 곳(연결설정 폼 3칸 vs 업로드 탭 정의파일/매핑표)에서 받아 생기던 혼란을 역할 분리로 해소한다.
+
+1. **탭 순서**: `アップロード検証(主) → 接続設定 → サンプルデモ`. 사용 빈도(검증이 잦음)에 맞춤. 접속은 1회성 준비라 2번째.
+2. **연결설정 섹션 축소**: "検証定義（テーブル・バッチ・I/Oタイプ）" → **"接続テスト用テーブル／簡易モード既定"**. 의미를 "①접속 테스트가 존재확인할 테이블 ②정의 없이 CSV만 올리는 간단 모드의 기본값"으로 한정. **배치 경로 칸 제거**(접속 테스트는 배치 불요, 실배치는 정의 파일이 정함, 간단 모드는 입력타입별 동봉 stub 자동). 검증 정의의 **정본은 업로드 탭의 정의파일/매핑표**임을 안내문에 명시.
+3. **연결성 안내**: 업로드 탭 상단에 "초회는 접속설정에서 접속 저장" 한 줄.
+
+**이유**: 역할(연결=접속, 업로드=정의)이 또렷해지고, 반복되던 "이 3칸에 뭘 넣나" 혼란이 사라진다. 배치 칸 제거로 "stub=데모 / 실배치=정의파일" 경계도 분명.
+
+**검증**: `tests/test_gui.py` 40개 통과. 라이브 렌더: 업로드 탭 active·접속설정 숨김·섹션 리라벨·배치칸 제거 확인. 간단 모드(정의 없이 CSV만)는 서버가 입력타입별 동봉 stub 자동 선택(`prepare_jobs` batch=None).
+
 ---
 
 > 새로운 결정이 생기면 아래에 추가:

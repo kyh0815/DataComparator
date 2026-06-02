@@ -65,21 +65,26 @@ def _count(results: list[ComparisonResult], status: ComparisonStatus) -> int:
     return sum(1 for r in results if r.status == status)
 
 
-def _row_for(result: ComparisonResult) -> list[str]:
-    """한 결과를 CSV 한 행으로 변환한다. 해당 없는 칸은 빈 문자열로 둔다.
+_NA = "-"  # 해당 없는 칸 표기(빈칸이 '누락'인지 '해당없음'인지 헷갈리지 않게 명시)
 
-    first_diff_* 는 NG일 때 첫 DiffLine의 내용만 담는다 (전체는 별도 .diff 파일).
+
+def _row_for(result: ComparisonResult) -> list[str]:
+    """한 결과를 CSV 한 행으로 변환한다. 해당 없는 칸은 '-'로 명시한다.
+
+    - 비교가 일어난 OK/NG는 diff_line_count를 숫자로(OK=0, NG=N).
+    - 비교가 없던 ERROR/MISSING은 diff_line_count도 '-'.
+    - first_diff_* 는 NG일 때 첫 DiffLine만(전체는 별도 .diff). error_message는 ERROR일 때만.
     """
-    diff_count = len(result.diff_lines)
+    compared = result.status in (ComparisonStatus.OK, ComparisonStatus.NG)
     first = result.diff_lines[0] if result.diff_lines else None
     return [
         result.shell_id,
         result.status.value,
-        str(diff_count) if first is not None else "",
-        str(first.line_number) if first is not None else "",
-        first.asis_content if first is not None else "",
-        first.tobe_content if first is not None else "",
-        result.error_message or "",
+        str(len(result.diff_lines)) if compared else _NA,
+        str(first.line_number) if first is not None else _NA,
+        first.asis_content if first is not None else _NA,
+        first.tobe_content if first is not None else _NA,
+        result.error_message or _NA,
     ]
 
 

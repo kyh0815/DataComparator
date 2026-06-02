@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>現新比較 自動検証ツール</title>
+<!--
+  Phase 6 UI. 비주얼은 Claude Design 산출물을 이식, 백엔드 배선(엔드포인트·SSE/NDJSON·Jinja)은
+  실제 Flask 계약으로 복원. 외부 의존 0(시스템 폰트만, CDN·빌드 없음) — 온프레미스 제약 유지.
+  서버 진입점: src/gui/web.py. 진행은 이벤트 구동(progress/step/shell_done/summary/warning/error).
+-->
+<style>
+  :root {
+    /* semantic */
+    --ok:#1a7f37;   --ok-bg:#e7f4ec;   --ok-bd:#bfe2c9;
+    --ng:#c5303a;   --ng-bg:#fcecec;   --ng-bd:#f0c2c2;
+    --warn:#9a6700; --warn-bg:#fdf4e1; --warn-bd:#efd99b;
+    --accent:#15589e; --accent-2:#1d6fc4; --accent-bg:#eaf2fb; --accent-bd:#c4ddf6;
+    /* neutrals (cool-neutral) */
+    --bg:#eef1f4;
+    --panel:#ffffff;
+    --line:#e3e8ee;
+    --line-2:#d4dbe3;
+    --ink:#1c2530;
+    --ink-2:#3c4757;
+    --muted:#6a7686;
+    --muted-2:#8c97a5;
+    --field-bg:#ffffff;
+    --radius:10px;
+    --radius-sm:7px;
+    --shadow:0 1px 2px rgba(20,32,52,.04), 0 2px 6px rgba(20,32,52,.05);
+    --shadow-pop:0 6px 20px rgba(20,32,52,.10);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,"Helvetica Neue",Arial,sans-serif;
+    margin:0; background:var(--bg); color:var(--ink);
+    line-height:1.55; font-size:14px;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    font-feature-settings:"palt" 1;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    background:var(--panel); border-bottom:1px solid var(--line);
+    box-shadow:0 1px 0 rgba(20,32,52,.02);
+    position:sticky; top:0; z-index:20;
+  }
+  .header-in {
+    max-width:960px; margin:0 auto; padding:16px 24px;
+    display:flex; align-items:center; gap:14px;
+  }
+  .header-in .bar { width:4px; height:34px; background:var(--accent); border-radius:3px; }
+  .header-in .ttl h1 { font-size:17px; margin:0; font-weight:700; letter-spacing:.2px; color:var(--ink); }
+  .header-in .ttl p { margin:2px 0 0; font-size:12.5px; color:var(--muted); letter-spacing:.1px; }
+  .header-in .spacer { flex:1; }
+  .env {
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:11.5px; font-weight:600; color:var(--muted);
+    border:1px solid var(--line-2); border-radius:999px; padding:5px 11px; background:#fafbfc;
+  }
+  .env .dot { width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px var(--ok-bg); }
+  .env code { font-family:var(--mono); font-size:11px; color:var(--ink-2); }
+
+  /* ---------- layout ---------- */
+  main { max-width:960px; margin:0 auto; padding:24px 24px 72px; }
+
+  /* ---------- tabs ---------- */
+  .tabs {
+    display:flex; gap:4px; margin-bottom:22px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:5px; box-shadow:var(--shadow);
+  }
+  .tabs button {
+    flex:1; background:transparent; color:var(--muted); font-weight:600;
+    border:0; border-radius:var(--radius-sm); padding:10px 14px; cursor:pointer;
+    font-size:13.5px; letter-spacing:.2px; transition:background .14s,color .14s;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .tabs button .ix {
+    font-family:var(--mono); font-size:11px; font-weight:700;
+    width:18px; height:18px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center;
+    background:#eef1f4; color:var(--muted-2);
+  }
+  .tabs button:hover { color:var(--ink-2); background:#f3f6f9; }
+  .tabs button.active { color:#fff; background:var(--accent); box-shadow:0 1px 2px rgba(21,88,158,.35); }
+  .tabs button.active .ix { background:rgba(255,255,255,.22); color:#fff; }
+
+  /* ---------- panel / sections ---------- */
+  .panel {
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden;
+  }
+  .panel-head {
+    display:flex; align-items:center; gap:11px;
+    padding:15px 20px; border-bottom:1px solid var(--line); background:#fbfcfd;
+  }
+  .panel-head .num {
+    font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent);
+    width:24px; height:24px; border-radius:6px; background:var(--accent-bg); border:1px solid var(--accent-bd);
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .panel-head h2 { font-size:14px; margin:0; font-weight:700; color:var(--ink); letter-spacing:.2px; }
+  .panel-head .sub { font-size:12px; color:var(--muted); margin-left:auto; font-weight:500; }
+  .panel-body { padding:20px; }
+
+  /* ---------- form ---------- */
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:15px 16px; }
+  .grid.cols2 { grid-template-columns:1fr 1fr; }
+  .field label.lab { font-size:11.5px; color:var(--muted); display:block; margin-bottom:6px; font-weight:600; letter-spacing:.2px; }
+  .field label.lab .opt { color:var(--muted-2); font-weight:500; }
+  .field input[type=text], .field input[type=number] {
+    width:100%; padding:9px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm);
+    font-size:13.5px; background:var(--field-bg); color:var(--ink); transition:border-color .14s, box-shadow .14s;
+    font-variant-numeric:tabular-nums;
+  }
+  .field input::placeholder { color:#aeb7c2; }
+  .field input:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(29,111,196,.16); }
+  .field .hint { font-size:11px; color:var(--muted-2); margin-top:5px; }
+  .field input[readonly]{ background:#f5f7f9; color:var(--muted); }
+
+  /* radios */
+  .radio-group { display:flex; gap:26px; flex-wrap:wrap; align-items:center; }
+  .radio { font-size:13px; display:flex; gap:10px; align-items:center; }
+  .radio .glab { color:var(--muted); font-size:11.5px; font-weight:600; letter-spacing:.3px; }
+  .seg { display:inline-flex; border:1px solid var(--line-2); border-radius:8px; overflow:hidden; background:#f6f8fa; }
+  .seg label { position:relative; }
+  .seg label span {
+    display:inline-block; padding:7px 15px; font-size:13px; font-weight:600; color:var(--muted);
+    cursor:pointer; transition:background .12s,color .12s; user-select:none;
+  }
+  .seg label input { position:absolute; opacity:0; pointer-events:none; }
+  .seg label + label span { border-left:1px solid var(--line-2); }
+  .seg label input:checked + span { background:var(--accent); color:#fff; }
+
+  /* actions */
+  .actions { display:flex; gap:11px; align-items:center; flex-wrap:wrap; margin-top:18px; }
+  .actions .grow { flex:1; }
+  button.run, button.ghost {
+    border-radius:var(--radius-sm); padding:10px 18px; font-size:13.5px; font-weight:600;
+    cursor:pointer; letter-spacing:.2px; transition:filter .14s,background .14s,box-shadow .14s,border-color .14s;
+    display:inline-flex; align-items:center; gap:8px; font-family:inherit;
+  }
+  button.run { background:var(--accent); color:#fff; border:1px solid var(--accent); box-shadow:0 1px 2px rgba(21,88,158,.3); }
+  button.run:hover:not(:disabled) { background:var(--accent-2); }
+  button.run:disabled { background:#a9c3e0; border-color:#a9c3e0; box-shadow:none; cursor:default; }
+  button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent-bd); }
+  button.ghost:hover:not(:disabled) { background:var(--accent-bg); border-color:var(--accent-2); }
+  button.ghost:disabled { color:#a9c3e0; border-color:#dfe9f4; cursor:default; background:#fff; }
+  button.ghost.busy { color:var(--muted); border-color:var(--line-2); }
+
+  .chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); cursor:pointer; user-select:none; }
+  .chk input { width:15px; height:15px; accent-color:var(--accent); cursor:pointer; }
+
+  /* ---------- callouts ---------- */
+  .callout {
+    font-size:12.5px; line-height:1.65; border-radius:var(--radius-sm);
+    padding:12px 14px 12px 13px; margin-top:14px; border:1px solid; display:flex; gap:11px; align-items:flex-start;
+  }
+  .callout .ico { font-size:14px; line-height:1.5; flex-shrink:0; }
+  .callout.info { background:var(--accent-bg); border-color:var(--accent-bd); color:#234e7d; }
+  .callout.warn { background:var(--warn-bg); border-color:var(--warn-bd); color:#6e4a00; }
+  .callout.sec  { background:#f4f6f8; border-color:var(--line-2); color:var(--ink-2); }
+  .callout b { color:inherit; font-weight:700; }
+  .callout code { font-family:var(--mono); font-size:11.5px; background:rgba(20,32,52,.07); padding:1px 5px; border-radius:4px; }
+
+  /* ---------- connection test checklist ---------- */
+  .checks { margin-top:16px; display:none; }
+  .checks.show { display:block; }
+  .checks .ck-title { font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.4px; text-transform:uppercase; margin-bottom:8px; }
+  .checks .c {
+    display:flex; align-items:center; gap:10px; padding:8px 11px; font-size:13px;
+    border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:6px; background:#fbfcfd;
+  }
+  .checks .c .mk {
+    width:20px; height:20px; border-radius:50%; flex-shrink:0; font-weight:700; font-size:12px;
+    display:inline-flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .checks .c.ok .mk { background:var(--ok); }
+  .checks .c.bad .mk { background:var(--ng); }
+  .checks .c.pend .mk { background:var(--muted-2); }
+  .checks .c .nm { font-weight:600; color:var(--ink-2); }
+  .checks .c .dt { color:var(--muted); font-family:var(--mono); font-size:12px; margin-left:auto; }
+  .checks .c.pend { color:var(--muted); }
+
+  .toast { font-size:12.5px; margin-top:13px; padding:10px 13px; border-radius:var(--radius-sm); display:none; font-weight:600; border:1px solid; }
+  .toast.ok { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); }
+  .toast.bad { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); }
+
+  /* ---------- file boxes ---------- */
+  .filebox { border:1px solid var(--line); border-radius:var(--radius-sm); padding:15px; background:#fbfcfd; }
+  .filebox .fh { font-size:12.5px; color:var(--ink-2); font-weight:700; display:block; margin-bottom:3px; }
+  .filebox .fsub { font-size:11.5px; color:var(--muted); margin-bottom:12px; }
+  .filebox .frow { display:flex; gap:10px; flex-wrap:wrap; }
+  .file-btn {
+    position:relative; display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+    color:var(--accent); border:1px solid var(--accent-bd); background:#fff; border-radius:var(--radius-sm);
+    padding:8px 13px; cursor:pointer; transition:background .12s,border-color .12s;
+  }
+  .file-btn:hover { background:var(--accent-bg); border-color:var(--accent-2); }
+  .file-btn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .count { font-size:12px; color:var(--accent); font-weight:700; margin-top:11px; min-height:16px; font-variant-numeric:tabular-nums; }
+  .count:empty::before { content:"未選択"; color:var(--muted-2); font-weight:500; }
+
+  /* ---------- banners ---------- */
+  .banner { display:none; padding:13px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; margin-bottom:14px; border:1px solid; align-items:flex-start; gap:10px; }
+  .banner.show { display:flex; }
+  .banner.err { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); }
+  .banner.warn { background:var(--warn-bg); color:#6e4a00; border-color:var(--warn-bd); }
+  .banner .ico { flex-shrink:0; }
+  .banner code { font-family:var(--mono); font-size:12px; background:rgba(20,32,52,.06); padding:1px 5px; border-radius:4px; font-weight:600; }
+
+  /* ---------- summary ---------- */
+  #summary { display:none; }
+  #summary.show { display:block; }
+  .summary-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:11px; }
+  .scard {
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 14px 13px;
+    background:#fbfcfd; position:relative; overflow:hidden;
+  }
+  .scard::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--muted-2); }
+  .scard.ok::before { background:var(--ok); } .scard.ng::before { background:var(--ng); }
+  .scard.err::before { background:var(--warn); } .scard.miss::before { background:var(--muted-2); }
+  .scard.total::before { background:var(--accent); }
+  .scard .n { font-size:27px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+  .scard.ok .n { color:var(--ok); } .scard.ng .n { color:var(--ng); } .scard.err .n { color:var(--warn); }
+  .scard.total .n { color:var(--ink); } .scard.miss .n { color:var(--ink-2); }
+  .scard .l { font-size:11.5px; color:var(--muted); margin-top:7px; font-weight:600; letter-spacing:.3px; }
+  .summary-meta {
+    display:flex; align-items:center; gap:8px; margin-top:16px; padding-top:14px;
+    border-top:1px solid var(--line); font-size:12.5px; color:var(--muted);
+  }
+  .summary-meta .el { font-weight:600; color:var(--ink-2); font-variant-numeric:tabular-nums; }
+  .summary-meta .rep { margin-left:auto; }
+  .summary-meta a { color:var(--accent); font-weight:600; text-decoration:none; font-family:var(--mono); font-size:12px; }
+  .summary-meta a:hover { text-decoration:underline; }
+
+  /* ---------- results / shell rows ---------- */
+  #results-wrap { display:none; }
+  #results-wrap.show { display:block; }
+  .results-head { display:flex; align-items:center; gap:10px; margin:22px 2px 12px; }
+  .results-head h3 { font-size:13px; margin:0; font-weight:700; color:var(--ink-2); letter-spacing:.3px; }
+  .results-head .live { font-size:11px; color:var(--accent); font-weight:700; display:none; align-items:center; gap:6px; }
+  .results-head .live.show { display:inline-flex; }
+  .results-head .live .pulse { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  .shell {
+    border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:8px; background:var(--panel);
+    box-shadow:var(--shadow); transition:border-color .2s, box-shadow .2s;
+    animation:rise .26s ease both;
+  }
+  @keyframes rise { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+  .shell.running { border-color:var(--accent-bd); box-shadow:0 0 0 3px rgba(29,111,196,.08); }
+  .shell-head {
+    display:flex; align-items:center; gap:12px; padding:12px 15px; cursor:default;
+  }
+  .shell-head .ix { font-family:var(--mono); font-size:11.5px; color:var(--muted-2); font-weight:600; min-width:46px; }
+  .shell-head .sid {
+    font-family:var(--mono); font-size:14px; font-weight:700; color:var(--ink);
+    background:#f1f4f7; border:1px solid var(--line); border-radius:6px; padding:2px 9px; letter-spacing:.5px;
+  }
+  .shell-head .badge { margin-left:auto; }
+  .badge {
+    font-size:11px; font-weight:700; padding:3px 11px; border-radius:999px; letter-spacing:.4px;
+    border:1px solid; display:inline-flex; align-items:center; gap:6px; text-transform:uppercase;
+  }
+  .badge .bd { width:7px; height:7px; border-radius:50%; }
+  .badge.b-OK { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); } .badge.b-OK .bd{ background:var(--ok); }
+  .badge.b-NG { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); } .badge.b-NG .bd{ background:var(--ng); }
+  .badge.b-ERROR, .badge.b-MISSING_TOBE, .badge.b-MISSING_ASIS { background:var(--warn-bg); color:#7a5200; border-color:var(--warn-bd); }
+  .badge.b-ERROR .bd, .badge.b-MISSING_TOBE .bd, .badge.b-MISSING_ASIS .bd { background:var(--warn); }
+  .badge.b-RUN { background:#eef1f4; color:var(--muted); border-color:var(--line-2); }
+  .badge.b-RUN .bd { background:var(--muted-2); animation:pulse 1s infinite; }
+
+  /* step progress */
+  .steps { display:flex; align-items:center; gap:0; padding:0 15px 13px; flex-wrap:wrap; }
+  .step { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted-2); font-weight:600; }
+  .step .sdot {
+    width:16px; height:16px; border-radius:50%; border:1.5px solid var(--line-2); background:#fff;
+    display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:transparent; flex-shrink:0;
+    transition:all .2s;
+  }
+  .step.active { color:var(--accent); }
+  .step.active .sdot { border-color:var(--accent); background:var(--accent-bg); }
+  .step.active .sdot::after { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; }
+  .step.done { color:var(--ok); }
+  .step.done .sdot { border-color:var(--ok); background:var(--ok); color:#fff; }
+  .step.done .sdot::after { content:"✓"; }
+  .step.err { color:var(--warn); }
+  .step.err .sdot { border-color:var(--warn); background:var(--warn); color:#fff; }
+  .step.err .sdot::after { content:"!"; }
+  .step .res { font-family:var(--mono); font-size:11px; }
+  .connector { flex:1; min-width:22px; height:1.5px; background:var(--line-2); margin:0 9px; border-radius:1px; transition:background .2s; }
+  .connector.fill { background:var(--ok); }
+
+  /* diff detail */
+  .detail { margin:0 15px 14px; display:none; }
+  .detail.show { display:block; }
+  .detail .dline { margin-bottom:10px; }
+  .detail .dline:last-child { margin-bottom:0; }
+  .detail .ln { font-size:11px; color:var(--muted); font-weight:700; margin-bottom:5px; font-family:var(--mono); letter-spacing:.3px; }
+  .detail .row {
+    font-family:var(--mono); font-size:12.5px; line-height:1.5; padding:7px 11px; border-radius:6px;
+    display:flex; gap:10px; align-items:baseline; white-space:pre-wrap; word-break:break-all;
+  }
+  .detail .row .tag { font-weight:700; flex-shrink:0; width:46px; font-size:11px; letter-spacing:.3px; }
+  .detail .row.asis { background:#fdf3f3; border:1px solid var(--ng-bd); border-bottom:0; border-radius:6px 6px 0 0; }
+  .detail .row.asis .tag { color:var(--ng); }
+  .detail .row.tobe { background:#f1f9f3; border:1px solid var(--ok-bd); border-radius:0 0 6px 6px; }
+  .detail .row.tobe .tag { color:var(--ok); }
+  .detail mark { padding:1px 0; border-radius:2px; font-weight:700; }
+  .detail mark.a { background:#ffc9c9; color:#7d1620; box-shadow:0 0 0 1px #ffb3b3; }
+  .detail mark.b { background:#a3e9b4; color:#0a5224; box-shadow:0 0 0 1px #86dd9b; }
+  .detail .errbox {
+    font-family:var(--mono); font-size:12.5px; background:var(--warn-bg); border:1px solid var(--warn-bd);
+    border-radius:6px; padding:9px 12px; color:#6e4a00; white-space:pre-wrap; word-break:break-all;
+  }
+  .detail .more { font-size:11.5px; color:var(--muted); margin-top:8px; font-weight:600; }
+
+  .empty {
+    text-align:center; padding:34px 20px; color:var(--muted-2); font-size:13px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-in">
+    <span class="bar"></span>
+    <div class="ttl">
+      <h1>現新比較 自動検証ツール</h1>
+      <p>メインフレーム → Linux バッチ出力の同等性を、バイト単位で自動検証</p>
+    </div>
+    <span class="spacer"></span>
+    <span class="env"><span class="dot"></span>ローカル実行 <code>localhost</code></span>
+  </div>
+</header>
+
+<main>
+  <nav class="tabs" role="tablist">
+    <button id="tab-upload" class="active" onclick="switchTab('upload')"><span class="ix">1</span>アップロード検証</button>
+    <button id="tab-conn" onclick="switchTab('conn')"><span class="ix">2</span>接続設定</button>
+    <button id="tab-demo" onclick="switchTab('demo')"><span class="ix">3</span>サンプルデモ</button>
+  </nav>
+
+  <!-- ② 接続設定 -->
+  <section id="panel-conn" style="display:none">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="num">1</span>
+        <h2>DB接続</h2>
+        <span class="sub">PostgreSQL · 読み取り設定</span>
+      </div>
+      <div class="panel-body">
+        <div class="grid">
+          <div class="field"><label class="lab">ホスト (host)</label><input type="text" id="c-host" value="{{ conn.host }}"></div>
+          <div class="field"><label class="lab">ポート (port)</label><input type="number" id="c-port" value="{{ conn.port }}"></div>
+          <div class="field"><label class="lab">データベース (dbname)</label><input type="text" id="c-dbname" value="{{ conn.dbname }}"></div>
+          <div class="field"><label class="lab">ユーザー (user)</label><input type="text" id="c-user" value="{{ conn.user }}"></div>
+          <div class="field"><label class="lab">パスワード環境変数 <span class="opt">(password_env)</span></label><input type="text" id="c-pwenv" value="{{ conn.password_env }}"></div>
+          <div class="field"><label class="lab">エンコーディング</label><input type="text" id="c-encoding" value="{{ conn.encoding }}"></div>
+          <div class="field"><label class="lab">設定ファイル</label><input type="text" id="c-config" value="{{ default_config }}"></div>
+        </div>
+        <div class="callout sec">
+          <span class="ico">🔐</span>
+          <div>パスワードはツールに入力・保存しません（<b>モデルA</b>）。DBA が環境変数 <code>{{ conn.password_env }}</code> または <code>.pgpass</code> に設定し、ツールはそこから取得します。</div>
+        </div>
+        <div class="callout warn">
+          <span class="ico">⚠️</span>
+          <div>検証専用の <b>最小権限アカウント</b> と <b>検証専用 DB / スキーマ</b> を使用してください。本ツールは入力テーブルを TRUNCATE+INSERT、結果テーブルに INSERT するため、<b>本番 DB を指すと汚染します</b>。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="num">2</span>
+        <h2>接続テスト用テーブル <span class="opt" style="font-weight:500;color:var(--muted-2)">／ 簡易モード既定</span></h2>
+      </div>
+      <div class="panel-body">
+        <div class="grid">
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">接続テストで存在確認。顧客環境では実テーブル名に変更</div></div>
+        </div>
+        <div class="radio-group" style="margin-top:18px">
+          <div class="radio">
+            <span class="glab">入力</span>
+            <div class="seg">
+              <label><input type="radio" name="itype" value="database" checked><span>DB</span></label>
+              <label><input type="radio" name="itype" value="file"><span>ファイル</span></label>
+            </div>
+          </div>
+          <div class="radio">
+            <span class="glab">出力</span>
+            <div class="seg">
+              <label><input type="radio" name="otype" value="file" checked><span>ファイル</span></label>
+              <label><input type="radio" name="otype" value="database"><span>DB</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="ghost" id="c-test">接続テスト</button>
+          <button class="ghost" id="c-save">保存</button>
+        </div>
+        <div class="callout info">
+          <span class="ico">▸</span>
+          <div>ここの I/Oタイプ・テーブルは <b>「接続テスト」の確認対象</b>です（読み取り専用 — 接続 + <code>SELECT 1</code> + DBタイプ側のテーブル存在確認のみ）。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（それらを使う場合この設定は無視 / 定義なしの簡易検証時のみ既定として使用）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
+        </div>
+        <div class="checks" id="c-checks"></div>
+        <div class="toast" id="c-toast"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ① アップロード検証 -->
+  <section id="panel-upload">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="num">1</span>
+        <h2>アップロード検証（複数ペア対応）</h2>
+      </div>
+      <div class="panel-body">
+        <div class="callout sec" style="margin-top:0;margin-bottom:14px">
+          <span class="ico">▸</span>
+          <div>実行には DB 接続が必要です。初回は「<b>接続設定</b>」タブで接続情報を保存してください。シェル定義は下の<b>定義ファイル／マッピング表</b>が正本です。</div>
+        </div>
+        <div class="filebox" style="margin-bottom:14px">
+          <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
+          <div class="fsub"><b>シェル定義（I/O・テーブル・バッチ）をファイルから読み込み</b>、フォーム設定より優先します。既存 yaml をアップロード、または<b>マッピング表(CSV)から自動生成</b>できます（手書き yaml 不要）。マッピング表の <code style="background:#00000010;padding:1px 4px;border-radius:3px">batch_program</code> 列に各シェルの<b>新環境バッチ経路（＝旧↔新の対応）</b>を記入します（空欄＝同梱stub）。</div>
+          <div class="frow">
+            <label class="file-btn">＋ 定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
+            <a class="file-btn" href="/definition/mapping-template" style="text-decoration:none;color:var(--muted);border-color:var(--line-2)">📄 マッピング表テンプレートDL</a>
+            <label class="file-btn">📋 マッピング表(CSV)から生成<input type="file" id="u-map" accept=".csv"></label>
+            <a class="file-btn" id="u-def-dl" style="display:none;text-decoration:none" download="test_definition.yaml">⬇ 定義YAMLをダウンロード</a>
+            <button class="file-btn" type="button" id="u-def-clear" style="display:none;color:var(--muted);border-color:var(--line-2)">✕ 解除</button>
+          </div>
+          <div class="count" id="u-def-info"></div>
+        </div>
+        <div class="grid cols2">
+          <div class="filebox">
+            <span class="fh">As-Is 入力CSV</span>
+            <div class="fsub">バッチに投入するデータ</div>
+            <div class="frow">
+              <label class="file-btn">＋ ファイル選択<input type="file" id="u-in-files" accept=".csv" multiple></label>
+              <label class="file-btn">📁 フォルダ選択<input type="file" id="u-in-dir" webkitdirectory directory></label>
+            </div>
+            <div class="count" id="u-in-count"></div>
+          </div>
+          <div class="filebox">
+            <span class="fh">As-Is 正解CSV</span>
+            <div class="fsub">期待される出力</div>
+            <div class="frow">
+              <label class="file-btn">＋ ファイル選択<input type="file" id="u-out-files" accept=".csv" multiple></label>
+              <label class="file-btn">📁 フォルダ選択<input type="file" id="u-out-dir" webkitdirectory directory></label>
+            </div>
+            <div class="count" id="u-out-count"></div>
+          </div>
+        </div>
+        <div class="actions">
+          <label class="chk"><input type="checkbox" id="u-verbose"> 詳細（すべての差分行）</label>
+          <span class="grow"></span>
+          <button class="run" id="u-run">▶ 検証実行</button>
+        </div>
+        <div class="callout info">
+          <span class="ico">🔗</span>
+          <div><b>入力と正解は同じファイル名で対応づけられます</b>（例: <code>003.csv</code> ↔ <code>003.csv</code>）。これは顧客側の命名規約です。ペアにならないファイルは実行前に明示表示し、除外します（マッチ0件はエラー）。I/Oタイプ・テーブル・バッチ経路は「接続設定」タブの値を使用します。</div>
+        </div>
+        <div class="callout warn">
+          <span class="ico">⚠️</span>
+          <div>現在「新環境バッチ」は <b>stub（デモ用）</b> です — 実検証は実バッチ置換後（導入段階）。そのため <b>正解CSVは Shift-JIS</b>、stub の想定スキーマに一致している必要があります。サンプルは <code>samples/asis/input/001.csv</code>・<code>samples/asis/output/001.csv</code>。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ サンプルデモ -->
+  <section id="panel-demo" style="display:none">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="num">3</span>
+        <h2>サンプルデモ（10件 自動実行）</h2>
+        <span class="sub">同梱サンプルで挙動を確認</span>
+      </div>
+      <div class="panel-body">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+          <div class="field"><label class="lab">設定ファイル</label><input type="text" id="config" value="{{ default_config }}"></div>
+          <div class="field"><label class="lab">シェル <span class="opt">(例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"></div>
+        </div>
+        <div class="actions">
+          <label class="chk"><input type="checkbox" id="verbose"> 詳細（すべての差分行）</label>
+          <span class="grow"></span>
+          <button class="run" id="run">▶ 実行</button>
+        </div>
+        <div class="callout sec">
+          <span class="ico">▸</span>
+          <div>同梱サンプル <code>samples/asis/</code> を用いて 10件のシェルを順次実行します。各シェルの <b>入力ロード → バッチ実行 → 結果比較</b> がリアルタイムに表示されます。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 共通: バナー / 要約 / 結果 -->
+  <div id="banner" class="banner err"></div>
+  <div id="warnbar" class="banner warn"></div>
+
+  <div id="summary" class="panel">
+    <div class="panel-head">
+      <span class="num" style="background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok)">✓</span>
+      <h2>検証サマリー</h2>
+      <span class="sub" id="s-verdict"></span>
+    </div>
+    <div class="panel-body">
+      <div class="summary-cards">
+        <div class="scard total"><div class="n" id="s-total">0</div><div class="l">合計</div></div>
+        <div class="scard ok"><div class="n" id="s-ok">0</div><div class="l">OK</div></div>
+        <div class="scard ng"><div class="n" id="s-ng">0</div><div class="l">NG</div></div>
+        <div class="scard err"><div class="n" id="s-err">0</div><div class="l">ERROR</div></div>
+        <div class="scard miss"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
+      </div>
+      <div class="summary-meta">
+        <span>所要 <span class="el" id="s-elapsed">0</span> 秒</span>
+        <span class="rep" id="report"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="results-wrap">
+    <div class="results-head">
+      <h3>検証結果</h3>
+      <span class="live" id="live"><span class="pulse"></span>実行中…</span>
+    </div>
+    <div id="results"></div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STEP_LABEL = { load:"入力ロード", run:"バッチ実行", compare:"結果比較" };
+const STEP_ORDER = ["load","run","compare"];
+let verboseFlag = false;
+let running = false;
+let es = null;                       // 데모 EventSource 핸들
+let lastConfig = "{{ default_config }}";
+
+/* ───────── タブ切替 ───────── */
+function switchTab(which) {
+  for (const t of ["conn","upload","demo"]) {
+    $("tab-"+t).classList.toggle("active", which===t);
+    $("panel-"+t).style.display = which===t ? "block" : "none";
+  }
+}
+
+/* ───────── 接続設定: 永続化 + フォーム ───────── */
+const CONN_FIELDS = ["c-host","c-port","c-dbname","c-user","c-pwenv","c-encoding","c-config","c-intable","c-outtable"];
+function ioType(name){ return document.querySelector(`input[name=${name}]:checked`).value; }
+function saveLocal(){
+  const o={}; for (const id of CONN_FIELDS) o[id]=$(id).value;
+  o.itype=ioType("itype"); o.otype=ioType("otype");
+  try { localStorage.setItem("dc_conn", JSON.stringify(o)); } catch(e){}
+}
+function restoreLocal(){
+  let o; try { o=JSON.parse(localStorage.getItem("dc_conn")||"{}"); } catch(e){ o={}; }
+  for (const id of CONN_FIELDS) if (o[id]!==undefined && o[id]!=="") $(id).value=o[id];
+  if (o.itype) document.querySelector(`input[name=itype][value=${o.itype}]`).checked=true;
+  if (o.otype) document.querySelector(`input[name=otype][value=${o.otype}]`).checked=true;
+}
+function toast(id,msg,ok){ const t=$(id); t.textContent=msg; t.className="toast "+(ok?"ok":"bad"); t.style.display="block"; }
+function connForm(){
+  const fd=new FormData();
+  fd.append("host",$("c-host").value);
+  fd.append("port",$("c-port").value);
+  fd.append("dbname",$("c-dbname").value);
+  fd.append("user",$("c-user").value);
+  fd.append("password_env",$("c-pwenv").value);
+  fd.append("encoding",$("c-encoding").value);
+  fd.append("config",$("c-config").value);
+  fd.append("input_type",ioType("itype"));
+  fd.append("output_type",ioType("otype"));
+  fd.append("input_table",$("c-intable").value);
+  fd.append("output_table",$("c-outtable").value);
+  return fd;
+}
+
+/* ───────── 接続テスト（実 /connection/test, 読み取り専用） ───────── */
+$("c-test").addEventListener("click", async () => {
+  saveLocal();
+  const btn=$("c-test"); btn.disabled=true; btn.classList.add("busy"); btn.textContent="接続テスト中…";
+  $("c-toast").style.display="none";
+  const cont=$("c-checks"); cont.classList.add("show");
+  cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
+    `<div class="c pend"><span class="mk">…</span><span class="nm">確認中…</span><span class="dt"></span></div>`;
+  try{
+    const resp=await fetch("/connection/test",{method:"POST",body:connForm()});
+    const r=await resp.json();
+    const rows=(r.checks||[]).map(c=>
+      `<div class="c ${c.ok?"ok":"bad"}"><span class="mk">${c.ok?"✓":"✗"}</span>`+
+      `<span class="nm">${escapeHtml(c.name)}</span>`+
+      `<span class="dt">${escapeHtml(c.detail||(c.ok?"OK":""))}</span></div>`).join("");
+    cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
+      (rows || `<div class="c bad"><span class="mk">✗</span><span class="nm">確認できませんでした</span><span class="dt"></span></div>`);
+    toast("c-toast", r.message || (r.ok?"接続テスト成功":"接続テスト失敗"), !!r.ok);
+  }catch(err){ toast("c-toast","通信エラー: "+err,false); }
+  finally{ btn.disabled=false; btn.classList.remove("busy"); btn.textContent="接続テスト"; }
+});
+
+/* ───────── 保存（実 /connection/save, DB接続・encodingのみ） ───────── */
+$("c-save").addEventListener("click", async () => {
+  saveLocal();
+  const btn=$("c-save"); btn.disabled=true; btn.textContent="保存中…";
+  try{
+    const resp=await fetch("/connection/save",{method:"POST",body:connForm()});
+    const r=await resp.json();
+    toast("c-toast", r.message, !!r.ok);
+  }catch(err){ toast("c-toast","通信エラー: "+err,false); }
+  finally{ btn.disabled=false; btn.textContent="保存"; }
+});
+
+/* ───────── 結果レンダリング（イベント駆動） ───────── */
+function reset(){
+  $("results").innerHTML="";
+  $("summary").classList.remove("show");
+  $("banner").classList.remove("show");
+  $("warnbar").classList.remove("show");
+  $("results-wrap").classList.remove("show");
+}
+function showBanner(id, html){ const b=$(id); b.innerHTML=`<span class="ico">${id==="banner"?"⛔":"⚠"}</span><div>${html}</div>`; b.classList.add("show"); }
+
+function shellRow(id,index,total){
+  const el=document.createElement("div");
+  el.className="shell running"; el.id="shell-"+id;
+  el.innerHTML=
+    `<div class="shell-head">
+       <span class="ix">[${index}/${total}]</span>
+       <span class="sid">${escapeHtml(id)}</span>
+       <span class="badge b-RUN" id="badge-${id}"><span class="bd"></span>処理中</span>
+     </div>
+     <div class="steps" id="steps-${id}">
+       <span class="step" data-step="load"><span class="sdot"></span>入力ロード <span class="res"></span></span>
+       <span class="connector" data-conn="0"></span>
+       <span class="step" data-step="run"><span class="sdot"></span>バッチ実行 <span class="res"></span></span>
+       <span class="connector" data-conn="1"></span>
+       <span class="step" data-step="compare"><span class="sdot"></span>結果比較 <span class="res"></span></span>
+     </div>
+     <div class="detail" id="detail-${id}"></div>`;
+  $("results").appendChild(el);
+  return el;
+}
+function setStepActive(id,step){
+  const row=$("shell-"+id); if(!row) return;
+  const s=row.querySelector(`[data-step="${step}"]`);
+  if(s){ s.classList.remove("done","err"); s.classList.add("active"); s.querySelector(".res").textContent=""; }
+}
+function setStepResult(id,step,status){
+  const row=$("shell-"+id); if(!row) return;
+  const s=row.querySelector(`[data-step="${step}"]`);
+  if(!s) return;
+  s.classList.remove("active");
+  const ok = status==="OK";
+  s.classList.add(ok?"done":"err");
+  s.querySelector(".res").textContent = "→ "+status;
+  // 이 단계가 OK면 다음 커넥터를 채운다(load→0, run→1; compare는 끝이라 없음).
+  const idx=STEP_ORDER.indexOf(step);
+  if(idx<2 && ok){ const c=row.querySelector(`[data-conn="${idx}"]`); if(c) c.classList.add("fill"); }
+}
+function setBadge(id,status,label){
+  const b=$("badge-"+id); if(!b) return;
+  b.className="badge b-"+status;
+  b.innerHTML=`<span class="bd"></span>${label||status}`;
+}
+function finishRow(id){ const row=$("shell-"+id); if(row) row.classList.remove("running"); }
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// As-Is/To-Be の共通前後を除いた「変化区間」だけ <mark> で囲む（文字単位）。
+function diffMark(a,b){
+  a=String(a); b=String(b);
+  let s=0; const n=Math.min(a.length,b.length);
+  while(s<n && a[s]===b[s]) s++;
+  let ea=a.length, eb=b.length;
+  while(ea>s && eb>s && a[ea-1]===b[eb-1]){ ea--; eb--; }
+  const wrap=(t,cls)=> t? `<mark class="${cls}">${escapeHtml(t)}</mark>` : "";
+  return [
+    escapeHtml(a.slice(0,s))+wrap(a.slice(s,ea),"a")+escapeHtml(a.slice(ea)),
+    escapeHtml(b.slice(0,s))+wrap(b.slice(s,eb),"b")+escapeHtml(b.slice(eb)),
+  ];
+}
+function renderDetailDiff(id, diff_lines){
+  diff_lines = diff_lines || [];
+  const lines = verboseFlag ? diff_lines : diff_lines.slice(0,1);
+  const html = lines.map(d=>{
+    const [a,b]=diffMark(d.asis_content,d.tobe_content);
+    return `<div class="dline">
+       <div class="ln">${d.line_number} 行目</div>
+       <div class="row asis"><span class="tag">As-Is</span><span>${a}</span></div>
+       <div class="row tobe"><span class="tag">To-Be</span><span>${b}</span></div>
+     </div>`;
+  }).join("");
+  const more = (!verboseFlag && diff_lines.length>1) ? `<div class="more">ほか ${diff_lines.length-1} 行に差分があります（「詳細」で全件表示）</div>` : "";
+  const d=$("detail-"+id); d.innerHTML=html+more; d.classList.add("show");
+}
+function renderDetailErr(id, text){
+  const d=$("detail-"+id); d.innerHTML=`<div class="errbox">${escapeHtml(text)}</div>`; d.classList.add("show");
+}
+
+// 진행 이벤트: 단계 점등은 step 이벤트가, 배지·상세는 shell_done이 구동한다.
+function onProgress(m){
+  if (m.kind==="shell_start"){
+    shellRow(m.shell_id, m.index, m.total);
+    setStepActive(m.shell_id,"load");
+  } else if (m.kind==="step"){
+    const st=m.step_status;
+    if (m.step==="load"){ setStepResult(m.shell_id,"load",st); if(st==="OK") setStepActive(m.shell_id,"run"); }
+    else if (m.step==="run"){ setStepResult(m.shell_id,"run",st); if(st==="OK") setStepActive(m.shell_id,"compare"); }
+    else if (m.step==="compare"){ setStepResult(m.shell_id,"compare",st); }
+  } else if (m.kind==="shell_done"){
+    renderDone(m.result);
+  }
+}
+function renderDone(r){
+  setBadge(r.shell_id, r.status, r.status);
+  if (r.status==="NG"){
+    renderDetailDiff(r.shell_id, r.diff_lines);
+  } else if (r.status==="MISSING_TOBE" || r.status==="MISSING_ASIS"){
+    renderDetailErr(r.shell_id, r.status==="MISSING_TOBE"
+      ? "To-Be 出力がありません（新環境バッチが結果を生成しませんでした）"
+      : "As-Is 正解CSVがありません（対応する正解ファイルが見つかりません）");
+  } else if (r.status==="ERROR"){
+    renderDetailErr(r.shell_id, "エラー: "+(r.error_message||""));
+  }
+  finishRow(r.shell_id);
+}
+
+function renderSummary(s){
+  $("s-total").textContent=s.total;
+  $("s-ok").textContent=s.ok_count;
+  $("s-ng").textContent=s.ng_count;
+  $("s-err").textContent=s.error_count;
+  $("s-miss").textContent=s.missing_count;
+  $("s-elapsed").textContent=Number(s.elapsed_seconds).toFixed(1);
+  const bad=s.ng_count+s.error_count+s.missing_count;
+  const verdict=$("s-verdict");
+  if (bad===0){ verdict.textContent="✓ 全件一致"; verdict.style.color="var(--ok)"; }
+  else { verdict.textContent=`要確認 — NG/ERROR/MISSING ${bad} 件`; verdict.style.color="var(--ng)"; }
+  const cfg=encodeURIComponent(lastConfig);
+  $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)} ⬇</a>`;
+  $("summary").classList.add("show");
+}
+
+// 데모(SSE)·업로드(NDJSON) 공통 메시지 처리
+function handleMsg(m){
+  if (m.type==="progress") onProgress(m);
+  else if (m.type==="summary"){ $("live").classList.remove("show"); renderSummary(m); }
+  else if (m.type==="warning") showBanner("warnbar", escapeHtml(m.message));
+  else if (m.type==="error") showBanner("banner", escapeHtml(m.message));
+}
+function setRunning(on){ running=on; $("run").disabled=on; $("u-run").disabled=on; }
+
+/* ───────── ① デモ実行（実 /run, SSE） ───────── */
+function finishDemo(){ if(es){ es.close(); es=null; } $("live").classList.remove("show"); setRunning(false); }
+$("run").addEventListener("click", () => {
+  if (running) return;
+  reset(); setRunning(true);
+  verboseFlag=$("verbose").checked; lastConfig=$("config").value;
+  $("results-wrap").classList.add("show"); $("live").classList.add("show");
+  const params=new URLSearchParams();
+  params.set("config",$("config").value);
+  if ($("shells").value.trim()) params.set("shells",$("shells").value.trim());
+  es=new EventSource("/run?"+params.toString());
+  es.onmessage=(e)=>{ const m=JSON.parse(e.data); if(m.type==="done") finishDemo(); else handleMsg(m); };
+  es.onerror=()=> finishDemo();
+});
+
+/* ───────── ② アップロード検証（実 /verify/run, 多件 NDJSON） ───────── */
+function mergeFiles(...inputs){ const out=[]; for(const el of inputs) for(const f of el.files) out.push(f); return out; }
+function mergeCsv(...inputs){ return mergeFiles(...inputs).filter(f=>f.name.toLowerCase().endsWith(".csv")); }
+function refreshCounts(){
+  const ni=mergeCsv($("u-in-files"),$("u-in-dir")).length;
+  const no=mergeCsv($("u-out-files"),$("u-out-dir")).length;
+  $("u-in-count").textContent = ni? `入力 ${ni} 件 選択` : "";
+  $("u-out-count").textContent = no? `正解 ${no} 件 選択` : "";
+}
+for (const id of ["u-in-files","u-in-dir","u-out-files","u-out-dir"]) $(id).addEventListener("change", refreshCounts);
+
+// 定義ファイル: 업로드 또는 매핑표(CSV)에서 생성. 정의가 있으면 폼 3칸보다 우선.
+function ioJp(t){ return t==="database" ? "DB" : "ファイル"; }
+let genDefYaml = null;       // 매핑표로 생성한 정의 yaml(있으면 검증 시 정의로 전송)
+let dlUrl = null;            // 생성 yaml 다운로드용 Blob URL
+function shellSummaryHtml(shells, count, head_note){
+  const head=shells.slice(0,8).map(s=>`${escapeHtml(s.test_id)}(${ioJp(s.input_type)}→${ioJp(s.output_type)})`).join("、");
+  return `${head_note}: <b>${count}</b> シェル — ${head}${shells.length>8?" …":""}`+
+    `<br><span style="color:var(--muted);font-weight:500">フォームの I/O・テーブル・バッチ設定は無視され、定義が優先されます</span>`;
+}
+function clearGenerated(){ if(dlUrl){ URL.revokeObjectURL(dlUrl); dlUrl=null; } genDefYaml=null; $("u-def-dl").style.display="none"; }
+function resetDefArea(){ $("u-def").value=""; $("u-map").value=""; clearGenerated(); $("u-def-info").textContent=""; $("u-def-clear").style.display="none"; }
+
+// 既存 yaml 업로드 → 파싱 미리보기
+$("u-def").addEventListener("change", async () => {
+  const f=$("u-def").files[0];
+  if (!f){ if(!genDefYaml){ resetDefArea(); } return; }
+  clearGenerated(); $("u-map").value="";          // 업로드가 우선; 매핑 생성본 해제
+  const info=$("u-def-info"); $("u-def-clear").style.display="inline-flex"; info.textContent="解析中…";
+  try{
+    const fd=new FormData(); fd.append("definition", f, f.name);
+    const r=await (await fetch("/definition/parse",{method:"POST",body:fd})).json();
+    if (!r.ok){ info.innerHTML=`<span style="color:var(--ng)">解析エラー: ${escapeHtml(r.message)}</span>`; return; }
+    info.innerHTML=shellSummaryHtml(r.shells, r.count, "定義ファイル使用中");
+  }catch(e){ info.textContent="通信エラー: "+e; }
+});
+
+// マッピング表(CSV) → yaml 생성 + 다운로드 + 그대로 검증 정의로 사용
+$("u-map").addEventListener("change", async () => {
+  const f=$("u-map").files[0];
+  if (!f){ return; }
+  $("u-def").value=""; clearGenerated();          // 매핑 생성이 우선; 업로드 파일 해제
+  const info=$("u-def-info"); $("u-def-clear").style.display="inline-flex"; info.textContent="生成中…";
+  try{
+    const fd=new FormData(); fd.append("mapping", f, f.name);
+    const r=await (await fetch("/definition/from-mapping",{method:"POST",body:fd})).json();
+    if (!r.ok){
+      info.innerHTML=`<span style="color:var(--ng)">マッピング変換エラー:</span><br>`+
+        (r.errors||["不明なエラー"]).map(e=>`<span style="color:var(--ng)">・${escapeHtml(e)}</span>`).join("<br>");
+      return;
+    }
+    genDefYaml=r.yaml;
+    dlUrl=URL.createObjectURL(new Blob([r.yaml],{type:"text/yaml"}));
+    const dl=$("u-def-dl"); dl.href=dlUrl; dl.style.display="inline-flex";
+    info.innerHTML=shellSummaryHtml(r.shells, r.count, "マッピング表から生成");
+  }catch(e){ info.textContent="通信エラー: "+e; }
+});
+
+$("u-def-clear").addEventListener("click", resetDefArea);
+
+$("u-run").addEventListener("click", async () => {
+  if (running) return;
+  const ins=mergeCsv($("u-in-files"),$("u-in-dir"));
+  const outs=mergeCsv($("u-out-files"),$("u-out-dir"));
+  reset();
+  if (!ins.length || !outs.length){ showBanner("banner","As-Is 入力CSVと正解CSVを 1 組以上選択してください。"); return; }
+  setRunning(true); verboseFlag=$("u-verbose").checked; lastConfig=$("c-config").value; saveLocal();
+  $("results-wrap").classList.add("show"); $("live").classList.add("show");
+
+  const fd=new FormData();
+  for (const f of ins) fd.append("asis_inputs", f, f.name);   // 짝짓기는 서버 권위(파일명 stem)
+  for (const f of outs) fd.append("asis_outputs", f, f.name);
+  fd.append("input_type", ioType("itype"));
+  fd.append("output_type", ioType("otype"));
+  fd.append("encoding", $("c-encoding").value);
+  fd.append("config", $("c-config").value);
+  fd.append("input_table", $("c-intable").value);
+  fd.append("output_table", $("c-outtable").value);
+  const defFile=$("u-def").files[0];
+  if (defFile) fd.append("definition", defFile, defFile.name);            // 업로드 정의 우선
+  else if (genDefYaml) fd.append("definition", new File([genDefYaml], "generated_definition.yaml"), "generated_definition.yaml");  // 매핑 생성 정의
+
+  try{
+    const resp=await fetch("/verify/run",{method:"POST",body:fd});
+    if (resp.status===413){ const r=await resp.json(); showBanner("banner", escapeHtml(r.message)); return; }
+    const reader=resp.body.getReader();
+    const dec=new TextDecoder();
+    let buf="";
+    while(true){
+      const {value,done}=await reader.read();
+      if (done) break;
+      buf+=dec.decode(value,{stream:true});
+      let nl;
+      while((nl=buf.indexOf("\n"))>=0){
+        const line=buf.slice(0,nl).trim();
+        buf=buf.slice(nl+1);
+        if(!line) continue;
+        const m=JSON.parse(line);
+        if(m.type!=="done") handleMsg(m);
+      }
+    }
+  }catch(err){
+    showBanner("banner","エラー: "+escapeHtml(String(err)));
+  }finally{
+    $("live").classList.remove("show"); setRunning(false);
+  }
+});
+
+/* ───────── 初期化 ───────── */
+restoreLocal();
+for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
+for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", saveLocal);
+</script>
+</body>
+</html>

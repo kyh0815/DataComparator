@@ -377,6 +377,79 @@
 
 ---
 
+## Phase 5. GUI (프로토 이후 — 사용자 요청)
+
+### T5-1. 로컬 웹 UI + 업로드 검증 `[x]`
+
+**목적**: CLI 외에 브라우저에서 클릭으로 실행하는 GUI. ① 데모 10셸 자동 실행 ② 업로드 1쌍 풀체인 검증.
+
+**작업** (D-028):
+- `src/gui/web.py` — Flask. `/`·`/run`(SSE 데모)·`/verify/run`(POST 업로드, NDJSON)·`/report/<name>`(다운로드, traversal 차단).
+- `src/gui/serialize.py` — Core 객체 → dict(gui에만, models 불변).
+- `src/gui/upload.py` — `prepare_job`: 업로드 1쌍 → 임시 config+1셸 정의 → `run_full_comparison` 재사용.
+- `src/gui/templates/index.html` — 탭 2개(데모/업로드), 실시간 진행·배지·차이·요약·리포트 다운로드.
+- `run_gui.sh`(브라우저 자동 오픈) + `requirements.txt`에 `flask>=3.0`.
+- **Core 무수정**. 동시 실행 락(try/finally), 비밀번호 env만.
+
+**완료 기준**:
+- `POSTGRES_PASSWORD=… ./run_gui.sh` → 브라우저에서 데모 실행 / 업로드 검증 모두 동작.
+- DB 불요 단위·스모크 테스트 통과(`tests/test_gui.py`).
+
+**의존**: T3-1~T3-3. **실행 시** DB 필요.
+
+**후속(Phase B, 실 검증 지향)**: 업로드 UI에서 입력 테이블·배치·출력 테이블 직접 지정(데모 도메인 탈피) + 무시 규칙·정교 비교(D-022).
+
+---
+
+## Phase 6. GUI 납품 대비 격상 (사용자 요청)
+
+### T6-1. 연결설정 + 다건업로드 + 일본어UI + 라이트 세련화 `[x]`
+
+**목적**: Phase 5 GUI를 "시연용"에서 **납품 대비 제품**으로 격상. Core·`models.Config` 무수정, `src/gui/`만 확장.
+
+**작업** (D-029):
+- `src/gui/connection.py` — `test_connection`(읽기전용: SELECT 1 + 조건부 테이블 존재) + `save_connection`(DB·인코딩만 원자적 저장+.bak, 비번 미기록=모델A).
+- `src/gui/upload.py` — `prepare_job`→`prepare_jobs`: N쌍 stem 짝짓기, 미매칭 명시 반환, 입력/출력 테이블·배치경로 파라미터화(_DEMO_* 제거).
+- `src/gui/web.py` — `/connection/test`·`/connection/save` 신규, `/verify/run` 다건화, MAX_CONTENT_LENGTH+413, 사용자 메시지 일본어.
+- `src/gui/templates/index.html` — 3탭(접속설정/업로드검증/데모), 연결설정 2섹션 분리, 폴더+다중파일, 짝짓기 안내, 일본어 전면, 라이트 세련화, localStorage 영속화.
+
+**완료 기준**:
+- 연결테스트 OK+조건부 테이블 / 잘못된 접속 친절 실패. 다건 OK/NG 혼합·미매칭 명시·매칭0건 에러.
+- `tests/test_gui.py` 25개 + 전체 144 passed(DB 포함). 실 스택 라이브 스모크 통과.
+
+**deferred**: 정교비교/무시규칙(D-022), 실 배치 연결, Core/CLI/리포트 일본어화, 실 설치 패키징, schema-qualify.
+
+### T6-2. 정의 파일 주도 업로드 검증 `[x]`
+
+**목적**: 셸마다 타입·테이블·배치가 다른 실무 케이스를 위해 `test_definition.yaml` 업로드로 N셸 검증(정의 주도). 화면 3칸(동질 묶음)과 양립.
+
+**작업** (D-030):
+- `src/gui/upload.py` — `summarize_definition`(파싱 미리보기), `prepare_jobs_from_definition`(yml 정본, 파일명 매칭, 누락 셸 제외, shell_program 절대화).
+- `src/gui/web.py` — `/definition/parse` 신규(읽기전용), `/verify/run`을 `definition` 파일 유무로 분기(있으면 정의 우선).
+- `src/gui/templates/index.html` — 업로드 탭에 "定義ファイル(任意)" 픽커 + 파싱 미리보기(N셸·타입) + 우선순위 안내 + 해제.
+
+**완료 기준**:
+- `/definition/parse`로 10셸 인식, 정의 주도 `/verify/run`이 입력/정답 매칭해 N셸 실행, 누락 셸 명시.
+- `tests/test_gui.py` 34개 통과. 실 스택 라이브: 실 yaml+샘플20 → OK6/NG3/ERROR1.
+
+**deferred**: 정의 파일이 참조하는 CSV의 원격/경로 참조(현재는 함께 업로드), 그 외 D-029 deferred 동일.
+
+### T6-3. 매핑표(CSV) → 정의 yaml 자동 생성 `[x]`
+
+**목적**: 수기 yaml 제거. 고객 셸-테이블 매핑표(CSV) 한 장으로 `test_definition.yaml` 자동 생성(대량 셸).
+
+**작업** (D-031):
+- `src/gui/upload.py` — `definition_from_mapping`(CSV→yaml, 필수열·기본값·엄격·round-trip 검증).
+- `src/gui/web.py` — `/definition/from-mapping` 신규(읽기전용).
+- `src/gui/templates/index.html` — "マッピング表(CSV)から生成" 픽커 + 미리보기 + YAML 다운로드 + 그대로 검증.
+- `samples/shell_mapping.example.csv`(10셸).
+
+**완료 기준**: 매핑표→10셸 yaml 생성→그 정의로 검증 OK6/NG3/ERROR1. `tests/test_gui.py` 39개 통과.
+
+**deferred**: Excel(.xlsx) 직접 파싱(CSV로 저장), 매핑 자동 추론.
+
+---
+
 ## 권장 작업 순서 요약
 
 ```

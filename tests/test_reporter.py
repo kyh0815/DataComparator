@@ -71,9 +71,9 @@ def test_csv_header_and_rows(tmp_path):
 
     ok = by_id["001"]
     assert ok["status"] == "OK"
-    assert ok["diff_line_count"] == ""
-    assert ok["first_diff_line"] == ""
-    assert ok["error_message"] == ""
+    assert ok["diff_line_count"] == "0"  # 비교됨 → 차이 0건 명시
+    assert ok["first_diff_line"] == "-"  # 해당 없음은 '-'로 명시
+    assert ok["error_message"] == "-"
 
     ng1 = by_id["007"]
     assert ng1["status"] == "NG"
@@ -89,7 +89,7 @@ def test_csv_header_and_rows(tmp_path):
     err = by_id["010"]
     assert err["status"] == "ERROR"
     assert err["error_message"] == "배치 실패: 종료코드 1"
-    assert err["diff_line_count"] == ""
+    assert err["diff_line_count"] == "-"  # 비교 안 함 → '-'
 
     assert by_id["011"]["status"] == "MISSING_ASIS"
     assert by_id["012"]["status"] == "MISSING_TOBE"
