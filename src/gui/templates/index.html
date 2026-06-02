@@ -340,13 +340,13 @@
 
 <main>
   <nav class="tabs" role="tablist">
-    <button id="tab-upload" class="active" onclick="switchTab('upload')"><span class="ix">1</span>アップロード検証</button>
-    <button id="tab-conn" onclick="switchTab('conn')"><span class="ix">2</span>接続設定</button>
+    <button id="tab-conn" class="active" onclick="switchTab('conn')"><span class="ix">1</span>接続設定</button>
+    <button id="tab-upload" onclick="switchTab('upload')"><span class="ix">2</span>アップロード検証</button>
     <button id="tab-demo" onclick="switchTab('demo')"><span class="ix">3</span>サンプルデモ</button>
   </nav>
 
-  <!-- ② 接続設定 -->
-  <section id="panel-conn" style="display:none">
+  <!-- ① 接続設定 -->
+  <section id="panel-conn">
     <div class="panel">
       <div class="panel-head">
         <span class="num">1</span>
@@ -414,11 +414,11 @@
     </div>
   </section>
 
-  <!-- ① アップロード検証 -->
-  <section id="panel-upload">
+  <!-- ② アップロード検証 -->
+  <section id="panel-upload" style="display:none">
     <div class="panel">
       <div class="panel-head">
-        <span class="num">1</span>
+        <span class="num">2</span>
         <h2>アップロード検証（複数ペア対応）</h2>
       </div>
       <div class="panel-body">
