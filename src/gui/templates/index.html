@@ -573,6 +573,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+function scrollToEl(id, block){ const el=$(id); if(el) el.scrollIntoView({behavior:"smooth", block:block||"start"}); }
 const STEP_LABEL = { load:"入力ロード", run:"バッチ実行", compare:"結果比較" };
 const STEP_ORDER = ["load","run","compare"];
 let verboseFlag = false;
@@ -839,6 +840,7 @@ function renderSummary(s){
   const cfg=encodeURIComponent(lastConfig);
   $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)}</a>`;
   $("summary").classList.add("show");
+  scrollToEl("summary", "center");   // 완료 → 検証サマリー로 스크롤(끝났음 피드백)
 }
 
 // 데모(SSE)·업로드(NDJSON) 공통 메시지 처리
@@ -857,6 +859,7 @@ $("run").addEventListener("click", () => {
   reset(); setRunning(true);
   verboseFlag=$("verbose").checked; lastConfig=$("config").value;
   $("results-wrap").classList.add("show"); $("live").classList.add("show");
+  scrollToEl("results-wrap", "start");   // 실행 시작 → 진행 영역으로 스크롤(실행 중 피드백)
   const params=new URLSearchParams();
   params.set("config",$("config").value);
   if ($("shells").value.trim()) params.set("shells",$("shells").value.trim());
@@ -942,6 +945,7 @@ $("u-run").addEventListener("click", async () => {
   if (!ins.length || !outs.length){ showBanner("banner","As-Is 入力CSVと正解CSVを 1 組以上選択してください。"); return; }
   setRunning(true); verboseFlag=$("u-verbose").checked; lastConfig=$("c-config").value; saveLocal();
   $("results-wrap").classList.add("show"); $("live").classList.add("show");
+  scrollToEl("results-wrap", "start");   // 실행 시작 → 진행 영역으로 스크롤(실행 중 피드백)
 
   const fd=new FormData();
   for (const f of ins) fd.append("asis_inputs", f, f.name);   // 짝짓기는 서버 권위(파일명 stem)
