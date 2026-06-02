@@ -26,7 +26,14 @@ from src.core.models import (
 from src.gui import connection as conn_mod
 from src.gui import web
 from src.gui.serialize import event_to_dict, result_to_dict, summary_to_dict
-from src.gui.upload import PairingInfo, UploadError, prepare_jobs
+from src.gui.upload import (
+    DefIngestInfo,
+    PairingInfo,
+    UploadError,
+    prepare_jobs,
+    prepare_jobs_from_definition,
+    summarize_definition,
+)
 
 _EXAMPLE_CONFIG = str(Path(__file__).resolve().parents[1] / "config.yaml.example")
 
@@ -387,6 +394,109 @@ def test_upload_too_large_returns_413(client):
         assert resp.status_code == 413 and resp.get_json()["ok"] is False
     finally:
         web.app.config["MAX_CONTENT_LENGTH"] = saved
+
+
+# --- 정의 파일 주도(definition-driven) -------------------------------------------
+
+_DEF_YAML = b"""tests:
+  - test_id: "001"
+    input: { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: stub_batch/run_batch_db.py, timeout: 60 }
+    output: { type: file, file: 001.csv }
+    expected_output_csv: 001.csv
+  - test_id: "002"
+    input: { type: file, csv: 002.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py }
+    output: { type: database, table: tobe_result, export_csv: 002.csv }
+    expected_output_csv: 002.csv
+"""
+
+
+def test_summarize_definition_parses_shells():
+    r = summarize_definition(_DEF_YAML)
+    assert r["ok"] and r["count"] == 2
+    assert r["shells"][0]["test_id"] == "001" and r["shells"][0]["output_type"] == "file"
+    assert r["shells"][1]["input_type"] == "file" and r["shells"][1]["output_table"] == "tobe_result"
+
+
+def test_summarize_definition_reports_parse_error():
+    r = summarize_definition(b"not: a valid tests file\n")
+    assert r["ok"] is False and "失敗" in r["message"]
+
+
+def test_prepare_jobs_from_definition_builds_normalized_defs():
+    config, tmpdir, info = prepare_jobs_from_definition(
+        _EXAMPLE_CONFIG,
+        definition_bytes=_DEF_YAML,
+        inputs={"001": b"a\n1\n", "002": b"a\n2\n"},
+        outputs={"001": b"a\n1\n", "002": b"a\n2\n"},
+        encoding="Shift_JIS",
+    )
+    try:
+        assert [s["test_id"] for s in info.shells] == ["001", "002"] and not info.excluded
+        defs = load_definitions(config.definition_file)
+        assert defs[0].input_table == "transaction_log" and defs[1].output_table == "tobe_result"
+        # shell_program 상대경로가 절대경로로 정규화되어 실제 파일을 가리킨다.
+        assert Path(defs[0].shell_program).is_absolute() and Path(defs[0].shell_program).is_file()
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_prepare_jobs_from_definition_excludes_missing_files():
+    config, tmpdir, info = prepare_jobs_from_definition(
+        _EXAMPLE_CONFIG,
+        definition_bytes=_DEF_YAML,
+        inputs={"001": b"a\n1\n"},           # 002 입력 없음
+        outputs={"001": b"a\n1\n", "002": b"a\n2\n"},
+        encoding="Shift_JIS",
+    )
+    try:
+        assert [s["test_id"] for s in info.shells] == ["001"]
+        assert info.excluded and info.excluded[0]["test_id"] == "002"
+        assert len(load_definitions(config.definition_file)) == 1
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def test_prepare_jobs_from_definition_zero_match_errors():
+    with pytest.raises(UploadError):
+        prepare_jobs_from_definition(
+            _EXAMPLE_CONFIG, definition_bytes=_DEF_YAML,
+            inputs={"zzz": b"x"}, outputs={"zzz": b"x"}, encoding="Shift_JIS",
+        )
+
+
+def test_definition_parse_endpoint(client):
+    data = {"definition": (io.BytesIO(_DEF_YAML), "test_definition.yaml")}
+    r = client.post("/definition/parse", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] and r["count"] == 2
+
+
+def test_verify_run_uses_definition_when_present(client, monkeypatch):
+    captured = {}
+
+    def fake_def(*a, **k):
+        captured.update(k)
+        return (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")),
+                DefIngestInfo(shells=[{"test_id": "001"}], excluded=[{"test_id": "002", "missing": ["入力 002.csv"]}]))
+
+    monkeypatch.setattr(web, "prepare_jobs_from_definition", fake_def)
+    monkeypatch.setattr(
+        web, "run_full_comparison",
+        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
+    )
+    data = {
+        "definition": (io.BytesIO(_DEF_YAML), "test_definition.yaml"),
+        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
+        "input_type": "database", "output_type": "file",
+    }
+    msgs = _ndjson_messages(
+        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
+    )
+    assert captured.get("definition_bytes")  # 정의 파일 경로를 탔다
+    assert any(m["type"] == "warning" and "002" in m["message"] for m in msgs)  # 누락 셸 명시
+    assert any(m["type"] == "summary" for m in msgs)
 
 
 # --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------

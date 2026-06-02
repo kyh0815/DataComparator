@@ -39,7 +39,7 @@ from src.core import run_full_comparison
 
 from . import connection
 from .serialize import event_to_dict, summary_to_dict
-from .upload import prepare_jobs
+from .upload import prepare_jobs, prepare_jobs_from_definition, summarize_definition
 
 app = Flask(__name__)
 
@@ -121,6 +121,15 @@ def connection_test():
         output_table=output_table,
     )
     return jsonify(result)
+
+
+@app.route("/definition/parse", methods=["POST"])
+def definition_parse():
+    """업로드된 test_definition.yaml을 파싱만 해서 셸 요약을 돌려준다(미리보기, 읽기전용)."""
+    f = request.files.get("definition")
+    if not f or not f.filename:
+        return jsonify(ok=False, count=0, shells=[], message="定義ファイルを選択してください。"), 400
+    return jsonify(summarize_definition(f.read()))
 
 
 @app.route("/connection/save", methods=["POST"])
@@ -219,6 +228,9 @@ def verify_run():
     # 요청 컨텍스트가 살아 있을 때 파일을 읽어 둔다(제너레이터는 나중에 실행됨).
     inputs, dup_in = _collect_csv(request.files.getlist("asis_inputs"))
     outputs, dup_out = _collect_csv(request.files.getlist("asis_outputs"))
+    # 정의 파일이 있으면 그것이 정본(셸별 타입·테이블·배치는 정의에서). 없으면 폼 3칸 사용.
+    f_def = request.files.get("definition")
+    def_bytes = f_def.read() if f_def and f_def.filename else b""
 
     def stream():
         if not _run_lock.acquire(blocking=False):
@@ -242,30 +254,45 @@ def verify_run():
                 yield _ndjson({"type": "done"})
                 return
             try:
-                config, tmpdir, pairing = prepare_jobs(
-                    base_config,
-                    inputs=inputs,
-                    outputs=outputs,
-                    input_type=input_type,
-                    output_type=output_type,
-                    encoding=encoding,
-                    input_table=input_table,
-                    output_table=output_table,
-                    batch_program=batch_program,
-                )
+                if def_bytes:
+                    # 정의 파일 주도: yml이 정본(타입·테이블·배치는 정의에서, 폼 3칸 무시).
+                    config, tmpdir, dinfo = prepare_jobs_from_definition(
+                        base_config,
+                        definition_bytes=def_bytes,
+                        inputs=inputs,
+                        outputs=outputs,
+                        encoding=encoding,
+                    )
+                    excluded, unmatched_msg = dinfo.excluded, None
+                else:
+                    config, tmpdir, pairing = prepare_jobs(
+                        base_config,
+                        inputs=inputs,
+                        outputs=outputs,
+                        input_type=input_type,
+                        output_type=output_type,
+                        encoding=encoding,
+                        input_table=input_table,
+                        output_table=output_table,
+                        batch_program=batch_program,
+                    )
+                    excluded = None
+                    unmatched_msg = (
+                        "ペアにならず除外: 入力="
+                        f"{pairing.unmatched_input} / 正解={pairing.unmatched_output}"
+                        "（入力と正解は同じファイル名で対応します）"
+                    ) if (pairing.unmatched_input or pairing.unmatched_output) else None
             except Exception as exc:  # noqa: BLE001
                 yield _ndjson({"type": "error", "message": f"準備に失敗しました: {exc}"})
                 yield _ndjson({"type": "done"})
                 return
 
-            # C·④: 짝 안 맞는 파일은 조용히 버리지 않고 명시 노출(실행은 매칭분만 진행).
-            if pairing.unmatched_input or pairing.unmatched_output:
-                yield _ndjson({
-                    "type": "warning",
-                    "message": "ペアにならず除外: 入力="
-                    f"{pairing.unmatched_input} / 正解={pairing.unmatched_output}"
-                    "（入力と正解は同じファイル名で対応します）",
-                })
+            # C·④: 누락/미매칭은 조용히 버리지 않고 명시 노출(실행은 유효분만 진행).
+            if def_bytes and excluded:
+                shells = " / ".join(f"{e['test_id']}({', '.join(e['missing'])})" for e in excluded)
+                yield _ndjson({"type": "warning", "message": f"ファイル不足で除外したシェル: {shells}"})
+            elif unmatched_msg:
+                yield _ndjson({"type": "warning", "message": unmatched_msg})
 
             events: queue.Queue = queue.Queue()
 

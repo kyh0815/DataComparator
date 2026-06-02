@@ -423,6 +423,15 @@
         <h2>アップロード検証（複数ペア対応）</h2>
       </div>
       <div class="panel-body">
+        <div class="filebox" style="margin-bottom:14px">
+          <span class="fh">定義ファイル <span class="opt" style="color:var(--muted-2);font-weight:500">(任意 · test_definition.yaml)</span></span>
+          <div class="fsub">アップロードすると<b>シェル定義（I/O・テーブル・バッチ）がファイルから読み込まれ</b>、接続設定タブのフォーム設定より優先されます。シェルごとに定義が異なる実務ケース向け。</div>
+          <div class="frow">
+            <label class="file-btn">＋ 定義ファイル選択<input type="file" id="u-def" accept=".yaml,.yml"></label>
+            <button class="file-btn" type="button" id="u-def-clear" style="display:none;color:var(--muted);border-color:var(--line-2)">✕ 解除</button>
+          </div>
+          <div class="count" id="u-def-info"></div>
+        </div>
         <div class="grid cols2">
           <div class="filebox">
             <span class="fh">As-Is 入力CSV</span>
@@ -767,6 +776,27 @@ function refreshCounts(){
 }
 for (const id of ["u-in-files","u-in-dir","u-out-files","u-out-dir"]) $(id).addEventListener("change", refreshCounts);
 
+// 定義ファイル: 선택 시 파싱 미리보기(셸 수·타입). 정의 파일이 있으면 폼 3칸보다 우선.
+function ioJp(t){ return t==="database" ? "DB" : "ファイル"; }
+$("u-def").addEventListener("change", async () => {
+  const f=$("u-def").files[0];
+  const info=$("u-def-info"); const clr=$("u-def-clear");
+  if (!f){ info.textContent=""; clr.style.display="none"; return; }
+  clr.style.display="inline-flex";
+  info.textContent="解析中…";
+  try{
+    const fd=new FormData(); fd.append("definition", f, f.name);
+    const r=await (await fetch("/definition/parse",{method:"POST",body:fd})).json();
+    if (!r.ok){ info.innerHTML=`<span style="color:var(--ng)">解析エラー: ${escapeHtml(r.message)}</span>`; return; }
+    const head=r.shells.slice(0,8).map(s=>`${escapeHtml(s.test_id)}(${ioJp(s.input_type)}→${ioJp(s.output_type)})`).join("、");
+    info.innerHTML=`定義ファイル使用中: <b>${r.count}</b> シェル — ${head}${r.shells.length>8?" …":""}`+
+      `<br><span style="color:var(--muted);font-weight:500">フォームの I/O・テーブル・バッチ設定は無視され、定義ファイルが優先されます</span>`;
+  }catch(e){ info.textContent="通信エラー: "+e; }
+});
+$("u-def-clear").addEventListener("click", () => {
+  $("u-def").value=""; $("u-def-info").textContent=""; $("u-def-clear").style.display="none";
+});
+
 $("u-run").addEventListener("click", async () => {
   if (running) return;
   const ins=mergeCsv($("u-in-files"),$("u-in-dir"));
@@ -786,6 +816,8 @@ $("u-run").addEventListener("click", async () => {
   fd.append("input_table", $("c-intable").value);
   fd.append("output_table", $("c-outtable").value);
   fd.append("batch_program", $("c-batch").value);
+  const defFile=$("u-def").files[0];
+  if (defFile) fd.append("definition", defFile, defFile.name);   // 있으면 정의 파일이 정본
 
   try{
     const resp=await fetch("/verify/run",{method:"POST",body:fd});

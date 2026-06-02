@@ -15,11 +15,13 @@ Phase 6 변경(D-028 Phase B 일반화):
 from __future__ import annotations
 
 import dataclasses
+import shutil
 import tempfile
 from pathlib import Path
 
 import yaml
 
+from src.config.definition import DefinitionError, load_definitions
 from src.config.settings import load_config
 from src.core.models import Config
 
@@ -158,4 +160,158 @@ def _definition_entry(
         "execution": {"shell_program": shell_program, "timeout": 60},
         "output": out,
         "expected_output_csv": f"{stem}.csv",
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 정의 파일 주도(definition-driven) — yml이 정본. 셸별 타입·테이블·배치가 다른 실무 케이스.
+# (D-021/022 정의 파일 주도 설계를 GUI로 노출. prepare_jobs의 "화면 3칸" 방식과 양립.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclasses.dataclass
+class DefIngestInfo:
+    """정의 파일 적재 결과. excluded는 파일 누락 셸(silent drop 금지 — 화면에 명시)."""
+
+    shells: list[dict]  # 실행 대상 [{test_id, input_type, output_type, input_table, output_table}]
+    excluded: list[dict]  # 파일 누락 제외 [{test_id, missing:[...]}]
+
+
+def summarize_definition(definition_bytes: bytes) -> dict:
+    """업로드된 정의 파일을 파싱만 해서 셸 요약을 돌려준다(미리보기용, 실행·파일 불요).
+
+    {ok, count, shells:[{test_id,input_type,output_type,input_table,output_table,
+    input_csv,expected_output_csv}], message}. 파싱 실패는 ok=False + 메시지.
+    """
+    with tempfile.NamedTemporaryFile("wb", suffix=".yaml", delete=False) as tf:
+        tf.write(definition_bytes)
+        p = Path(tf.name)
+    try:
+        defs = load_definitions(p)
+    except DefinitionError as exc:
+        return {"ok": False, "count": 0, "shells": [], "message": f"定義ファイルの解析に失敗: {exc}"}
+    finally:
+        p.unlink(missing_ok=True)
+    shells = [
+        {
+            "test_id": d.test_id,
+            "input_type": d.input_type,
+            "output_type": d.output_type,
+            "input_table": d.input_table,
+            "output_table": d.output_table,
+            "input_csv": d.input_csv,
+            "expected_output_csv": d.expected_output_csv,
+        }
+        for d in defs
+    ]
+    return {"ok": True, "count": len(shells), "shells": shells, "message": f"{len(shells)} シェルを読み込みました。"}
+
+
+def prepare_jobs_from_definition(
+    base_config_path: str,
+    *,
+    definition_bytes: bytes,
+    inputs: dict[str, bytes],
+    outputs: dict[str, bytes],
+    encoding: str,
+) -> tuple[Config, Path, DefIngestInfo]:
+    """업로드된 정의 파일을 정본으로 임시 작업폴더·Config·정규화 정의를 만든다(정의 파일 주도).
+
+    정의의 각 셸이 참조하는 input_csv/expected_output_csv 파일명을 업로드 CSV(stem 키)와 맞춰
+    배치하고, 둘 다 있는 셸만 실행 대상으로 삼는다(누락 셸은 DefIngestInfo.excluded로 명시 노출).
+    셸의 shell_program 상대경로는 repo 루트 기준 절대화한다(prepare_jobs와 동일 — 임시 디렉토리
+    기준 오해석 회피). 타입·테이블·배치는 모두 정의 파일에서 온다(화면 폼 무시).
+    """
+    base = load_config(base_config_path)
+
+    tmp = Path(tempfile.mkdtemp(prefix="dc_upload_"))
+    (tmp / "input").mkdir()
+    (tmp / "output").mkdir()
+    (tmp / "tobe").mkdir()
+    (tmp / "tobe_input").mkdir()
+
+    uploaded = tmp / "_uploaded_definition.yaml"
+    uploaded.write_bytes(definition_bytes)
+    try:
+        defs = load_definitions(uploaded)
+    except DefinitionError as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise UploadError(f"定義ファイルの解析に失敗しました: {exc}") from exc
+
+    run_tests: list[dict] = []
+    ran: list[dict] = []
+    excluded: list[dict] = []
+    for d in defs:
+        in_stem = Path(d.input_csv).stem
+        out_stem = Path(d.expected_output_csv).stem
+        missing = []
+        if in_stem not in inputs:
+            missing.append(f"入力 {d.input_csv}")
+        if out_stem not in outputs:
+            missing.append(f"正解 {d.expected_output_csv}")
+        if missing:
+            excluded.append({"test_id": d.test_id, "missing": missing})
+            continue
+        (tmp / "input" / d.input_csv).write_bytes(inputs[in_stem])
+        (tmp / "output" / d.expected_output_csv).write_bytes(outputs[out_stem])
+        run_tests.append(_definition_entry_from(d))
+        ran.append(
+            {
+                "test_id": d.test_id,
+                "input_type": d.input_type,
+                "output_type": d.output_type,
+                "input_table": d.input_table,
+                "output_table": d.output_table,
+            }
+        )
+
+    if not run_tests:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise UploadError(
+            "定義に対応する入力/正解 CSV が見つかりません（ファイル名が定義の input/expected と一致する必要があります）。"
+        )
+
+    definition_path = tmp / "test_definition.yaml"
+    definition_path.write_text(
+        yaml.safe_dump({"tests": run_tests}, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    config = dataclasses.replace(
+        base,
+        encoding=encoding,
+        asis_input_dir=tmp / "input",
+        asis_output_dir=tmp / "output",
+        tobe_output_dir=tmp / "tobe",
+        tobe_input_dir=tmp / "tobe_input",
+        definition_file=definition_path,
+    )
+    return config, tmp, DefIngestInfo(shells=ran, excluded=excluded)
+
+
+def _definition_entry_from(d) -> dict:
+    """ShellDefinition을 Boss 구조 정의 dict로 되돌린다. shell_program은 절대경로화."""
+    program = Path(d.shell_program)
+    shell_program = str(program if program.is_absolute() else (_REPO_ROOT / program).resolve())
+
+    inp: dict = {"type": d.input_type, "csv": d.input_csv}
+    if d.input_type == "database":
+        inp["table"] = d.input_table
+    if d.input_dest_dir:
+        inp["dest_dir"] = d.input_dest_dir
+
+    out: dict = {"type": d.output_type}
+    if d.output_type == "file":
+        out["file"] = d.output_file
+    else:
+        out["table"] = d.output_table
+        out["export_csv"] = d.export_csv
+
+    return {
+        "test_id": d.test_id,
+        "test_name": d.test_name,
+        "input": inp,
+        "execution": {"shell_program": shell_program, "timeout": d.timeout_seconds},
+        "output": out,
+        "expected_output_csv": d.expected_output_csv,
     }
