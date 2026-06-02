@@ -383,7 +383,7 @@
         <div class="grid">
           <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><input type="text" id="c-intable" value="{{ conn.input_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
           <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><input type="text" id="c-outtable" value="{{ conn.output_table }}"><div class="hint">既定値。顧客環境では実テーブル名に変更</div></div>
-          <div class="field"><label class="lab">バッチ経路 <span class="opt">(空欄=同梱stub)</span></label><input type="text" id="c-batch" placeholder="stub_batch/run_batch_db.py"><div class="hint">空欄なら同梱 stub を自動選択</div></div>
+          <div class="field"><label class="lab">バッチ経路 <span class="opt">(同梱stub / 実バッチ)</span></label><input type="text" id="c-batch" placeholder="stub_batch/run_batch_db.py"><div class="hint">入力タイプに応じた同梱 stub を自動表示。実バッチは経路を入力</div></div>
         </div>
         <div class="radio-group" style="margin-top:18px">
           <div class="radio">
@@ -813,10 +813,24 @@ $("u-run").addEventListener("click", async () => {
   }
 });
 
+/* ───────── バッチ経路: 入力タイプに応じた stub を自動表示 ─────────
+   값이 비었거나 알려진 stub이면 입력타입에 맞는 stub으로 동기화한다(사용자가
+   실제 배치 경로를 직접 입력하면 그 값을 보존). 입력=DB→db stub, 입력=ファイル→file stub. */
+const STUB_DB="stub_batch/run_batch_db.py", STUB_FILE="stub_batch/run_batch_file.py";
+function syncBatchDefault(){
+  const el=$("c-batch"); const v=el.value.trim();
+  if (v==="" || v===STUB_DB || v===STUB_FILE){
+    el.value = ioType("itype")==="database" ? STUB_DB : STUB_FILE;
+  }
+}
+
 /* ───────── 初期化 ───────── */
 restoreLocal();
+syncBatchDefault();
 for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
-for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", saveLocal);
+for (const r of document.querySelectorAll('input[name=itype]'))
+  r.addEventListener("change", () => { syncBatchDefault(); saveLocal(); });
+for (const r of document.querySelectorAll('input[name=otype]')) r.addEventListener("change", saveLocal);
 </script>
 </body>
 </html>
