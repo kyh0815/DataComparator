@@ -372,27 +372,30 @@
           <div class="field"><label class="lab">設定ファイル</label><input type="text" id="c-config" value="{{ default_config }}"></div>
         </div>
         <div class="callout sec">
-          
           <div>パスワードはツールに入力・保存しません（<b>モデルA</b>）。DBA が環境変数 <code>{{ conn.password_env }}</code> または <code>.pgpass</code> に設定し、ツールはそこから取得します。</div>
         </div>
         <div class="callout warn">
-          
           <div>検証専用の <b>最小権限アカウント</b> と <b>検証専用 DB / スキーマ</b> を使用してください。本ツールは入力テーブルを TRUNCATE+INSERT、結果テーブルに INSERT するため、<b>本番 DB を指すと汚染します</b>。</div>
         </div>
+        <div class="actions">
+          <button class="ghost" id="c-test">接続して取得</button>
+          <button class="ghost" id="c-save">保存</button>
+        </div>
+        <div class="callout info">
+          <div><b>「接続して取得」</b>は接続確認（<code>SELECT 1</code>）＋ public スキーマのテーブル一覧取得（読み取り専用）。取得後、下の<b>「テーブル選択」</b>で入力/出力テーブルを選べます。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
+        </div>
+        <div class="checks" id="c-checks"></div>
+        <div class="toast" id="c-toast"></div>
       </div>
     </div>
 
     <div class="panel">
       <div class="panel-head">
         <span class="num">2</span>
-        <h2>接続テスト用テーブル <span class="opt" style="font-weight:500;color:var(--muted-2)">／ 簡易モード既定</span></h2>
+        <h2>テーブル選択 <span class="opt" style="font-weight:500;color:var(--muted-2)">／ 簡易モード既定</span></h2>
       </div>
       <div class="panel-body">
-        <div class="grid">
-          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><select id="c-intable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint" id="c-intable-hint">接続テストで取得</div></div>
-          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><select id="c-outtable" disabled><option value="">— 接続テストで取得 —</option></select><div class="hint" id="c-outtable-hint">接続テストで取得</div></div>
-        </div>
-        <div class="radio-group" style="margin-top:18px">
+        <div class="radio-group">
           <div class="radio">
             <span class="glab">入力</span>
             <div class="seg">
@@ -408,16 +411,13 @@
             </div>
           </div>
         </div>
-        <div class="actions">
-          <button class="ghost" id="c-test">接続テスト</button>
-          <button class="ghost" id="c-save">保存</button>
+        <div class="grid" style="margin-top:18px">
+          <div class="field"><label class="lab">入力テーブル <span class="opt">(input=DB時)</span></label><select id="c-intable" disabled><option value="">— 接続して取得 —</option></select><div class="hint" id="c-intable-hint">接続して取得</div></div>
+          <div class="field"><label class="lab">出力テーブル <span class="opt">(output=DB時)</span></label><select id="c-outtable" disabled><option value="">— 接続して取得 —</option></select><div class="hint" id="c-outtable-hint">接続して取得</div></div>
         </div>
         <div class="callout info">
-          
-          <div><b>「接続テスト」</b>は接続確認（<code>SELECT 1</code>）＋ public スキーマのテーブル一覧取得（読み取り専用）。取得後、入力/出力テーブルを一覧から選択します。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（定義なしの簡易検証時のみ、ここの選択が既定として使われます）。<b>保存</b>は DB接続・エンコーディングを <code>config.yaml</code> に書き込みます（パスワードは保存しません）。</div>
+          <div>上の<b>「接続して取得」</b>後に有効になります。入力/出力が DB のとき、対象テーブルを一覧から選択します。<b>検証時のシェル定義は「アップロード検証」タブの定義ファイル／マッピング表が正本</b>です（定義なしの簡易検証時のみ、ここの選択が既定として使われます）。</div>
         </div>
-        <div class="checks" id="c-checks"></div>
-        <div class="toast" id="c-toast"></div>
       </div>
     </div>
   </section>
@@ -608,7 +608,7 @@ function syncTableEnabled(){
     sel.disabled = !(isDB && has);
     if(!isDB) sel.value="";                       // 파일 흐름: 테이블 미사용 → 비움
     const hint=$(id+"-hint");
-    if(hint) hint.textContent = !isDB ? fileMsg : (has ? "一覧から選択" : "接続テストで取得");
+    if(hint) hint.textContent = !isDB ? fileMsg : (has ? "一覧から選択" : "接続して取得");
   }
   saveLocal();
 }
@@ -616,10 +616,10 @@ function syncTableEnabled(){
 /* ───────── 接続テスト（実 /connection/test, 読み取り専用） ───────── */
 $("c-test").addEventListener("click", async () => {
   saveLocal();
-  const btn=$("c-test"); btn.disabled=true; btn.classList.add("busy"); btn.textContent="接続テスト中…";
+  const btn=$("c-test"); btn.disabled=true; btn.classList.add("busy"); btn.textContent="接続中…";
   $("c-toast").style.display="none";
   const cont=$("c-checks"); cont.classList.add("show");
-  cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
+  cont.innerHTML=`<div class="ck-title">接続結果（読み取り専用）</div>`+
     `<div class="c pend"><span class="mk">…</span><span class="nm">確認中…</span><span class="dt"></span></div>`;
   try{
     const resp=await fetch("/connection/test",{method:"POST",body:connForm()});
@@ -628,16 +628,16 @@ $("c-test").addEventListener("click", async () => {
       `<div class="c ${c.ok?"ok":"bad"}"><span class="mk">${c.ok?"✓":"✗"}</span>`+
       `<span class="nm">${escapeHtml(c.name)}</span>`+
       `<span class="dt">${escapeHtml(c.detail||(c.ok?"OK":""))}</span></div>`).join("");
-    cont.innerHTML=`<div class="ck-title">接続テスト結果（読み取り専用）</div>`+
+    cont.innerHTML=`<div class="ck-title">接続結果（読み取り専用）</div>`+
       (rows || `<div class="c bad"><span class="mk">✗</span><span class="nm">確認できませんでした</span><span class="dt"></span></div>`);
     // 취득한 테이블 목록으로 옵션 채우고, 라디오에 맞춰 활성/비활성 동기화.
     tablesCache = r.tables || [];
     fillTableOptions("c-intable", tablesCache);
     fillTableOptions("c-outtable", tablesCache);
     syncTableEnabled();
-    toast("c-toast", r.message || (r.ok?"接続テスト成功":"接続テスト失敗"), !!r.ok);
+    toast("c-toast", r.message || (r.ok?"接続成功":"接続失敗"), !!r.ok);
   }catch(err){ toast("c-toast","通信エラー: "+err,false); }
-  finally{ btn.disabled=false; btn.classList.remove("busy"); btn.textContent="接続テスト"; }
+  finally{ btn.disabled=false; btn.classList.remove("busy"); btn.textContent="接続して取得"; }
 });
 
 /* ───────── 保存（実 /connection/save, DB接続・encodingのみ） ───────── */
