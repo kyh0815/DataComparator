@@ -244,18 +244,18 @@ def prepare_jobs_from_definition(
     ran: list[dict] = []
     excluded: list[dict] = []
     for d in defs:
-        in_stem = Path(d.input_csv).stem
-        out_stem = Path(d.expected_output_csv).stem
-        missing = []
-        if in_stem not in inputs:
-            missing.append(f"入力 {d.input_csv}")
-        if out_stem not in outputs:
-            missing.append(f"正解 {d.expected_output_csv}")
+        # D-033: 다중 입력/다중 출력 — 정의가 참조하는 모든 입력 CSV·정답 파일을 stem으로 매칭.
+        need_in = [s.csv for s in d.inputs]
+        need_out = [o.expected for o in d.outputs]
+        missing = [f"入力 {n}" for n in need_in if Path(n).stem not in inputs]
+        missing += [f"正解 {n}" for n in need_out if Path(n).stem not in outputs]
         if missing:
             excluded.append({"test_id": d.test_id, "missing": missing})
             continue
-        (tmp / "input" / d.input_csv).write_bytes(inputs[in_stem])
-        (tmp / "output" / d.expected_output_csv).write_bytes(outputs[out_stem])
+        for n in need_in:
+            (tmp / "input" / n).write_bytes(inputs[Path(n).stem])
+        for n in need_out:
+            (tmp / "output" / n).write_bytes(outputs[Path(n).stem])
         run_tests.append(_definition_entry_from(d))
         ran.append(
             {
@@ -292,30 +292,40 @@ def prepare_jobs_from_definition(
 
 
 def _definition_entry_from(d) -> dict:
-    """ShellDefinition을 Boss 구조 정의 dict로 되돌린다. shell_program은 절대경로화."""
+    """ShellDefinition을 정의 dict로 되돌린다. **다중 입력(tables[])·다중 출력(outputs[]) 보존**(D-033).
+
+    shell_program은 절대경로화. 단일이어도 리스트 신형으로 재방출(로더가 둘 다 읽음).
+    """
     program = Path(d.shell_program)
     shell_program = str(program if program.is_absolute() else (_REPO_ROOT / program).resolve())
 
-    inp: dict = {"type": d.input_type, "csv": d.input_csv}
-    if d.input_type == "database":
-        inp["table"] = d.input_table
-    if d.input_dest_dir:
-        inp["dest_dir"] = d.input_dest_dir
+    tables = []
+    for spec in d.inputs:
+        item: dict = {"type": spec.type, "csv": spec.csv}
+        if spec.type == "database":
+            item["table"] = spec.table
+        if spec.dest_dir:
+            item["dest_dir"] = spec.dest_dir
+        tables.append(item)
 
-    out: dict = {"type": d.output_type}
-    if d.output_type == "file":
-        out["file"] = d.output_file
-    else:
-        out["table"] = d.output_table
-        out["export_csv"] = d.export_csv
+    outputs = []
+    for o in d.outputs:
+        item = {"type": o.type, "expected": o.expected}
+        if o.type == "database":
+            item["table"] = o.table
+            item["export_as"] = o.export_as
+        else:
+            item["file"] = o.file
+        if o.name:
+            item["name"] = o.name
+        outputs.append(item)
 
     return {
         "test_id": d.test_id,
         "test_name": d.test_name,
-        "input": inp,
+        "input": {"tables": tables},
         "execution": {"shell_program": shell_program, "timeout": d.timeout_seconds},
-        "output": out,
-        "expected_output_csv": d.expected_output_csv,
+        "outputs": outputs,
     }
 
 

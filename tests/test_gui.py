@@ -583,3 +583,37 @@ def test_cleanup_tmpdir_refuses_outside_tempdir(tmp_path, monkeypatch):
     web._cleanup_tmpdir(outside)
     assert outside.exists()  # 보호됨(삭제 거부)
     web._cleanup_tmpdir(Path("."))  # cwd도 거부 — 예외/삭제 없이 통과해야 함
+
+
+def test_prepare_jobs_from_definition_preserves_multi_io(tmp_path_factory):
+    """D-033 P2: 다중 입력/출력 정의를 업로드하면 정규화 정의가 그 다중성을 보존한다."""
+    yml = (
+        b"tests:\n"
+        b"  - test_id: \"001\"\n"
+        b"    input:\n"
+        b"      type: database\n"
+        b"      tables:\n"
+        b"        - { csv: trans.csv, table: transaction_log }\n"
+        b"        - { csv: cust.csv,  table: customer_master }\n"
+        b"    execution: { shell_program: stub_batch/run_batch_db.py }\n"
+        b"    outputs:\n"
+        b"      - { type: database, table: tobe_result, export_as: A.csv, expected: gA.csv }\n"
+        b"      - { type: file,     file: B.sam,                          expected: gB.sam }\n"
+    )
+    config, tmpdir, info = prepare_jobs_from_definition(
+        _EXAMPLE_CONFIG, definition_bytes=yml,
+        inputs={"trans": b"a\n1\n", "cust": b"a\n2\n"},
+        outputs={"gA": b"x\n1\n", "gB": b"y\n2\n"},
+        encoding="Shift_JIS",
+    )
+    try:
+        d = load_definitions(config.definition_file)[0]
+        assert [s.table for s in d.inputs] == ["transaction_log", "customer_master"]
+        assert [(o.type, o.expected) for o in d.outputs] == [
+            ("database", "gA.csv"), ("file", "gB.sam")
+        ]
+        # 입력 2건·정답 2건 파일이 임시 작업폴더에 배치됨
+        assert (config.asis_input_dir / "trans.csv").is_file()
+        assert (config.asis_output_dir / "gB.sam").is_file()
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)

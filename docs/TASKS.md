@@ -461,7 +461,7 @@
 **작업** (D-033 P1): `models.InputSpec` + `ShellDefinition.inputs[]`(`__post_init__` 백필) / `definition`이 신형 `input.tables[]`·구형 단일 모두 파싱→정규화 / `orchestrator._load_step` 루프 적재(DB마다 commit, D-023) / `_needs_db` 다건.
 **완료 기준**: 하위호환(기존 단일형 무수정 통과, 전체 160 passed) + 다중입력 테스트 4건. ✅
 
-### T7-2. 다중 출력 추출·비교 `[ ]`
+### T7-2. 다중 출력 추출·비교 `[x]`
 
 **작업** (D-033 P2): `OutputSpec`/`ShellDefinition.outputs[]` + `ComparisonResult.output_name`(셸당 결과 N건) / `runner` 다중 출력 추출(DB→export / file→그대로) / `reporter` (shell_id,output) 행·RunSummary `total=출력 수`(D-016 합항등 유지) / 진행 이벤트 출력 단위 / GUI 출력별 표시·카드·필터(출력 단위).
 **완료 기준**: 다중출력 정의(파일+DB 동시)로 출력별 OK/NG 결과·리포트·화면. 하위호환(단일=출력 1) 유지.
