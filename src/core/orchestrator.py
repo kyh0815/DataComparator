@@ -108,11 +108,12 @@ def _process_shell(
 
         step = "compare"
         results: list[ComparisonResult] = []
+        multi = len(definition.outputs) > 1  # 단일 출력은 output_name=None(리포트 '-'·화면 라벨 없음)
         for out, tobe_path in resolved:
             asis_path = config.asis_output_dir / out.expected
             r = compare_files(asis_path, tobe_path, encoding=config.encoding)
             r.shell_id = definition.test_id  # 파일명 파생 대신 셸 ID로 못박음
-            r.output_name = out.label
+            r.output_name = out.label if multi else None
             results.append(r)
         _emit_step(on_progress, definition, index, total, "compare", _worst_status(results))
         return results

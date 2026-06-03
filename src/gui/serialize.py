@@ -27,6 +27,7 @@ def result_to_dict(result: ComparisonResult) -> dict:
     """ComparisonResult를 dict로. diff_lines는 표시에 필요한 필드만 펼친다."""
     return {
         "shell_id": result.shell_id,
+        "output_name": result.output_name,  # D-033 P2: 다중 출력 식별자(단일/오류는 None)
         "status": result.status.value,
         "error_message": result.error_message,
         "diff_lines": [

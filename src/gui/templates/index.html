@@ -364,6 +364,13 @@
   }
   .detail .more { font-size:11.5px; color:var(--muted); margin-top:8px; font-weight:600; }
 
+  /* 출력별 결과 블록(D-033 P2: 셸 안 다중 출력) */
+  .outs { margin:0 15px 13px; display:flex; flex-direction:column; gap:7px; }
+  .outrow { border:1px solid var(--line); border-radius:7px; padding:8px 11px; background:#fbfcfd; }
+  .outhead { display:flex; align-items:center; gap:9px; font-size:12px; }
+  .outhead .outname { font-family:var(--mono); font-weight:700; color:var(--ink); }
+  .outrow .detail { margin:7px 0 0; }
+
   .empty {
     text-align:center; padding:34px 20px; color:var(--muted-2); font-size:13px;
   }
@@ -742,13 +749,18 @@ function showBanner(id, html){ const b=$(id); b.innerHTML=`<div>${html}</div>`; 
 /* ───────── 카드 클릭 필터 ───────── */
 let activeFilter=null;   // null=전체, "NG" 등, 또는 "MISSING_TOBE,MISSING_ASIS"
 function applyFilter(){
-  const want = activeFilter ? activeFilter.split(",") : null;
+  const want = activeFilter ? activeFilter.split(",") : null;  // null=전체
   let shown=0;
-  document.querySelectorAll('#results .shell').forEach(r=>{
-    const st=r.dataset.status||"";
-    const show = !want || want.includes(st);
-    r.style.display = show ? "" : "none";
-    if(show) shown++;
+  // 필터는 출력 단위(.outrow). 셸은 보이는 출력이 하나라도 있을 때만 표시(실행 중=출력 0개는 표시).
+  document.querySelectorAll('#results .shell').forEach(shell=>{
+    const rows = shell.querySelectorAll('.outrow');
+    let anyVisible=false;
+    rows.forEach(o=>{
+      const show = !want || want.includes(o.dataset.status||"");
+      o.style.display = show ? "" : "none";
+      if(show){ anyVisible=true; shown++; }
+    });
+    shell.style.display = (rows.length===0 || anyVisible) ? "" : "none";
   });
   $("filter-empty").style.display = (activeFilter && shown===0) ? "block" : "none";
   updateFilterHint();
@@ -798,7 +810,7 @@ function shellRow(id,index,total){
        <span class="connector" data-conn="1"></span>
        <span class="step" data-step="compare"><span class="sdot"></span>結果比較 <span class="res"></span></span>
      </div>
-     <div class="detail" id="detail-${id}"></div>`;
+     <div class="outs" id="outs-${id}"></div>`;   // D-033 P2: 출력별 결과 블록
   $("results").appendChild(el);
   return el;
 }
@@ -841,9 +853,8 @@ function diffMark(a,b){
   ];
 }
 const DIFF_CAP = 200;   // 셸당 화면 표시 상한(대량 NG에서 DOM 폭증 방지). 체크 시 해제.
-function renderDetailDiff(id, diff_lines){
+function diffHtml(diff_lines){
   diff_lines = diff_lines || [];
-  // 기본: 전부 표시(상한 DIFF_CAP까지). 체크박스(verboseFlag)면 상한 해제.
   const lines = verboseFlag ? diff_lines : diff_lines.slice(0, DIFF_CAP);
   const html = lines.map(d=>{
     const [a,b]=diffMark(d.asis_content,d.tobe_content);
@@ -855,13 +866,35 @@ function renderDetailDiff(id, diff_lines){
   }).join("");
   const more = (!verboseFlag && diff_lines.length>DIFF_CAP)
     ? `<div class="more">ほか ${diff_lines.length-DIFF_CAP} 行（「上限なしで全件表示」または レポート/.diff で確認）</div>` : "";
-  const d=$("detail-"+id); d.innerHTML=html+more; d.classList.add("show");
+  return html+more;
 }
-function renderDetailErr(id, text){
-  const d=$("detail-"+id); d.innerHTML=`<div class="errbox">${escapeHtml(text)}</div>`; d.classList.add("show");
+const _MISS_MSG = { "MISSING_TOBE":"To-Be 出力がありません（新環境バッチが結果を生成しませんでした）",
+                    "MISSING_ASIS":"As-Is 正解CSVがありません（対応する正解ファイルが見つかりません）" };
+// 출력 1건 결과를 셸 안에 블록으로 추가(다중 출력이면 N개 누적). data-status로 카드 필터.
+function appendOutput(shell, r){
+  const cont=$("outs-"+shell); if(!cont) return;
+  const block=document.createElement("div");
+  block.className="outrow"; block.dataset.status=r.status;
+  const label = r.output_name ? `<span class="outname">${escapeHtml(r.output_name)}</span>` : "";
+  block.innerHTML = `<div class="outhead">${label}<span class="badge b-${r.status}"><span class="bd"></span>${r.status}</span></div>`;
+  if (r.status==="NG"){
+    block.innerHTML += `<div class="detail show" style="margin:7px 0 0">${diffHtml(r.diff_lines)}</div>`;
+  } else if (r.status==="MISSING_TOBE" || r.status==="MISSING_ASIS"){
+    block.innerHTML += `<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml(_MISS_MSG[r.status])}</div></div>`;
+  } else if (r.status==="ERROR"){
+    block.innerHTML += `<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml("エラー: "+(r.error_message||""))}</div></div>`;
+  }
+  cont.appendChild(block);
+}
+// 셸 헤더 배지 = 출력들의 worst(OK 아닌 게 있으면 그 상태).
+const _STATUS_PRIO = ["ERROR","MISSING_TOBE","MISSING_ASIS","NG","OK"];
+function shellAgg(shell){
+  const got=new Set([...$("outs-"+shell).querySelectorAll(".outrow")].map(o=>o.dataset.status));
+  for (const s of _STATUS_PRIO) if (got.has(s)) return s;
+  return "OK";
 }
 
-// 진행 이벤트: 단계 점등은 step 이벤트가, 배지·상세는 shell_done이 구동한다.
+// 진행 이벤트: 단계 점등은 step 이벤트가, 출력별 결과는 shell_done(출력마다)이 구동한다.
 function onProgress(m){
   if (m.kind==="shell_start"){
     shellRow(m.shell_id, m.index, m.total);
@@ -876,19 +909,10 @@ function onProgress(m){
   }
 }
 function renderDone(r){
-  setBadge(r.shell_id, r.status, r.status);
-  if (r.status==="NG"){
-    renderDetailDiff(r.shell_id, r.diff_lines);
-  } else if (r.status==="MISSING_TOBE" || r.status==="MISSING_ASIS"){
-    renderDetailErr(r.shell_id, r.status==="MISSING_TOBE"
-      ? "To-Be 出力がありません（新環境バッチが結果を生成しませんでした）"
-      : "As-Is 正解CSVがありません（対応する正解ファイルが見つかりません）");
-  } else if (r.status==="ERROR"){
-    renderDetailErr(r.shell_id, "エラー: "+(r.error_message||""));
-  }
+  appendOutput(r.shell_id, r);                 // 출력 결과 블록 추가(다중이면 누적)
+  setBadge(r.shell_id, shellAgg(r.shell_id));   // 헤더 배지 = 출력들의 worst
   finishRow(r.shell_id);
-  const row=$("shell-"+r.shell_id); if(row) row.dataset.status=r.status;  // 카드 필터용 상태
-  applyFilter();                                                          // 필터 적용 중이면 즉시 반영
+  applyFilter();                                // 필터 적용 중이면 새 출력에도 반영
 }
 
 function renderSummary(s){
