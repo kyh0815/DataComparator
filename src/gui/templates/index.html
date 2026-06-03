@@ -497,7 +497,7 @@
           </div>
         </div>
         <div class="actions">
-          <label class="chk"><input type="checkbox" id="u-verbose"> 詳細（すべての差分行）</label>
+          <label class="chk"><input type="checkbox" id="u-verbose"> 差分を上限なしで全件表示（200行超）</label>
           <span class="grow"></span>
           <button class="run" id="u-run">検証実行</button>
         </div>
@@ -526,7 +526,7 @@
           <div class="field"><label class="lab">シェル <span class="opt">(例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"></div>
         </div>
         <div class="actions">
-          <label class="chk"><input type="checkbox" id="verbose"> 詳細（すべての差分行）</label>
+          <label class="chk"><input type="checkbox" id="verbose"> 差分を上限なしで全件表示（200行超）</label>
           <span class="grow"></span>
           <button class="run" id="run">実行</button>
         </div>
@@ -840,9 +840,11 @@ function diffMark(a,b){
     escapeHtml(b.slice(0,s))+wrap(b.slice(s,eb),"b")+escapeHtml(b.slice(eb)),
   ];
 }
+const DIFF_CAP = 200;   // 셸당 화면 표시 상한(대량 NG에서 DOM 폭증 방지). 체크 시 해제.
 function renderDetailDiff(id, diff_lines){
   diff_lines = diff_lines || [];
-  const lines = verboseFlag ? diff_lines : diff_lines.slice(0,1);
+  // 기본: 전부 표시(상한 DIFF_CAP까지). 체크박스(verboseFlag)면 상한 해제.
+  const lines = verboseFlag ? diff_lines : diff_lines.slice(0, DIFF_CAP);
   const html = lines.map(d=>{
     const [a,b]=diffMark(d.asis_content,d.tobe_content);
     return `<div class="dline">
@@ -851,7 +853,8 @@ function renderDetailDiff(id, diff_lines){
        <div class="row tobe"><span class="tag">To-Be</span><span>${b}</span></div>
      </div>`;
   }).join("");
-  const more = (!verboseFlag && diff_lines.length>1) ? `<div class="more">ほか ${diff_lines.length-1} 行に差分があります（「詳細」で全件表示）</div>` : "";
+  const more = (!verboseFlag && diff_lines.length>DIFF_CAP)
+    ? `<div class="more">ほか ${diff_lines.length-DIFF_CAP} 行（「上限なしで全件表示」または レポート/.diff で確認）</div>` : "";
   const d=$("detail-"+id); d.innerHTML=html+more; d.classList.add("show");
 }
 function renderDetailErr(id, text){
