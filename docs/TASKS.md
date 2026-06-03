@@ -472,7 +472,13 @@
 
 **완료 기준**: 단일 화면 렌더, `/run` SSE 그대로 동작, 정의 미리보기(N셸·다중I/O 카운트), 접속테스트·저장 유지. `tests/test_gui.py` 그린.
 
-**deferred**: 정교 비교(공차·날짜, D-022), 매핑표(long CSV)→정의 생성, 물리 다중 DB 접속, SAM 등 확장자 실데이터 QA(2순위).
+**deferred**: 정교 비교(공차·날짜, D-022), 물리 다중 DB 접속, SAM 등 확장자 실데이터 QA(2순위).
+
+### T7-4. 매핑표(Long CSV) → 정의 yaml 생성 도구 `[x]`
+
+**작업** (D-035): 수기 YAML 회피 — 스프레드시트(CSV)로 셸-입출력 매핑을 채워 `test_definition.yaml` 생성. 다중 입출력 표현 위해 **Long 형식**(입출력 항목당 1행, `shell_id` 그룹화). **독립 CLI** `tools/mapping_to_definition.py`(GUI 아님 — T7-3 경량화 유지). 로더 실필드명 방출 + 엄격 검증 + round-trip. 예시 `samples/shell_mapping.long.example.csv`, 옛 단일I/O 매핑 예시 제거.
+
+**완료 기준**: `python tools/mapping_to_definition.py mapping.csv -o def.yaml` 동작, 다중I/O 그룹화, 오류 행별 보고+종료코드1, 생성 yaml 로더 통과. `tests/test_mapping_to_definition.py` 12개 통과.
 
 ---
 

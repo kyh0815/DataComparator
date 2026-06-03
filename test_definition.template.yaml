@@ -3,7 +3,11 @@
 # ----------------------------------------------------------------------------
 #  복사해서 값만 채우면 됩니다:
 #     cp test_definition.template.yaml test_definition.yaml
-#  규격 정본: docs/DEFINITION_SPEC.md   /   결정 이력: D-033·D-034
+#  규격 정본: docs/DEFINITION_SPEC.md   /   결정 이력: D-033·D-034·D-035
+#
+#  💡 YAML 손코딩이 부담스러우면 **스프레드시트(CSV)로 채워 변환**할 수 있습니다(D-035):
+#     예시: samples/shell_mapping.long.example.csv (Long 형식: 입출력 항목당 1행, shell_id로 묶음)
+#     변환: python tools/mapping_to_definition.py mapping.csv -o test_definition.yaml
 #
 #  ⚠️ 필드명 주의 (규격서 ↔ 실제 로더 차이):
 #     이 템플릿은 **실제 로더(src/config/definition.py)가 읽는 필드명**으로 작성됨.

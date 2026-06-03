@@ -548,3 +548,21 @@
 **deferred(유지)**: 정교 비교·무시 규칙(D-022), 매핑표(long CSV)→정의 생성(보조 도구로 분리 가능), 물리 다중 DB 접속, Core/CLI/리포트 일본어화, 실 설치 패키징. **SAM 등 확장자 실데이터 QA**(2순위)는 별도.
 
 **검증**: `tests/test_gui.py`(직렬화·`/run` SSE·report traversal·연결설정 저장/테스트·정의 미리보기 임베드·다중I/O 카운트) 그린. 라이브 렌더: 단일 화면, 업로드/매핑 어휘 부재, 정의 미리보기 N셸 표시.
+
+---
+
+## D-035. 매핑표(Long CSV) → 정의 yaml 생성 — 독립 도구·다중 입출력 (D-031 풀스키마 후속)
+
+**결정**: 수기 YAML을 피하려고 고객이 **스프레드시트(CSV)** 로 셸-입출력 매핑을 채우면 `test_definition.yaml`로 변환한다. D-031(GUI 매핑표→yaml)이 **단일 입출력(셸당 1행)** 만 됐고 T7-3(D-034)에서 GUI와 함께 제거됐는데, 사용자 요청으로 **풀스키마(다중 입출력) + 독립 도구**로 복원한다.
+
+1. **Long 형식**(셸당 1행 불가의 해법): 한 셸이 입력 N·출력 M(가변 길이)이라 납작한 1행으론 부족 → **입출력 항목당 1행, `shell_id`로 그룹화**. 열: `shell_id·kind(input|output)·type(database|file)·program·table·file·expected·name·test_name·timeout`. `file`=입력CSV/ DB출력 export CSV/ 파일출력 산출파일. `program` 공란=동봉 stub(첫 입력 타입 기준, 데모).
+2. **독립 CLI 도구** `tools/mapping_to_definition.py`(make_golden.py처럼 tools/): `python tools/mapping_to_definition.py mapping.csv -o test_definition.yaml`. **GUI에 넣지 않음** — T7-3(D-034) 경량화 유지. 설치 준비용: CSV 채움→변환 1회→yaml→config의 `definition_file`→경량 GUI/CLI로 실행.
+3. **로더 실필드명으로 방출**(input.tables[] + outputs[] + execution.shell_program + test_id) — 규격서(DEFINITION_SPEC)의 *목표* 명칭이 아니라 `src/config/definition.py`가 실제 읽는 이름. 핵심 로직 `mapping_to_definition(csv_text)->{ok,yaml,count,shells,errors}`로 분리(테스트 가능).
+4. **엄격 생성 + round-trip**(D-031 §2·3 계승): 한 행이라도 오류(필수열·kind/type·file/table/expected 누락·셸당 입출력 0건·program 불일치)면 전체 거부(부분 생성=전체검증 착시 차단, 행 번호 메시지). 생성 yaml을 `load_definitions`로 재파싱해 깨진 정의 차단. Excel 대비 utf-8-sig/cp932 디코드.
+5. **예시 교체**: `samples/shell_mapping.long.example.csv`(Long, 다중 입출력 셸 001 + 단일 002) 동봉. 옛 단일 입출력 `samples/shell_mapping.example.csv`(D-031, GUI 기능과 함께 사장)는 제거 — git 이력 보존, 혼동 방지. YAML 템플릿(`test_definition.template.yaml`) 헤더에 이 CSV 경로를 안내(쉬운 작성 경로).
+
+**이유**: "CSV가 YAML 손코딩보다 쉽다"(사용자). 셸별 정의의 *사실*(테이블·배치)은 데이터로 유추 불가라 표로 받되, yaml 문법은 도구가 짠다. 다중 입출력은 Long 형식이라야 표현되며, 운영 화면(경량 GUI)과 분리된 **설치 준비 도구**라 T7-3 방향과 양립한다.
+
+**deferred(유지)**: Excel(.xlsx) 직접 파싱 안 함(CSV로 저장 — 의존 최소화, CLAUDE 3-5). 매핑 자동 추론(파일만으로 테이블 유추) 불가. 정교 비교(D-022) 등 동일.
+
+**검증**: `tests/test_mapping_to_definition.py` 12개(다중I/O 그룹화·round-trip·필수열·kind/type·expected/table 누락·출력0건·program 불일치·CLI·동봉예시) 통과. 전체 148 passed(+DB skip). CLI 스모크: 동봉 예시 → 셸 001(입력3·출력2)/002(입력1·출력1) yaml 생성, 로더 통과.
