@@ -128,26 +128,54 @@ class OutputConfig:
 
 
 @dataclass
-class ShellDefinition:
-    """정의 파일(test_definition.yaml)의 테스트 1건 메타데이터 (D-021·D-022).
+class InputSpec:
+    """한 셸이 적재할 입력 1건 (기획 7.1 input.tables[] 복원, D-033).
 
-    Boss 기획 7.1 구조의 경량 버전. 입력·출력 각각 'database'|'file' 유형을 갖는다.
+    한 셸이 여러 테이블/파일을 입력으로 받을 수 있어(배치가 여러 테이블 조인) inputs 리스트의 한 항목.
+    """
+
+    csv: str  # asis_input_dir 기준 입력 CSV 파일명
+    type: str = "database"  # "database" | "file"
+    table: str | None = None  # type == database (적재 대상 테이블)
+    dest_dir: str | None = None  # type == file (복사 대상; 없으면 config.tobe_input_dir)
+
+
+@dataclass
+class ShellDefinition:
+    """정의 파일(test_definition.yaml)의 테스트 1건 메타데이터 (D-021·D-022 → D-033 다중입력).
+
+    Boss 기획 7.1 구조. 입력은 여러 건(inputs[]) 적재 가능. 출력은 P1에서 단일 유지(P2에서 다중).
     프로토 미사용 필드(comparison_rules·success_criteria 등)는 자리만 채운다.
     """
 
     test_id: str  # 3자리 zero-pad 셸 ID (예: "001")
     test_name: str
-    input_type: str  # "database" | "file"
-    input_csv: str  # asis_input_dir 기준 입력 CSV 파일명
+    input_type: str  # 하위호환: inputs[0].type (1차 입력)
+    input_csv: str  # 하위호환: inputs[0].csv
     output_type: str  # "database" | "file"
     expected_output_csv: str  # asis_output_dir 기준 정답지 파일명
     shell_program: str  # 기동할 stub(=shell) 경로
     timeout_seconds: int = 60
-    input_table: str | None = None  # input_type == database
-    input_dest_dir: str | None = None  # input_type == file (복사 대상; 없으면 config.tobe_input_dir)
+    input_table: str | None = None  # 하위호환: inputs[0].table
+    input_dest_dir: str | None = None  # 하위호환: inputs[0].dest_dir
     output_table: str | None = None  # output_type == database (결과 테이블)
     output_file: str | None = None  # output_type == file (배치가 직접 생성하는 파일명)
     export_csv: str | None = None  # output_type == database (다운로드 CSV 파일명)
+    # D-033: 다중 입력. definition 로더가 항상 채운다(단일도 1개짜리 리스트). 단일 필드는
+    # inputs[0]에서 파생한 하위호환 뷰 — 적재는 inputs[]를 정본으로 루프한다(orchestrator).
+    inputs: list[InputSpec] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # inputs 미지정으로 생성된 경우(직접 생성·구형 경로) 단일 필드에서 1건 파생 — 단일 진실 보장.
+        if not self.inputs and self.input_csv:
+            self.inputs = [
+                InputSpec(
+                    csv=self.input_csv,
+                    type=self.input_type,
+                    table=self.input_table,
+                    dest_dir=self.input_dest_dir,
+                )
+            ]
 
 
 @dataclass

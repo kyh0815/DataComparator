@@ -398,3 +398,28 @@ def test_db_consecutive_shells_no_truncate_block(tmp_path):
             )
         admin.commit()
         admin.close()
+
+
+# --- D-033: 다중 입력 적재 ---------------------------------------------------------
+
+
+def test_multi_input_loads_each_table(tmp_path, monkeypatch):
+    """inputs[]의 각 DB 입력이 대응 테이블에 적재되고, 적재마다 commit된다(D-023 ①)."""
+    from src.core.models import InputSpec
+
+    loaded = []
+    conn = _FakeConn()
+    d = _def("001", "database", "file", inputs=[
+        InputSpec(csv="trans.csv", type="database", table="transaction_log"),
+        InputSpec(csv="cust.csv", type="database", table="customer_master"),
+    ])
+    _patch_pipeline(
+        monkeypatch, definitions=[d],
+        connect=lambda **k: conn,
+        run_batch=lambda *a, **k: tmp_path / "001.csv",
+        compare=lambda *a, **k: ComparisonResult("001", ComparisonStatus.OK),
+        load_csv=lambda src, c, table, encoding: loaded.append(table),
+    )
+    orchestrator.run_full_comparison(_config(tmp_path))
+    assert loaded == ["transaction_log", "customer_master"]      # 둘 다 적재
+    assert conn.calls.count("commit") == 2                       # 적재마다 commit

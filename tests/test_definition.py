@@ -93,3 +93,52 @@ tests:
 """
     with pytest.raises(DefinitionError, match="table"):
         load_definitions(_write(tmp_path, text))
+
+
+# --- D-033: 다중 입력(tables[]) ---------------------------------------------------
+
+
+def test_multi_input_tables_parsed(tmp_path):
+    """input.tables[] 신형 → inputs 리스트, 단일 호환 필드는 1차 입력에서 파생."""
+    text = """
+tests:
+  - test_id: "001"
+    input:
+      type: database
+      tables:
+        - { csv: trans.csv, table: transaction_log }
+        - { csv: cust.csv,  table: customer_master }
+    execution: { shell_program: x.py }
+    output:  { type: file, file: 001.csv }
+    expected_output_csv: 001.csv
+"""
+    d = load_definitions(_write(tmp_path, text))[0]
+    assert [(s.csv, s.table) for s in d.inputs] == [
+        ("trans.csv", "transaction_log"), ("cust.csv", "customer_master")
+    ]
+    # 하위호환 단일 필드 = inputs[0]
+    assert d.input_csv == "trans.csv" and d.input_table == "transaction_log"
+
+
+def test_single_input_normalized_to_list(tmp_path):
+    """구형 단일 입력도 inputs 1건 리스트로 정규화된다(하위호환)."""
+    d = load_definitions(_write(tmp_path, _VALID))[0]
+    assert len(d.inputs) == 1 and d.inputs[0].table == "transaction_log"
+
+
+def test_multi_input_db_requires_table_each(tmp_path):
+    """tables[] 중 database 항목에 table 누락 → DefinitionError."""
+    text = """
+tests:
+  - test_id: "001"
+    input:
+      type: database
+      tables:
+        - { csv: trans.csv, table: transaction_log }
+        - { csv: cust.csv }
+    execution: { shell_program: x.py }
+    output:  { type: file, file: 001.csv }
+    expected_output_csv: 001.csv
+"""
+    with pytest.raises(DefinitionError, match="table"):
+        load_definitions(_write(tmp_path, text))

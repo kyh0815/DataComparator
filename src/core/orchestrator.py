@@ -123,14 +123,19 @@ def _process_shell(
 
 
 def _load_step(definition: ShellDefinition, config: Config, conn) -> None:
-    """Load 단계: input_type에 따라 DB 적재 또는 파일 복사로 분기한다(SPEC 3-1)."""
-    src = config.asis_input_dir / definition.input_csv
-    if definition.input_type == "database":
-        load_input_csv(src, conn, definition.input_table, encoding=config.encoding)
-        conn.commit()  # D-023 ①: stub(별도 connection)이 적재분을 보도록 즉시 commit
-    else:
-        # 복사처(여기)와 Runner의 읽기처가 같은 헬퍼를 공유 → 드리프트 차단(🔴 리뷰 대응).
-        copy_input_file(src, resolve_input_dir(definition, config))
+    """Load 단계: 셸의 입력 **여러 건**을 각각 DB 적재 또는 파일 복사로 처리한다(D-033 다중입력).
+
+    한 배치가 여러 테이블을 조인해 읽으므로, inputs[]의 각 항목을 대응 테이블/디렉토리에 적재한다.
+    DB 적재분은 stub(별도 connection)이 보도록 즉시 commit(D-023 ①). 모든 입력 적재 후 배치 실행.
+    """
+    for spec in definition.inputs:
+        src = config.asis_input_dir / spec.csv
+        if spec.type == "database":
+            load_input_csv(src, conn, spec.table, encoding=config.encoding)
+            conn.commit()  # D-023 ①
+        else:
+            # 파일 입력은 모두 tobe_input_dir로 복사(복사처=Runner 읽기처 공유 헬퍼 → 드리프트 차단).
+            copy_input_file(src, resolve_input_dir(definition, config))
 
 
 def _load_definitions(config: Config) -> list[ShellDefinition]:
@@ -183,8 +188,8 @@ def _open_connection_if_needed(definitions: list[ShellDefinition], config: Confi
 
 
 def _needs_db(definition: ShellDefinition) -> bool:
-    """이 셸이 DB connection을 필요로 하는가(입력 적재 또는 출력 export)."""
-    return definition.input_type == "database" or definition.output_type == "database"
+    """이 셸이 DB connection을 필요로 하는가(입력 중 하나라도 DB 적재, 또는 출력 export)."""
+    return any(s.type == "database" for s in definition.inputs) or definition.output_type == "database"
 
 
 def _emit(
