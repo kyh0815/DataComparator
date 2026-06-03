@@ -142,3 +142,47 @@ tests:
 """
     with pytest.raises(DefinitionError, match="table"):
         load_definitions(_write(tmp_path, text))
+
+
+# --- D-033 P2: 다중 출력(outputs[]) ----------------------------------------------
+
+
+def test_multi_output_parsed(tmp_path):
+    """outputs[] 신형 → outputs 리스트(각 expected), 단일 호환 필드는 1차 출력에서 파생."""
+    text = """
+tests:
+  - test_id: "001"
+    input: { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: x.py }
+    outputs:
+      - { type: database, table: result_a, export_as: 出A.csv, expected: 正解A.csv }
+      - { type: file,     file: 出B.sam,                       expected: 正解B.sam }
+"""
+    d = load_definitions(_write(tmp_path, text))[0]
+    assert [(o.type, o.expected) for o in d.outputs] == [
+        ("database", "正解A.csv"), ("file", "正解B.sam")
+    ]
+    assert d.outputs[0].table == "result_a" and d.outputs[0].export_as == "出A.csv"
+    assert d.outputs[1].file == "出B.sam"
+    # 하위호환 단일 필드 = outputs[0]
+    assert d.output_type == "database" and d.expected_output_csv == "正解A.csv"
+
+
+def test_multi_output_requires_expected(tmp_path):
+    """outputs[] 항목에 expected 누락 → DefinitionError."""
+    text = """
+tests:
+  - test_id: "001"
+    input: { type: database, table: transaction_log, csv: 001.csv }
+    execution: { shell_program: x.py }
+    outputs:
+      - { type: file, file: 出B.sam }
+"""
+    with pytest.raises(DefinitionError, match="expected"):
+        load_definitions(_write(tmp_path, text))
+
+
+def test_single_output_normalized(tmp_path):
+    """구형 단일 출력도 outputs 1건으로 정규화(하위호환)."""
+    d = load_definitions(_write(tmp_path, _VALID))[0]
+    assert len(d.outputs) == 1 and d.outputs[0].expected == "001.csv"
