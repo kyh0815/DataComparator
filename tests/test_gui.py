@@ -1,20 +1,17 @@
-"""웹 UI 테스트 — 직렬화 + Flask 엔드포인트 + 업로드(다건) + 연결설정 (DB·실서버 불요, 항상 실행).
+"""웹 UI 테스트 — 직렬화 + Flask 엔드포인트 + 연결설정 + 정의 미리보기 (DB·실서버 불요, 항상 실행).
 
-run_full_comparison/load_config/prepare_jobs/connection을 monkeypatch해 라우팅·SSE/NDJSON·
-traversal 차단·다건 짝짓기·연결설정 저장/테스트 배선만 검증한다(실 DB 접속 없음).
+Phase 7 (T7-3) 경량화: 화면은 **정의 파일 주도 단일 실행**(버튼1→/run SSE→모니터링→결과).
+업로드-CSV 검증·매핑표 생성은 걷어냈으므로(D-034), 여기선 라우팅·SSE·traversal 차단·
+연결설정 저장/테스트·정의 미리보기 배선만 검증한다(실 DB 접속 없음).
 """
 
-import io
 import json
-import shutil
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import yaml
 
-from src.config.definition import load_definitions
 from src.core.models import (
     ComparisonResult,
     ComparisonStatus,
@@ -26,15 +23,7 @@ from src.core.models import (
 from src.gui import connection as conn_mod
 from src.gui import web
 from src.gui.serialize import event_to_dict, result_to_dict, summary_to_dict
-from src.gui.upload import (
-    DefIngestInfo,
-    PairingInfo,
-    UploadError,
-    definition_from_mapping,
-    prepare_jobs,
-    prepare_jobs_from_definition,
-    summarize_definition,
-)
+from src.gui.upload import summarize_definition, summarize_definition_path
 
 _EXAMPLE_CONFIG = str(Path(__file__).resolve().parents[1] / "config.yaml.example")
 
@@ -84,15 +73,27 @@ def _sse_messages(raw: bytes) -> list[dict]:
     return [json.loads(l[len("data: "):]) for l in lines if l.startswith("data: ")]
 
 
-def _ndjson_messages(raw: bytes) -> list[dict]:
-    return [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
-
-
 def test_index_serves_japanese_page(client):
+    """단일 화면: 설정/접속 + 검증실행. 업로드/매핑/탭 어휘는 제거됐다(T7-3)."""
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "現新比較" in body and "アップロード検証" in body and "接続設定" in body
+    assert "現新比較" in body and "検証実行" in body and "設定 / 接続" in body
+    # 걷어낸 업로드/매핑 UI 흔적이 없어야(경량화 회귀 가드).
+    assert "アップロード検証" not in body and "マッピング表" not in body
+
+
+def test_index_embeds_definition_preview(client, monkeypatch):
+    """index가 config 정의 파일을 요약해 JSON으로 임베드한다(실행 전 미리보기)."""
+    monkeypatch.setattr(
+        web, "_definition_preview",
+        lambda p: {"ok": True, "count": 2,
+                   "shells": [{"test_id": "001", "input_type": "database",
+                               "output_type": "file", "input_count": 2, "output_count": 1}],
+                   "message": "2 シェル"},
+    )
+    body = client.get("/").get_data(as_text=True)
+    assert "2 シェル" in body and '"input_count": 2' in body
 
 
 def test_run_streams_progress_then_summary(client, monkeypatch):
@@ -115,7 +116,7 @@ def test_run_streams_progress_then_summary(client, monkeypatch):
 
 def test_run_reports_error_message(client, monkeypatch):
     def boom(p):
-        raise RuntimeError("설정 파일을 찾을 수 없습니다")  # Core/config 메시지는 한국어 유지(D)
+        raise RuntimeError("설정 파일을 찾을 수 없습니다")  # Core/config 메시지는 한국어 유지
 
     monkeypatch.setattr(web, "load_config", boom)
     msgs = _sse_messages(client.get("/run?config=missing.yaml").get_data())
@@ -173,7 +174,7 @@ def test_connection_test_endpoint_wires(client, monkeypatch):
 
 
 def test_connection_test_returns_table_list(monkeypatch):
-    """접속(SELECT 1) + public 테이블 목록을 취득해 tables로 돌려준다(드롭다운 채움용)."""
+    """접속(SELECT 1) + public 테이블 목록을 취득해 tables로 돌려준다."""
     class FakeCur:
         def __enter__(self): return self
         def __exit__(self, *a): return False
@@ -191,194 +192,7 @@ def test_connection_test_returns_table_list(monkeypatch):
     assert any("DB接続" in n for n in names) and any("テーブル取得" in n for n in names)
 
 
-def test_verify_run_fills_demo_default_when_blank(client, monkeypatch):
-    """빈 입력테이블 + 입력=DB → prepare_jobs에 transaction_log가 채워져 전달된다. 출력=file은 미채움."""
-    captured = {}
-
-    def fake_prepare(*a, **k):
-        captured.update(k)
-        return (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")), PairingInfo(["001"], [], []))
-
-    monkeypatch.setattr(web, "prepare_jobs", fake_prepare)
-    monkeypatch.setattr(
-        web, "run_full_comparison",
-        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
-    )
-    data = {
-        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "input_type": "database", "output_type": "file",  # input_table 미지정
-    }
-    _ndjson_messages(
-        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
-    )
-    assert captured.get("input_table") == "transaction_log"
-    assert captured.get("output_table") is None  # output=file이라 채우지 않음
-
-
-# --- 업로드 검증: prepare_jobs (DB 불요, config.yaml.example 베이스) ----------------
-
-
-def test_prepare_jobs_pairs_by_stem_and_reports_unmatched():
-    config, tmpdir, pairing = prepare_jobs(
-        _EXAMPLE_CONFIG,
-        inputs={"001": b"a\n1\n", "002": b"a\n2\n", "099": b"a\n9\n"},
-        outputs={"001": b"a\n1\n", "002": b"a\n2\n", "777": b"a\n7\n"},
-        input_type="database", output_type="file", encoding="Shift_JIS",
-        input_table="transaction_log",
-    )
-    try:
-        assert pairing.matched == ["001", "002"]
-        assert pairing.unmatched_input == ["099"] and pairing.unmatched_output == ["777"]
-        defs = load_definitions(config.definition_file)
-        assert [d.test_id for d in defs] == ["001", "002"]
-        assert defs[0].input_table == "transaction_log" and defs[0].output_file == "001.csv"
-        assert Path(defs[0].shell_program).is_absolute() and Path(defs[0].shell_program).is_file()
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def test_prepare_jobs_db_output_uses_export_table():
-    config, tmpdir, _ = prepare_jobs(
-        _EXAMPLE_CONFIG, inputs={"001": b"a\n1\n"}, outputs={"001": b"a\n1\n"},
-        input_type="file", output_type="database", encoding="Shift_JIS", output_table="tobe_result",
-    )
-    try:
-        d = load_definitions(config.definition_file)[0]
-        assert d.output_table == "tobe_result" and d.export_csv == "001.csv"
-        assert d.shell_program.endswith("run_batch_file.py")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def test_prepare_jobs_custom_batch_program():
-    config, tmpdir, _ = prepare_jobs(
-        _EXAMPLE_CONFIG, inputs={"001": b"a\n1\n"}, outputs={"001": b"a\n1\n"},
-        input_type="file", output_type="file", encoding="Shift_JIS",
-        batch_program="stub_batch/run_batch_file.py",
-    )
-    try:
-        d = load_definitions(config.definition_file)[0]
-        assert Path(d.shell_program).is_absolute() and d.shell_program.endswith("run_batch_file.py")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def test_prepare_jobs_requires_table_for_db():
-    with pytest.raises(UploadError):
-        prepare_jobs(
-            _EXAMPLE_CONFIG, inputs={"1": b"a"}, outputs={"1": b"a"},
-            input_type="database", output_type="file", encoding="Shift_JIS", input_table=None,
-        )
-
-
-def test_prepare_jobs_zero_match_errors():
-    with pytest.raises(UploadError):
-        prepare_jobs(
-            _EXAMPLE_CONFIG, inputs={"a": b"x"}, outputs={"b": b"y"},
-            input_type="file", output_type="file", encoding="Shift_JIS",
-        )
-
-
-def test_prepare_jobs_rejects_bad_type():
-    with pytest.raises(UploadError):
-        prepare_jobs(
-            _EXAMPLE_CONFIG, inputs={"a": b"x"}, outputs={"a": b"y"},
-            input_type="ftp", output_type="file", encoding="Shift_JIS",
-        )
-
-
-# --- 업로드 검증: /verify/run 다건 스트리밍 (prepare_jobs/run_full_comparison mock) --
-
-
-def _fake_prepare(pairing):
-    # 임시폴더 경로를 돌려준다(절대 cwd '.'를 쓰지 말 것 — verify_run cleanup이 rmtree함).
-    return lambda *a, **k: (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")), pairing)
-
-
-def test_verify_run_streams_then_summary(client, monkeypatch):
-    def fake_run(config, on_progress=None, shell_ids=None):
-        on_progress(ProgressEvent(ProgressKind.SHELL_START, "001", 1, 1))
-        on_progress(
-            ProgressEvent(ProgressKind.SHELL_DONE, "001", 1, 1,
-                         result=ComparisonResult("001", ComparisonStatus.NG,
-                                                  diff_lines=[DiffLine(2, "x", "y")]))
-        )
-        return RunSummary(1, 0, 1, 0, 0, [], Path("out/reports/report_u.csv"))
-
-    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], [], [])))
-    monkeypatch.setattr(web, "run_full_comparison", fake_run)
-
-    data = {
-        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "input_type": "database", "output_type": "file", "config": "./config.yaml",
-        "input_table": "transaction_log",
-    }
-    resp = client.post("/verify/run", data=data, content_type="multipart/form-data")
-    msgs = _ndjson_messages(resp.get_data())
-    types = [m["type"] for m in msgs]
-    assert "progress" in types and "summary" in types and types[-1] == "done"
-    assert next(m for m in msgs if m["type"] == "summary")["ng_count"] == 1
-
-
-def test_verify_run_warns_on_unmatched(client, monkeypatch):
-    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], ["099"], ["777"])))
-    monkeypatch.setattr(
-        web, "run_full_comparison",
-        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
-    )
-    data = {
-        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "input_type": "file", "output_type": "file",
-    }
-    msgs = _ndjson_messages(
-        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
-    )
-    assert any(m["type"] == "warning" and "099" in m["message"] and "777" in m["message"] for m in msgs)
-
-
-def test_verify_run_requires_both_sides(client, monkeypatch):
-    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo([], [], [])))
-    data = {  # 정답 없이 입력만 → 에러
-        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "input_type": "database", "output_type": "file", "input_table": "t",
-    }
-    msgs = _ndjson_messages(
-        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
-    )
-    assert any(m["type"] == "error" and "アップロード" in m["message"] for m in msgs)
-
-
-def test_verify_run_rejects_duplicate_stems(client, monkeypatch):
-    from werkzeug.datastructures import MultiDict
-
-    monkeypatch.setattr(web, "prepare_jobs", _fake_prepare(PairingInfo(["001"], [], [])))
-    data = MultiDict([  # 같은 stem 입력 2건 → 모호성 거부(중복 키라 MultiDict 필요)
-        ("asis_inputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
-        ("asis_inputs", (io.BytesIO(b"a\n2\n"), "001.csv")),
-        ("asis_outputs", (io.BytesIO(b"a\n1\n"), "001.csv")),
-        ("input_type", "file"), ("output_type", "file"),
-    ])
-    msgs = _ndjson_messages(
-        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
-    )
-    assert any(m["type"] == "error" and "重複" in m["message"] for m in msgs)
-
-
-def test_upload_too_large_returns_413(client):
-    saved = web.app.config["MAX_CONTENT_LENGTH"]
-    web.app.config["MAX_CONTENT_LENGTH"] = 10
-    try:
-        data = {"asis_inputs": (io.BytesIO(b"x" * 5000), "001.csv")}
-        resp = client.post("/verify/run", data=data, content_type="multipart/form-data")
-        assert resp.status_code == 413 and resp.get_json()["ok"] is False
-    finally:
-        web.app.config["MAX_CONTENT_LENGTH"] = saved
-
-
-# --- 정의 파일 주도(definition-driven) -------------------------------------------
+# --- 정의 미리보기 (읽기전용 요약) ----------------------------------------------
 
 _DEF_YAML = b"""tests:
   - test_id: "001"
@@ -397,8 +211,10 @@ _DEF_YAML = b"""tests:
 def test_summarize_definition_parses_shells():
     r = summarize_definition(_DEF_YAML)
     assert r["ok"] and r["count"] == 2
-    assert r["shells"][0]["test_id"] == "001" and r["shells"][0]["output_type"] == "file"
-    assert r["shells"][1]["input_type"] == "file" and r["shells"][1]["output_table"] == "tobe_result"
+    s0, s1 = r["shells"]
+    assert s0["test_id"] == "001" and s0["output_type"] == "file"
+    assert s0["input_count"] == 1 and s0["output_count"] == 1
+    assert s1["input_type"] == "file" and s1["output_type"] == "database"
 
 
 def test_summarize_definition_reports_parse_error():
@@ -406,187 +222,8 @@ def test_summarize_definition_reports_parse_error():
     assert r["ok"] is False and "失敗" in r["message"]
 
 
-def test_prepare_jobs_from_definition_builds_normalized_defs():
-    config, tmpdir, info = prepare_jobs_from_definition(
-        _EXAMPLE_CONFIG,
-        definition_bytes=_DEF_YAML,
-        inputs={"001": b"a\n1\n", "002": b"a\n2\n"},
-        outputs={"001": b"a\n1\n", "002": b"a\n2\n"},
-        encoding="Shift_JIS",
-    )
-    try:
-        assert [s["test_id"] for s in info.shells] == ["001", "002"] and not info.excluded
-        defs = load_definitions(config.definition_file)
-        assert defs[0].input_table == "transaction_log" and defs[1].output_table == "tobe_result"
-        # shell_program 상대경로가 절대경로로 정규화되어 실제 파일을 가리킨다.
-        assert Path(defs[0].shell_program).is_absolute() and Path(defs[0].shell_program).is_file()
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def test_prepare_jobs_from_definition_excludes_missing_files():
-    config, tmpdir, info = prepare_jobs_from_definition(
-        _EXAMPLE_CONFIG,
-        definition_bytes=_DEF_YAML,
-        inputs={"001": b"a\n1\n"},           # 002 입력 없음
-        outputs={"001": b"a\n1\n", "002": b"a\n2\n"},
-        encoding="Shift_JIS",
-    )
-    try:
-        assert [s["test_id"] for s in info.shells] == ["001"]
-        assert info.excluded and info.excluded[0]["test_id"] == "002"
-        assert len(load_definitions(config.definition_file)) == 1
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def test_prepare_jobs_from_definition_zero_match_errors():
-    with pytest.raises(UploadError):
-        prepare_jobs_from_definition(
-            _EXAMPLE_CONFIG, definition_bytes=_DEF_YAML,
-            inputs={"zzz": b"x"}, outputs={"zzz": b"x"}, encoding="Shift_JIS",
-        )
-
-
-def test_definition_parse_endpoint(client):
-    data = {"definition": (io.BytesIO(_DEF_YAML), "test_definition.yaml")}
-    r = client.post("/definition/parse", data=data, content_type="multipart/form-data").get_json()
-    assert r["ok"] and r["count"] == 2
-
-
-def test_verify_run_uses_definition_when_present(client, monkeypatch):
-    captured = {}
-
-    def fake_def(*a, **k):
-        captured.update(k)
-        return (SimpleNamespace(), Path(tempfile.mkdtemp(prefix="dc_test_")),
-                DefIngestInfo(shells=[{"test_id": "001"}], excluded=[{"test_id": "002", "missing": ["入力 002.csv"]}]))
-
-    monkeypatch.setattr(web, "prepare_jobs_from_definition", fake_def)
-    monkeypatch.setattr(
-        web, "run_full_comparison",
-        lambda *a, **k: RunSummary(1, 1, 0, 0, 0, [], Path("out/reports/r.csv")),
-    )
-    data = {
-        "definition": (io.BytesIO(_DEF_YAML), "test_definition.yaml"),
-        "asis_inputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "asis_outputs": (io.BytesIO(b"a\n1\n"), "001.csv"),
-        "input_type": "database", "output_type": "file",
-    }
-    msgs = _ndjson_messages(
-        client.post("/verify/run", data=data, content_type="multipart/form-data").get_data()
-    )
-    assert captured.get("definition_bytes")  # 정의 파일 경로를 탔다
-    assert any(m["type"] == "warning" and "002" in m["message"] for m in msgs)  # 누락 셸 명시
-    assert any(m["type"] == "summary" for m in msgs)
-
-
-# --- 매핑표(CSV) → 정의 yaml 생성 -------------------------------------------------
-
-_MAPPING_CSV = (
-    b"shell_id,input_type,input_table,output_type,output_table\n"
-    b"001,database,transaction_log,database,tobe_result\n"
-    b"002,database,transaction_log,file,\n"
-    b"006,file,,file,\n"
-)
-
-
-def test_definition_from_mapping_generates_valid_yaml():
-    r = definition_from_mapping(_MAPPING_CSV)
-    assert r["ok"] and r["count"] == 3 and not r["errors"]
-    # 생성된 yaml이 실제 로더를 통과하고(round-trip), 기본값이 관례대로 채워진다.
-    s = summarize_definition(r["yaml"].encode("utf-8"))
-    assert s["ok"] and s["count"] == 3
-    by = {d["test_id"]: d for d in s["shells"]}
-    assert by["001"]["output_table"] == "tobe_result"
-    assert by["002"]["output_type"] == "file" and by["006"]["input_type"] == "file"
-
-
-def test_definition_from_mapping_requires_table_for_db():
-    bad = b"shell_id,input_type,output_type\n001,database,file\n"  # input=DB인데 input_table 없음
-    r = definition_from_mapping(bad)
-    assert r["ok"] is False and any("input_table" in e for e in r["errors"])
-
-
-def test_definition_from_mapping_missing_required_column():
-    bad = b"shell_id,input_type\n001,database\n"  # output_type 열 없음
-    r = definition_from_mapping(bad)
-    assert r["ok"] is False and any("必須列" in e for e in r["errors"])
-
-
-def test_definition_from_mapping_rejects_duplicate_shell_id():
-    dup = b"shell_id,input_type,input_table,output_type\n001,database,t,file\n001,database,t,file\n"
-    r = definition_from_mapping(dup)
-    assert r["ok"] is False and any("重複" in e for e in r["errors"])
-
-
-def test_definition_from_mapping_endpoint(client):
-    data = {"mapping": (io.BytesIO(_MAPPING_CSV), "shell_mapping.csv")}
-    r = client.post("/definition/from-mapping", data=data, content_type="multipart/form-data").get_json()
-    assert r["ok"] and r["count"] == 3 and r["yaml"]
-
-
-def test_mapping_template_downloads_and_is_valid(client):
-    from src.gui.upload import MAPPING_TEMPLATE_CSV, definition_from_mapping
-
-    resp = client.get("/definition/mapping-template")
-    assert resp.status_code == 200
-    body = resp.get_data()
-    assert body.startswith(b"\xef\xbb\xbf")  # BOM(Excel 대비)
-    assert b"shell_id,input_type" in body
-    assert b"batch_program" in body  # 구↔신 배치 매핑 열이 양식에 노출
-    assert "attachment" in resp.headers["Content-Disposition"]
-    # 템플릿 자체가 유효한 매핑표여야 한다(고객이 그대로 올려도 동작).
-    r = definition_from_mapping(MAPPING_TEMPLATE_CSV.encode("utf-8"))
-    assert r["ok"] and r["count"] == 2
-
-
-def test_definition_from_mapping_honors_batch_program():
-    """batch_program 열에 적은 신환경 배치 경로가 생성 yaml의 shell_program이 된다(구↔신 매핑)."""
-    csv = (
-        b"shell_id,input_type,input_table,output_type,output_table,batch_program\n"
-        b"001,database,transaction_log,file,,/opt/batch/job001\n"
-    )
-    r = definition_from_mapping(csv)
-    assert r["ok"]
-    doc = yaml.safe_load(r["yaml"])
-    assert doc["tests"][0]["execution"]["shell_program"] == "/opt/batch/job001"
-
-
-def test_definition_from_mapping_blank_batch_uses_stub():
-    """batch_program 공란이면 입력타입별 동봉 stub을 채운다(데모용 기본)."""
-    csv = b"shell_id,input_type,input_table,output_type,output_table,batch_program\n001,file,,file,,\n"
-    r = definition_from_mapping(csv)
-    assert r["ok"]
-    doc = yaml.safe_load(r["yaml"])
-    assert doc["tests"][0]["execution"]["shell_program"].endswith("run_batch_file.py")
-
-
-# --- _cleanup_tmpdir 안전장치 (회귀 가드: 과거 cwd 통째 rmtree 버그) -----------------
-
-
-def test_cleanup_tmpdir_deletes_real_tempdir():
-    d = Path(tempfile.mkdtemp(prefix="dc_clean_"))
-    (d / "f").write_text("x")
-    web._cleanup_tmpdir(d)
-    assert not d.exists()  # 시스템 임시 하위 → 정상 삭제
-
-
-def test_cleanup_tmpdir_refuses_outside_tempdir(tmp_path, monkeypatch):
-    """임시 디렉토리 *밖* 경로는 절대 삭제하지 않는다 — cwd('.') 통째 삭제 재발 차단."""
-    fake_tmp = tmp_path / "fake_tmp"
-    fake_tmp.mkdir()
-    monkeypatch.setattr(web.tempfile, "gettempdir", lambda: str(fake_tmp))
-    outside = tmp_path / "outside"  # fake_tmp 밖
-    outside.mkdir()
-    (outside / "keep").write_text("x")
-    web._cleanup_tmpdir(outside)
-    assert outside.exists()  # 보호됨(삭제 거부)
-    web._cleanup_tmpdir(Path("."))  # cwd도 거부 — 예외/삭제 없이 통과해야 함
-
-
-def test_prepare_jobs_from_definition_preserves_multi_io(tmp_path_factory):
-    """D-033 P2: 다중 입력/출력 정의를 업로드하면 정규화 정의가 그 다중성을 보존한다."""
+def test_summarize_definition_counts_multi_io():
+    """다중 입력/출력 정의(T7-1/T7-2)는 input_count/output_count로 노출된다."""
     yml = (
         b"tests:\n"
         b"  - test_id: \"001\"\n"
@@ -600,20 +237,20 @@ def test_prepare_jobs_from_definition_preserves_multi_io(tmp_path_factory):
         b"      - { type: database, table: tobe_result, export_as: A.csv, expected: gA.csv }\n"
         b"      - { type: file,     file: B.sam,                          expected: gB.sam }\n"
     )
-    config, tmpdir, info = prepare_jobs_from_definition(
-        _EXAMPLE_CONFIG, definition_bytes=yml,
-        inputs={"trans": b"a\n1\n", "cust": b"a\n2\n"},
-        outputs={"gA": b"x\n1\n", "gB": b"y\n2\n"},
-        encoding="Shift_JIS",
-    )
-    try:
-        d = load_definitions(config.definition_file)[0]
-        assert [s.table for s in d.inputs] == ["transaction_log", "customer_master"]
-        assert [(o.type, o.expected) for o in d.outputs] == [
-            ("database", "gA.csv"), ("file", "gB.sam")
-        ]
-        # 입력 2건·정답 2건 파일이 임시 작업폴더에 배치됨
-        assert (config.asis_input_dir / "trans.csv").is_file()
-        assert (config.asis_output_dir / "gB.sam").is_file()
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    r = summarize_definition(yml)
+    assert r["ok"] and r["count"] == 1
+    assert r["shells"][0]["input_count"] == 2 and r["shells"][0]["output_count"] == 2
+
+
+def test_summarize_definition_path_reads_file(tmp_path):
+    p = tmp_path / "def.yaml"
+    p.write_bytes(_DEF_YAML)
+    assert summarize_definition_path(p)["count"] == 2
+    # 없는 파일은 ok=False(미비 안내).
+    assert summarize_definition_path(tmp_path / "missing.yaml")["ok"] is False
+
+
+def test_definition_preview_endpoint(client, monkeypatch):
+    monkeypatch.setattr(web, "_definition_preview", lambda p: {"ok": True, "count": 3, "shells": []})
+    r = client.get("/definition/preview?config=./config.yaml").get_json()
+    assert r["ok"] and r["count"] == 3

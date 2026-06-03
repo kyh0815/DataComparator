@@ -466,11 +466,13 @@
 **작업** (D-033 P2): `OutputSpec`/`ShellDefinition.outputs[]` + `ComparisonResult.output_name`(셸당 결과 N건) / `runner` 다중 출력 추출(DB→export / file→그대로) / `reporter` (shell_id,output) 행·RunSummary `total=출력 수`(D-016 합항등 유지) / 진행 이벤트 출력 단위 / GUI 출력별 표시·카드·필터(출력 단위).
 **완료 기준**: 다중출력 정의(파일+DB 동시)로 출력별 OK/NG 결과·리포트·화면. 하위호환(단일=출력 1) 유지.
 
-### T7-3. UI 경량화 + 정의 파일 주도 일원화 `[ ]`
+### T7-3. UI 경량화 + 정의 파일 주도 일원화 `[x]`
 
-**작업**: 실무 타깃 UI(**버튼 1개→자동 실행→실시간 모니터링→결과**)로. 연결설정/테이블선택/매핑 UI는 정의 파일 주도로 흡수(설치 시 config·정의 파일로). SAM 등 확장자 파일 입출력 확인.
+**작업** (D-034): 실무 타깃 UI(**버튼 1개→자동 실행→실시간 모니터링→결과**)로. 연결설정/테이블선택/매핑 UI는 정의 파일 주도로 흡수(설치 시 config·정의 파일로). 단일 화면 = 設定/接続(접이식, 접속테스트·저장) → 検証実行(정의 미리보기 N셸 + `/run` SSE) → 모니터링 → 요약/필터. 3탭·위저드·업로드CSV검증·매핑표생성·테이블선택 3칸 + 그 라우트(`/verify/run`·`/definition/parse`·`/from-mapping`·`/mapping-template`)·`upload.py` 미사용 함수·테스트 제거(불필요·간결, D-028~031 supersede). `summarize_definition`은 실행 전 미리보기로 재사용. **Core·models 무수정**.
 
-**deferred**: 정교 비교(공차·날짜, D-022), 매핑표(long CSV)→정의 생성, 물리 다중 DB 접속.
+**완료 기준**: 단일 화면 렌더, `/run` SSE 그대로 동작, 정의 미리보기(N셸·다중I/O 카운트), 접속테스트·저장 유지. `tests/test_gui.py` 그린.
+
+**deferred**: 정교 비교(공차·날짜, D-022), 매핑표(long CSV)→정의 생성, 물리 다중 DB 접속, SAM 등 확장자 실데이터 QA(2순위).
 
 ---
 
