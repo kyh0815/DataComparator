@@ -254,7 +254,16 @@
   .scard {
     border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 14px 13px;
     background:#fbfcfd; position:relative; overflow:hidden;
+    cursor:pointer; transition:box-shadow .14s, border-color .14s, transform .04s; user-select:none;
   }
+  .scard:hover:not(.disabled) { border-color:var(--line-2); box-shadow:var(--shadow-pop); }
+  .scard:active:not(.disabled) { transform:translateY(1px); }
+  .scard.active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bd); }
+  .scard.disabled { cursor:default; opacity:.5; }
+  .filter-hint { font-size:12px; color:var(--muted); margin-top:10px; min-height:15px; }
+  .filter-hint b { color:var(--ink-2); font-weight:700; }
+  .filter-hint a { color:var(--accent); cursor:pointer; text-decoration:none; margin-left:8px; }
+  .filter-hint a:hover { text-decoration:underline; }
   .scard::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--muted-2); }
   .scard.ok::before { background:var(--ok); } .scard.ng::before { background:var(--ng); }
   .scard.err::before { background:var(--warn); } .scard.miss::before { background:var(--muted-2); }
@@ -540,12 +549,13 @@
     </div>
     <div class="panel-body">
       <div class="summary-cards">
-        <div class="scard total"><div class="n" id="s-total">0</div><div class="l">合計</div></div>
-        <div class="scard ok"><div class="n" id="s-ok">0</div><div class="l">OK</div></div>
-        <div class="scard ng"><div class="n" id="s-ng">0</div><div class="l">NG</div></div>
-        <div class="scard err"><div class="n" id="s-err">0</div><div class="l">ERROR</div></div>
-        <div class="scard miss"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
+        <div class="scard total" data-f="*"><div class="n" id="s-total">0</div><div class="l">合計</div></div>
+        <div class="scard ok" data-f="OK"><div class="n" id="s-ok">0</div><div class="l">OK</div></div>
+        <div class="scard ng" data-f="NG"><div class="n" id="s-ng">0</div><div class="l">NG</div></div>
+        <div class="scard err" data-f="ERROR"><div class="n" id="s-err">0</div><div class="l">ERROR</div></div>
+        <div class="scard miss" data-f="MISSING_TOBE,MISSING_ASIS"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
       </div>
+      <div class="filter-hint" id="filter-hint"></div>
       <div class="summary-meta">
         <span>所要 <span class="el" id="s-elapsed">0</span> 秒</span>
         <span class="rep" id="report"></span>
@@ -559,6 +569,7 @@
       <span class="live" id="live"><span class="pulse"></span>実行中…</span>
     </div>
     <div id="results"></div>
+    <div class="empty" id="filter-empty" style="display:none">該当する結果がありません</div>
   </div>
 </main>
 
@@ -720,12 +731,60 @@ function reset(){
   $("banner").classList.remove("show");
   $("warnbar").classList.remove("show");
   $("results-wrap").classList.remove("show");
+  // 필터 초기화
+  activeFilter=null;
+  document.querySelectorAll('.scard').forEach(c=>c.classList.remove('active','disabled'));
+  $("filter-empty").style.display="none";
+  $("filter-hint").innerHTML="";
 }
 function showBanner(id, html){ const b=$(id); b.innerHTML=`<div>${html}</div>`; b.classList.add("show"); }
 
+/* ───────── 카드 클릭 필터 ───────── */
+let activeFilter=null;   // null=전체, "NG" 등, 또는 "MISSING_TOBE,MISSING_ASIS"
+function applyFilter(){
+  const want = activeFilter ? activeFilter.split(",") : null;
+  let shown=0;
+  document.querySelectorAll('#results .shell').forEach(r=>{
+    const st=r.dataset.status||"";
+    const show = !want || want.includes(st);
+    r.style.display = show ? "" : "none";
+    if(show) shown++;
+  });
+  $("filter-empty").style.display = (activeFilter && shown===0) ? "block" : "none";
+  updateFilterHint();
+}
+function updateFilterHint(){
+  const h=$("filter-hint");
+  if(!activeFilter){ h.innerHTML=""; return; }
+  const label = activeFilter.indexOf("MISSING")===0 ? "MISSING" : activeFilter;
+  h.innerHTML = `<b>${label}</b> で絞り込み中 <a id="filter-clear">解除（全件表示）</a>`;
+  $("filter-clear").onclick=()=>setFilter(null);
+}
+function updateCardHighlight(){
+  document.querySelectorAll('.scard').forEach(c=>{
+    const f=c.getAttribute('data-f');
+    const on=(activeFilter===null && f==="*")||(activeFilter!==null && f===activeFilter);
+    c.classList.toggle('active', on);
+  });
+}
+function setFilter(f){            // f=null(전체) 또는 status. 같은 필터 재클릭 시 해제.
+  activeFilter = (f && activeFilter===f) ? null : f;
+  updateCardHighlight();
+  applyFilter();
+}
+function setupCardFilters(s){     // 완료 시: 0건 카드 비활성 + 전체 표시로 초기화
+  const counts={ "OK":s.ok_count, "NG":s.ng_count, "ERROR":s.error_count, "MISSING_TOBE,MISSING_ASIS":s.missing_count };
+  document.querySelectorAll('.scard').forEach(c=>{
+    const f=c.getAttribute('data-f');
+    if(f==="*"){ c.classList.remove('disabled'); return; }
+    c.classList.toggle('disabled', (counts[f]||0)===0);
+  });
+  activeFilter=null; updateCardHighlight(); applyFilter();
+}
+
 function shellRow(id,index,total){
   const el=document.createElement("div");
-  el.className="shell running"; el.id="shell-"+id;
+  el.className="shell running"; el.id="shell-"+id; el.dataset.status="RUN";
   el.innerHTML=
     `<div class="shell-head">
        <span class="ix">[${index}/${total}]</span>
@@ -825,6 +884,8 @@ function renderDone(r){
     renderDetailErr(r.shell_id, "エラー: "+(r.error_message||""));
   }
   finishRow(r.shell_id);
+  const row=$("shell-"+r.shell_id); if(row) row.dataset.status=r.status;  // 카드 필터용 상태
+  applyFilter();                                                          // 필터 적용 중이면 즉시 반영
 }
 
 function renderSummary(s){
@@ -841,6 +902,7 @@ function renderSummary(s){
   const cfg=encodeURIComponent(lastConfig);
   $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)}</a>`;
   $("summary").classList.add("show");
+  setupCardFilters(s);               // 카드 클릭 필터 활성화(0건 비활성), 전체 표시
   scrollToEl("summary", "center");   // 완료 → 検証サマリー로 스크롤(끝났음 피드백)
 }
 
@@ -1003,6 +1065,12 @@ for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
 for (const r of document.querySelectorAll('input[name=itype],input[name=otype]')) r.addEventListener("change", syncTableEnabled);
 // 테이블 선택 변경 시 "다음" 게이트 갱신.
 for (const id of ["c-intable","c-outtable"]) $(id).addEventListener("change", updateWizard);
+// 요약 카드 클릭 → 상태별 행 필터(같은 카드 재클릭/合計=해제). 0건 카드는 비활성.
+for (const c of document.querySelectorAll('.scard')) c.addEventListener("click", () => {
+  if (c.classList.contains("disabled")) return;
+  const f=c.getAttribute("data-f");
+  setFilter(f==="*" ? null : f);
+});
 syncTableEnabled();  // 초기: 접속 전이라 비활성 + 라디오에 맞는 안내 + 위저드 갱신
 updateWizard();
 </script>
