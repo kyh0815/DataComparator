@@ -592,6 +592,7 @@ function switchTab(which) {
   }
   currentTab = which;
   updateWizard();
+  window.scrollTo({ top:0, behavior:"smooth" });   // 탭/스텝 전환 시 새 패널 위쪽부터
 }
 // ① 接続設定에서 "다음" 활성 조건: DB로 고른 쪽은 테이블이 선택됨 + (DB가 있으면)접속 취득됨.
 function connReady(){
