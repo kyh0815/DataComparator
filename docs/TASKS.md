@@ -480,6 +480,8 @@
 
 **완료 기준**: `python tools/mapping_to_definition.py mapping.csv -o def.yaml` 동작, 다중I/O 그룹화, 오류 행별 보고+종료코드1, 생성 yaml 로더 통과. `tests/test_mapping_to_definition.py` 12개 통과.
 
+**보조 도구**(D-035): `tools/checklist_to_template.py` — 고객 **체크리스트(항목명 목록) → 기입용 빈 매핑 CSV 템플릿** 생성(shell_id 자동번호·test_name에 항목명 선반영). 고객은 빈 칸만 채워 반환 → 변환기로 yaml. **정의 순서·리포트가 체크리스트와 1:1**(추적·관리 용이). `tests/test_checklist_to_template.py` 6개 통과.
+
 ---
 
 ## 권장 작업 순서 요약
