@@ -38,25 +38,32 @@ tests:
       tables:                           # [필수, ≥1] 다중 입력 — 셸이 읽는 모든 테이블/파일
         - { csv: 取引.csv,  type: database, table: transaction_log }  # DB 적재(TRUNCATE+INSERT)
         - { csv: 顧客.csv,  type: database, table: customer_master }  # 조인용 또 다른 테이블
-        - { csv: 夜間.csv,  type: file }                              # 파일 입력(배치가 직접 읽음)
-        #   csv      : [필수] 입력 파일명 (config.asis_input_dir 기준). DB 적재분은 헤더=컬럼명
-        #   type     : database | file
-        #   table    : type=database면 [필수] 적재 대상 테이블(검증 전용 테이블이어야)
-        #   dest_dir : [선택] type=file 복사 위치(없으면 config.tobe_input_dir)
+        - { csv: 夜間.csv,  type: file, dest_dir: /data/tobe/input, dest_name: 夜間_staged.csv }  # 파일 입력
+        #   csv       : [필수] 입력 파일명. DB 적재분은 헤더=컬럼명           (사장님규격 #2)
+        #   type      : database | file                                       (#3)
+        #   table     : type=database면 [필수] 적재 대상(To-Be 격납) 테이블   (#7-1)
+        #   ── 항목별 격납 패스(선택, D-036 / 비우면 config 공통 디렉토리) ──
+        #   src_dir   : As-Is 입력 격납 패스(없으면 config.asis_input_dir)     (#4)
+        #   dest_dir  : type=file의 To-Be 격납 패스(없으면 config.tobe_input_dir) (#7-4)
+        #   dest_name : type=file의 To-Be 격납 파일명(없으면 입력 파일명 그대로) (#7-3)
 
     execution:
       shell_program: /opt/batch/job001  # [필수] 실행할 배치(잡) 경로. 내부 PGM 다수라도 1회 호출
       timeout: 300                      # [선택] 초(기본 60)
 
     outputs:                            # [필수, ≥1] 다중 출력 — 배치가 낸 모든 결과
-      - type: database                  #   DB에 쓴 결과 → 도구가 CSV로 export 후 비교
+      - type: database                  #   DB에 쓴 결과 → 도구가 CSV로 export 후 비교  (#10)
         table: result_a                 #   [type=database 필수] 결과가 쓰인 테이블
-        export_as: 出A.csv              #   [type=database 필수] export할 CSV 파일명(tobe_output_dir)
-        expected: 正解A.csv             #   [필수] 정답 파일명(asis_output_dir) — 바이트 비교 대상
+        export_as: 出A.csv              #   [type=database 필수] To-Be 출력명(export CSV)  (#9)
+        expected: 正解A.csv             #   [필수] As-Is 정답 파일명 — 바이트 비교 대상     (#5)
         name: 結果A                     #   [선택] 리포트/화면 라벨(없으면 export_as/file)
+        expected_dir: /data/asis/output #   [선택] As-Is 출력 격납 패스(없으면 asis_output_dir)  (#7)
+        expected_type: database         #   [선택] As-Is 출력 종류(정보용 — 비교는 바이트)       (#6)
+        tobe_dir: /data/tobe/output     #   [선택] To-Be 출력 격납 패스(없으면 tobe_output_dir) (#11)
       - type: file                      #   배치가 파일로 낸 결과 → 그대로 비교(확장자 무관)
-        file: 出B.sam                   #   [type=file 필수] 배치 산출 파일명(tobe_output_dir). SAM/CSV 등
-        expected: 正解B.sam             #   [필수] 정답 파일명(asis_output_dir)
+        file: 出B.sam                   #   [type=file 필수] To-Be 출력명(배치 산출 파일). SAM/CSV 등 (#9)
+        expected: 正解B.sam             #   [필수] As-Is 정답 파일명(asis_output_dir)
+        # ↑ 출력에도 expected_dir/expected_type/tobe_dir 동일하게 지정 가능(항목별 패스 override)
 
   # ── 예시 B. 단일 입력 + 단일 출력 (구형 호환 — 가장 간단) ───────────────────
   #    입력 1·출력 1이면 input.tables / outputs 리스트 없이 단일 블록으로도 됩니다.

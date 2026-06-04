@@ -1,8 +1,8 @@
-shell_id,kind,type,program,table,file,expected,name,test_name,timeout
-001,input,database,/opt/batch/job001,transaction_log,取引.csv,,,決済 거래명세,300
-001,input,database,,customer_master,顧客.csv,,,,
-001,input,file,,,夜間.csv,,,,
-001,output,database,,result_a,出A.csv,正解A.csv,結果A,,
-001,output,file,,,出B.sam,正解B.sam,,,
-002,input,file,/opt/batch/job002,,002.csv,,,夜間集計,
-002,output,database,,tobe_result,002.csv,002.csv,,,
+shell_id,kind,type,program,table,file,expected,name,test_name,timeout,src_dir,dest_dir,dest_name,expected_dir,expected_type,tobe_dir
+001,input,database,/opt/batch/job001,transaction_log,取引.csv,,,決済明細,300,/data/asis/input,,,,,
+001,input,database,,customer_master,顧客.csv,,,,,/data/asis/input,,,,,
+001,input,file,,,夜間.csv,,,,,/data/asis/input,/data/tobe/input,夜間_staged.csv,,,
+001,output,database,,result_a,出A.csv,正解A.csv,結果A,,,,,,/data/asis/output,database,/data/tobe/output
+001,output,file,,,出B.sam,正解B.sam,明細B,,,,,,/data/asis/output,file,/data/tobe/output
+002,input,file,/opt/batch/job002,,002.csv,,,夜間集計,,,,,,,
+002,output,database,,tobe_result,002.csv,002.csv,,,,,,,,,
