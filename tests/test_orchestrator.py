@@ -136,7 +136,7 @@ def test_no_db_shells_never_connects(tmp_path, monkeypatch):
         monkeypatch, definitions=defs, connect=_must_not_connect,
         run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))
     assert summary.total == 2 and summary.ok_count == 2
@@ -152,7 +152,7 @@ def test_runs_without_callback(tmp_path, monkeypatch):
         monkeypatch, definitions=defs,
         run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))  # on_progress=None
     assert summary.total == 1
@@ -166,7 +166,7 @@ def test_progress_events_sequence(tmp_path, monkeypatch):
         monkeypatch, definitions=defs,
         run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     events: list[ProgressEvent] = []
     orchestrator.run_full_comparison(_config(tmp_path), on_progress=events.append)
@@ -201,7 +201,7 @@ def test_one_shell_error_does_not_block_others(tmp_path, monkeypatch):
     _patch_pipeline(
         monkeypatch, definitions=defs, run_batch=_run,
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     events: list[ProgressEvent] = []
     summary = orchestrator.run_full_comparison(_config(tmp_path), on_progress=events.append)
@@ -230,7 +230,7 @@ def test_shell_ids_selects_subset_in_definition_order(tmp_path, monkeypatch):
     _patch_pipeline(
         monkeypatch, definitions=defs, run_batch=_run,
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path), shell_ids=["009", "006"])
     assert processed == ["006", "009"]  # 정의 순서 유지(요청 순서 아님)
@@ -252,7 +252,7 @@ def test_shell_ids_none_runs_all(tmp_path, monkeypatch):
         monkeypatch, definitions=defs,
         run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / "x.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))
     assert summary.total == 2
