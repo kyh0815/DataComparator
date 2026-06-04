@@ -254,3 +254,69 @@ def test_definition_preview_endpoint(client, monkeypatch):
     monkeypatch.setattr(web, "_definition_preview", lambda p: {"ok": True, "count": 3, "shells": []})
     r = client.get("/definition/preview?config=./config.yaml").get_json()
     assert r["ok"] and r["count"] == 3
+
+
+# --- 定義作成 화면(/define, D-037) -------------------------------------------------
+
+def test_define_page_renders(client):
+    """별도 정의작성 화면이 렌더되고 검증실행으로 돌아가는 링크가 있다."""
+    body = client.get("/define").get_data(as_text=True)
+    assert "定義作成" in body and 'href="/"' in body
+
+
+def test_run_page_links_to_define(client):
+    """검증실행 화면에 定義作成 페이지 링크가 있다(발견성)."""
+    assert '/define' in client.get("/").get_data(as_text=True)
+
+
+def test_from_csv_generates_definition(client):
+    """매핑표 CSV 업로드 → 정의 생성(셸·입출력 카운트 반환)."""
+    from io import BytesIO
+    csv = (
+        "shell_id,kind,type,table,file,expected\n"
+        "001,input,database,t_in,,\n"
+        "001,output,database,t_out,,\n"
+    )
+    data = {"csv": (BytesIO(csv.encode("utf-8")), "m.csv")}
+    r = client.post("/definition/from-csv", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] and r["count"] == 1
+    assert r["shells"][0]["input_count"] == 1 and r["shells"][0]["output_count"] == 1
+
+
+def test_from_csv_rejects_bad_rows(client):
+    """필수열/타입 불비 행이 있으면 ok=False·errors 반환(부분 생성 안 함)."""
+    from io import BytesIO
+    data = {"csv": (BytesIO(b"shell_id,kind\n001,input\n"), "m.csv")}
+    r = client.post("/definition/from-csv", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] is False and r["errors"]
+
+
+def test_from_csv_requires_file(client):
+    r = client.post("/definition/from-csv", data={}, content_type="multipart/form-data").get_json()
+    assert r["ok"] is False
+
+
+def test_checklist_template_returns_csv(client):
+    r = client.post("/definition/checklist-template",
+                    data={"text": "A\nB\n", "inputs": "1", "outputs": "1"}).get_json()
+    assert r["ok"] and r["count"] == 2 and r["csv"].startswith("shell_id,")
+
+
+def test_save_writes_to_config_definition_file(client, tmp_path):
+    """생성 yaml을 config의 definition_file 경로에 저장한다."""
+    defp = tmp_path / "gen_def.yaml"
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "encoding: Shift_JIS\n"
+        "paths:\n"
+        f"  asis_input_dir: {tmp_path}/in\n"
+        f"  asis_output_dir: {tmp_path}/out\n"
+        f"  tobe_output_dir: {tmp_path}/tobe\n"
+        f"  report_dir: {tmp_path}/rep\n"
+        f"  definition_file: {defp}\n"
+        "database: { host: h, port: 1, dbname: d, user: u, password_env: POSTGRES_PASSWORD }\n",
+        encoding="utf-8",
+    )
+    r = client.post("/definition/save",
+                    data={"yaml": "tests:\n  - test_id: X\n", "config": str(cfgp)}).get_json()
+    assert r["ok"] and defp.read_text(encoding="utf-8").startswith("tests:")

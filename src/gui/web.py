@@ -4,9 +4,10 @@
 데이터·정답·정의 파일은 `config.yaml`이 가리키는 디렉토리에 이미 있고(설치 시 준비),
 화면은 그 정의를 그대로 실행만 한다 — CLI와 동일하게 `run_full_comparison(config, on_progress)`.
 
-화면은 두 영역:
-- "設定/接続"(접이식): DB 접속 테스트(읽기전용) + config.yaml 저장(/connection/*). 설치 시 1회.
-- "検証実行": config의 정의 파일을 실행하며 진행을 SSE로 스트리밍(/run). 실시간 모니터링 + 결과.
+화면(페이지 2개):
+- "/" 検証実行 — "設定/接続"(접이식, DB 테스트·config 저장) + 정의 파일 실행(/run SSE 모니터링).
+- "/define" 定義作成 — 매핑표(CSV)→정의 yaml 생성·config 저장 + 체크리스트→기입 템플릿(D-037, 설치 준비).
+  운영(실행)과 준비(정의 만들기)를 **별도 화면**으로 분리 — 실행 화면은 버튼+모니터+결과로 유지.
 
 설계 결정:
 - 비밀번호는 UI에 두지 않고 서버 env(password_env)에서만 읽는다(모델 A, D-019).
@@ -14,8 +15,9 @@
   실행 전 셸 수·셸별 I/O는 정의 파일을 읽어 미리보기로만 보여준다(읽기전용).
 - 동시 실행 1건 락(try/finally), traversal 차단은 유지. Core 무수정.
 
-T7-3에서 걷어낸 것(불필요·간결, D-028~031 supersede): 브라우저 업로드-CSV 검증,
-매핑표→yaml 생성, 화면 테이블선택 3칸, 탭/위저드. 디렉토리 기반 단일 실행으로 일원화.
+T7-3에서 걷어낸 것(불필요·간결, D-028~031 supersede): 브라우저 업로드-CSV "검증", 화면
+테이블선택 3칸, 탭/위저드. 디렉토리 기반 단일 실행으로 일원화. 단 **매핑표→정의 생성은
+실행과 분리된 별도 화면(/define)으로 복원**(D-037) — CLI만으론 부족하다는 사용자 요구.
 
 print 등 사람용 출력은 인터페이스인 여기서만(CLAUDE 3-1). app.run(threaded=True).
 """
@@ -35,6 +37,8 @@ from werkzeug.utils import secure_filename
 
 from src.config.settings import load_config, parse_shell_selector
 from src.core import run_full_comparison
+from tools.checklist_to_template import checklist_to_template
+from tools.mapping_to_definition import mapping_to_definition
 
 from . import connection
 from .serialize import event_to_dict, summary_to_dict
@@ -162,6 +166,60 @@ def run():
     return Response(stream(), mimetype="text/event-stream")
 
 
+# --- 定義作成 (CSV/체크리스트 → test_definition.yaml) ----------------------------
+
+
+@app.route("/define")
+def define():
+    """별도 화면: 매핑표(CSV) → 정의 yaml 생성 + 체크리스트 → 기입 템플릿(설치 준비)."""
+    return render_template("define.html", default_config="./config.yaml")
+
+
+@app.route("/definition/from-csv", methods=["POST"])
+def definition_from_csv():
+    """업로드된 매핑표(Long CSV)를 test_definition.yaml로 변환한다(읽기전용 — 저장은 별도).
+
+    반환 {ok, yaml, count, shells, errors}. 한 행이라도 오류면 ok=False(부분 생성 안 함).
+    """
+    file = request.files.get("csv")
+    if file is None or not file.filename:
+        return jsonify({"ok": False, "errors": ["CSVファイルを選択してください。"]})
+    return jsonify(mapping_to_definition(_decode(file.read())))
+
+
+@app.route("/definition/checklist-template", methods=["POST"])
+def definition_checklist_template():
+    """체크리스트(1줄=1항목 텍스트) → 고객 기입용 빈 매핑 CSV 템플릿을 돌려준다."""
+    text = request.form.get("text", "")
+    if not text.strip():
+        return jsonify({"ok": False, "message": "チェックリスト（1行＝1項目）を入力してください。"})
+    inputs = max(1, int(request.form.get("inputs", 1) or 1))
+    outputs = max(1, int(request.form.get("outputs", 1) or 1))
+    csv_text = checklist_to_template(text, inputs=inputs, outputs=outputs)
+    n = len([ln for ln in text.splitlines() if ln.strip()])
+    return jsonify({"ok": True, "csv": csv_text, "count": n})
+
+
+@app.route("/definition/save", methods=["POST"])
+def definition_save():
+    """생성된 정의 yaml을 config의 definition_file 경로에 저장한다(다음 단계: 그대로 検証実行)."""
+    yaml_text = request.form.get("yaml", "")
+    config_path = request.form.get("config") or "./config.yaml"
+    if not yaml_text.strip():
+        return jsonify({"ok": False, "message": "保存する定義がありません（先に生成してください）。"})
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "message": f"config.yaml を読めません: {exc}"})
+    target = cfg.definition_file
+    if target is None:
+        return jsonify({"ok": False, "message": "config.yaml に paths.definition_file がありません。"})
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(yaml_text, encoding="utf-8")
+    return jsonify({"ok": True, "message": f"定義を保存しました: {target}", "path": str(target)})
+
+
 @app.route("/report/<name>")
 def report(name: str):
     """리포트 CSV 다운로드. secure_filename + report_dir 하위 제한으로 traversal 차단."""
@@ -212,6 +270,16 @@ def _connection_defaults(config_path: str) -> dict:
 def _sse(payload: dict) -> str:
     """dict를 SSE 데이터 프레임으로 직렬화한다(/run용, GET)."""
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _decode(data: bytes) -> str:
+    """업로드 CSV 디코드: Excel 저장 대비 utf-8-sig 우선, 실패 시 cp932(일본어 Excel)."""
+    for enc in ("utf-8-sig", "cp932"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
 
 
 def main() -> None:
