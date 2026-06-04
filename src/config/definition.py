@@ -113,7 +113,6 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
                 file=_opt_str(row, "file"),
                 name=_opt_str(row, "name"),
                 expected_dir=_opt_str(row, "expected_dir"),  # #7 As-Is 출력 격납 패스
-                expected_type=_opt_str(row, "expected_type"),  # #6 As-Is 출력 종류(메타)
                 tobe_dir=_opt_str(row, "tobe_dir"),  # #11 To-Be 출력 격납 패스
             ))
         return specs
@@ -127,7 +126,6 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
         export_as=_opt_str(out, "export_csv"),  # 구형 키
         file=_opt_str(out, "file"),
         expected_dir=_opt_str(out, "expected_dir"),
-        expected_type=_opt_str(out, "expected_type"),
         tobe_dir=_opt_str(out, "tobe_dir"),
     )]
 

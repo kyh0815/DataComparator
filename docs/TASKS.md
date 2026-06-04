@@ -484,7 +484,7 @@
 
 ### T7-5. 정의 항목별 격납 패스 override — 사장님 규격 정합 `[x]`
 
-**작업** (D-036): 사장님 정의 파일 최소 항목(체크리스트번호 / As-Is 입력·출력 명·종류·격납패스 / To-Be 격납 테이블·파일·패스 / 실행shell / To-Be 출력 명·종류·패스)을 충족. **config 공통 + 항목별 선택적 override**(회의 확정 "경로=config" 유지하며 항목 경로가 있으면 우선). `InputSpec`에 `src_dir`(#4)·`dest_name`(#7-3), `OutputSpec`에 `expected_dir`(#7)·`expected_type`(#6)·`tobe_dir`(#11) 추가(전부 선택). 경로 해석을 `src/core/paths.py`로 단일화(orchestrator·runner·make_golden 공유, 드리프트 차단). `mapping_to_definition.py`·`checklist_to_template.py`에 새 선택 열. `make_golden.py` 다중출력 잠복 버그 동반 수정. **#7-2(DB to_be 격납 패스)는 보류**(직접 적재라 경로 N/A — 사장님 확인 대기).
+**작업** (D-036): 사장님 정의 파일 최소 항목(체크리스트번호 / As-Is 입력·출력 명·종류·격납패스 / To-Be 격납 테이블·파일·패스 / 실행shell / To-Be 출력 명·종류·패스)을 충족. **config 공통 + 항목별 선택적 override**(회의 확정 "경로=config" 유지하며 항목 경로가 있으면 우선). `InputSpec`에 `src_dir`(#4)·`dest_name`(#7-3), `OutputSpec`에 `expected_dir`(#7)·`tobe_dir`(#11) 추가(전부 선택). *(#6 expected_type는 D-037 보정에서 제거 — inert.)* 경로 해석을 `src/core/paths.py`로 단일화(orchestrator·runner·make_golden 공유, 드리프트 차단). `mapping_to_definition.py`·`checklist_to_template.py`에 새 선택 열. `make_golden.py` 다중출력 잠복 버그 동반 수정. **#7-2(DB to_be 격납 패스)는 보류**(직접 적재라 경로 N/A — 사장님 확인 대기).
 
 **완료 기준**: 새 필드 파싱+하위호환, paths 해석(override/fallback) 그린. 경로 미기재 기존 정의 무수정 동작. `tests/test_paths.py`·`test_definition.py`·`test_mapping_to_definition.py` 통과.
 

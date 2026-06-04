@@ -163,7 +163,6 @@ class OutputSpec:
     file: str | None = None  # #9 type==file: To-Be 출력 명(배치 산출 파일명)
     name: str | None = None  # 라벨(리포트/화면). 없으면 export_as/file에서 파생
     expected_dir: str | None = None  # #7 As-Is 출력 격납 패스 override(없으면 config.asis_output_dir)
-    expected_type: str | None = None  # #6 As-Is 출력데이터 종류(정보·리포트용. 비교는 바이트라 판정 불변)
     tobe_dir: str | None = None  # #11 To-Be 출력 격납 패스 override(없으면 config.tobe_output_dir)
 
     @property

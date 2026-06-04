@@ -109,8 +109,10 @@ tests:
 | `file` | type=file면 ✅ | To-Be 출력 명: 배치가 만든 파일명(`tobe_output_dir`, 확장자 무관) — 규격 #9 |
 | `expected` | ✅ | As-Is 출력(정답) 명(`asis_output_dir`). To-Be 출력과 **바이트 비교** — 규격 #5 |
 | `expected_dir` | — | As-Is 출력 격납 패스 override(없으면 `config.asis_output_dir`) — 규격 #7 |
-| `expected_type` | — | As-Is 출력 종류(정보용 — 비교는 바이트라 판정 불변) — 규격 #6 |
 | `tobe_dir` | — | To-Be 출력 격납 패스 override(없으면 `config.tobe_output_dir`) — 규격 #11 |
+
+> 규격 #6(As-Is 출력 종류)은 **필드를 두지 않는다**(D-037 보정): 비교가 통짜 바이트라 판정에 무관하고
+> 리포트·화면에도 안 쓰여 inert였으므로 사용자 결정으로 제거. 출력 종류는 To-Be 기준 `type`(#10)만 둔다.
 | `name` | — | 출력 식별자(리포트/화면 라벨; 없으면 `export_as`/`file`) |
 
 > **출력 형식과 SAM**: 비교는 **통짜 바이트**(D-004)라 형식을 해석하지 않는다.

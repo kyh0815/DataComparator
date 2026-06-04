@@ -593,11 +593,11 @@
 
 1. **새 항목별 필드(전부 선택, 비면 config 공통 = 하위호환)**:
    - `InputSpec.src_dir`(#4 As-Is 입력 격납 패스), `InputSpec.dest_name`(#7-3 To-Be 격납 파일명). (`table`=#7-1, `dest_dir`=#7-4는 기존)
-   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.expected_type`(#6 As-Is 출력 종류·정보용), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존)
+   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존) *(#6 As-Is 출력 종류는 D-037 보정에서 제거 — 아래.)*
 2. **경로 해석 단일화(드리프트 차단)**: `src/core/paths.py` 신설 — `input_source_path`/`input_dest_dir`/`input_dest_path`/`output_asis_path`/`output_tobe_path`. "항목 경로 있으면 그걸, 없으면 config 공통". orchestrator(적재처·정답 경로)·runner(읽기처·To-Be 산출)·make_golden이 **모두 이 헬퍼를 공유**(기존 runner.resolve_input_dir/_tobe_path/_input_file_path 흡수·제거). 복사처=읽기처가 같은 규칙을 타 파일셸 드리프트를 구조적으로 차단.
 3. **#6(As-Is 출력 종류)는 메타**: 비교는 통짜 바이트(D-004)라 판정에 영향 없음 — 리포트·기록·문서용 정보로만 보유(바이트 자기일치 유지, [[dc-self-review]]).
 4. **#7-2(DB의 to_be 격납 패스)는 필드 미생성**: 우리 도구는 psycopg2로 CSV를 테이블에 **직접 적재**(스테이징 파일 경로 불요)하므로, DB 입력의 To-Be 격납지는 **테이블명(#7-1)**이 전부다. "DB는 경로 N/A". 만약 사장님 의도가 ⓐ적재 전 스테이징 디렉토리 또는 ⓑ스키마명이면 추후 `InputSpec.stage_dir`/`schema` 한 칸으로 확장(의미 확정 후) — **사장님 확인 대기 항목**.
-5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`expected_type`·`tobe_dir`)을 수용/방출 → 11항목이 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
+5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`tobe_dir`)을 수용/방출 → 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
 6. **`_needs_db` 보정**: 출력 중 **하나라도** database면 conn을 열도록(기존 1차 출력만 보던 것 → outputs 전건). 다중 출력에서 2번째가 DB여도 export 가능.
 
 **이유**: 검증 항목(셸)마다 데이터/정답/산출물의 실제 위치가 다를 수 있다는 사장님 규격을 그대로 받되, 대다수 케이스(공통 디렉토리)는 config 한 곳으로 간결하게 — override는 필요한 셸만. 경로 조립을 한 모듈로 모아 드리프트(복사처≠읽기처)를 원천 차단.
@@ -620,3 +620,13 @@
 **이유**: 정의 작성(CSV→yaml)은 설치 준비의 핵심인데 CLI만 두면 비개발 사용자가 못 쓴다. 운영(실행)과 준비(정의 생성)를 **별도 화면으로 분리**하면 실행 화면의 간결함과 준비 화면의 기능성을 모두 얻는다.
 
 **검증**: `tests/test_gui.py` +7(=25개: /define 렌더·링크·from-csv 생성/거부/파일필수·sample-csv 다운로드·save가 definition_file에 기록) 통과. 라이브: 동봉 `samples/shell_mapping.long.example.csv` 업로드 → 2셸(001 입력3·출력2 / 002 입력1·출력1) 생성, 데모 정의 무사. 전체 178 passed.
+
+### D-037 보정. expected_type(#6 As-Is 출력 종류) 컬럼 제거
+
+**결정**(사용자): "새 정의 파일을 채웠을 때 커버 안 되는 부분" 감사 결과, 격납 패스 5종
+(`src_dir`·`dest_dir`·`dest_name`·`expected_dir`·`tobe_dir`)은 전부 엔진이 실사용(코드 추적+라이브 R02
+검증)하나 **`expected_type`만 파싱 후 아무 데서도 안 쓰임**(통짜 바이트 비교라 판정 무관, 리포트·화면
+노출 0건)이 확인됨. 사용자 결정으로 **컬럼·필드 제거**. 출력 "종류"는 To-Be 기준 `type`(#10)만 둔다.
+→ `OutputSpec.expected_type` 삭제, definition 파서·`mapping_to_definition`·`checklist_to_template`
+헤더·샘플 CSV·템플릿 yaml·DEFINITION_SPEC에서 제거. 사장님 11항목 중 #6은 정의에서 빠짐(통짜
+바이트 비교 모델에선 As-Is 출력 종류가 불요 — #7-2와 함께 "모델상 불필요"로 정리). 전체 178 passed.

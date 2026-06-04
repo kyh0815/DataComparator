@@ -204,7 +204,6 @@ tests:
       - type: file
         file: out.dat
         expected: gold.dat
-        expected_type: file
         expected_dir: /mnt/asis/out
         tobe_dir: /mnt/tobe/out
 """
@@ -212,7 +211,7 @@ tests:
     i = d.inputs[0]
     assert (i.src_dir, i.dest_dir, i.dest_name) == ("/mnt/asis/in", "/mnt/tobe/in", "staged.csv")
     o = d.outputs[0]
-    assert (o.expected_dir, o.expected_type, o.tobe_dir) == ("/mnt/asis/out", "file", "/mnt/tobe/out")
+    assert (o.expected_dir, o.tobe_dir) == ("/mnt/asis/out", "/mnt/tobe/out")
 
 
 def test_per_item_paths_default_none(tmp_path):

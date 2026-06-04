@@ -28,7 +28,7 @@ from pathlib import Path
 # 뒤쪽 격납 패스 열(src_dir~tobe_dir)은 **선택**(비우면 config 공통 디렉토리) — 사장님 규격 11항목 대응.
 _HEADER = [
     "shell_id", "kind", "type", "program", "table", "file", "expected", "name", "test_name", "timeout",
-    "src_dir", "dest_dir", "dest_name", "expected_dir", "expected_type", "tobe_dir",
+    "src_dir", "dest_dir", "dest_name", "expected_dir", "tobe_dir",
 ]
 # 줄 앞 번호/불릿: "1)" "1." "①~⑳" "-" "・" "*" "•" 등.
 _BULLET = re.compile(r"^\s*(?:\d+\s*[\)\.\:]|[①-⑳]|[-・*•‣◦])\s*")

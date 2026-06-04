@@ -26,7 +26,6 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용):
   dest_dir      [입력]  type=file의 To-Be 격납 패스(#7-4). 없으면 tobe_input_dir.
   dest_name     [입력]  type=file의 To-Be 격납 파일명(#7-3). 없으면 입력 파일명 그대로.
   expected_dir  [출력]  As-Is 출력(정답) 격납 패스(#7). 없으면 asis_output_dir.
-  expected_type [출력]  As-Is 출력 종류(#6, 정보용 — 비교는 통짜 바이트라 판정 불변).
   tobe_dir      [출력]  To-Be 출력 격납 패스(#11).       없으면 tobe_output_dir.
 
 **빈 파일명 자동 규칙**(D-035, 사용자 확정 — 내용은 수기, 파일명은 규칙):
@@ -138,7 +137,7 @@ def mapping_to_definition(csv_text: str) -> dict:
                 spec["file"] = fname           # 비면 자동
             if row.get("name"):
                 spec["name"] = row["name"]
-            for col in ("expected_dir", "expected_type", "tobe_dir"):  # #6·#7·#11 (선택)
+            for col in ("expected_dir", "tobe_dir"):  # #7·#11 (선택)
                 if row.get(col):
                     spec[col] = row[col]
             sh["outputs"].append(spec)

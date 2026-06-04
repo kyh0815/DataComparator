@@ -58,12 +58,11 @@ tests:
         expected: 正解A.csv             #   [필수] As-Is 정답 파일명 — 바이트 비교 대상     (#5)
         name: 結果A                     #   [선택] 리포트/화면 라벨(없으면 export_as/file)
         expected_dir: /data/asis/output #   [선택] As-Is 출력 격납 패스(없으면 asis_output_dir)  (#7)
-        expected_type: database         #   [선택] As-Is 출력 종류(정보용 — 비교는 바이트)       (#6)
         tobe_dir: /data/tobe/output     #   [선택] To-Be 출력 격납 패스(없으면 tobe_output_dir) (#11)
       - type: file                      #   배치가 파일로 낸 결과 → 그대로 비교(확장자 무관)
         file: 出B.sam                   #   [type=file 필수] To-Be 출력명(배치 산출 파일). SAM/CSV 등 (#9)
         expected: 正解B.sam             #   [필수] As-Is 정답 파일명(asis_output_dir)
-        # ↑ 출력에도 expected_dir/expected_type/tobe_dir 동일하게 지정 가능(항목별 패스 override)
+        # ↑ 출력에도 expected_dir/tobe_dir 동일하게 지정 가능(항목별 패스 override)
 
   # ── 예시 B. 단일 입력 + 단일 출력 (구형 호환 — 가장 간단) ───────────────────
   #    입력 1·출력 1이면 input.tables / outputs 리스트 없이 단일 블록으로도 됩니다.
