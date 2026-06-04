@@ -15,10 +15,16 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용):
   type       [필수] database | file
   program    [선택] 배치(잡) 경로. 셸 내 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
   table      [입력/출력=database면 필수] 적재/결과 테이블명.
-  file       [필수] 파일명. input=입력CSV / output(db)=export CSV / output(file)=산출 파일.
-  expected   [output면 필수] 정답 파일명(asis_output_dir). 바이트 비교 대상.
+  file       [선택] 파일명. 비우면 자동 생성(아래 규칙). input=입력CSV / output(db)=export CSV / output(file)=산출 파일.
+  expected   [선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.
   name       [선택] 출력 라벨(리포트/화면).
-  test_name  [선택] 셸 이름.   timeout [선택] 초(기본 60).
+  test_name  [선택] 셸 이름(체크리스트 항목명).   timeout [선택] 초(기본 60).
+
+**빈 파일명 자동 규칙**(D-035, 사용자 확정 — 내용은 수기, 파일명은 규칙):
+  · 셸의 입력(또는 출력)이 1개면 `{shell_id}.csv`.
+  · 여러 개면 `{shell_id}_{테이블명}.csv`(테이블 없으면 `{shell_id}_in{n}` / `{shell_id}_out{n}.csv`).
+  · 정답(expected)이 비면 그 출력의 To-Be 이름과 동일(폴더가 달라 충돌 없음).
+  · **이미 적힌 이름은 그대로 존중**(자동은 빈 칸만). 입력CSV·정답·DB export명은 우리가 정하는 이름이라 안전.
 
 엄격 생성: 한 행이라도 오류면 전체 거부(부분 생성=전체검증 착시 차단). 생성 yaml은
 load_definitions로 **round-trip 재파싱**해 깨진 정의를 막는다(D-031 §2·3 계승).
@@ -44,7 +50,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config.definition import DefinitionError, load_definitions  # noqa: E402
 
-_REQUIRED_COLS = ("shell_id", "kind", "type", "file")
+# file·expected는 빈 칸이면 규칙으로 자동 채우므로 필수 아님(table은 DB의 사실이라 필수).
+_REQUIRED_COLS = ("shell_id", "kind", "type")
 _VALID_KIND = ("input", "output")
 _VALID_TYPE = ("database", "file")
 # 배치 경로 미지정 시 쓰는 동봉 stub(데모 기본 — 실 운영은 program 열에 실 배치 경로).
@@ -55,6 +62,7 @@ def mapping_to_definition(csv_text: str) -> dict:
     """Long CSV 텍스트 → {ok, yaml, count, shells, errors}. 오류가 하나라도 있으면 ok=False·yaml=''.
 
     shells는 [{test_id, input_count, output_count}]. errors는 사람용 메시지(행 번호 포함) 목록.
+    빈 파일명은 _autofill_names가 규칙으로 채운다(내용은 수기, 파일명은 규칙 — D-035).
     """
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:
@@ -65,8 +73,7 @@ def mapping_to_definition(csv_text: str) -> dict:
         return _fail([f"必須列がありません: {', '.join(missing)}"])
 
     errors: list[str] = []
-    # 셸 순서 보존 + 셸별 행 모음.
-    order: list[str] = []
+    order: list[str] = []                 # 셸 순서 보존
     shells: dict[str, dict] = {}
 
     for n, raw in enumerate(reader, start=2):  # 2 = 헤더 다음 첫 데이터 행(사람 기준 행 번호)
@@ -96,40 +103,34 @@ def mapping_to_definition(csv_text: str) -> dict:
         if row.get("timeout") and not sh["timeout"]:
             sh["timeout"] = row["timeout"]
 
-        fname = row.get("file", "")
+        fname = row.get("file", "")        # 빈 칸이면 나중에 자동(규칙)
         table = row.get("table", "")
-        if not fname:
-            errors.append(f"{n}行目[{sid}]: file（ファイル名）は必須です。")
-            continue
 
         if kind == "input":
             if itype == "database" and not table:
                 errors.append(f"{n}行目[{sid}]: 入力=database には table が必要です。")
                 continue
-            spec = {"csv": fname, "type": itype}
+            spec = {"csv": fname, "type": itype}   # csv는 _autofill_names가 채울 수 있음
             if itype == "database":
                 spec["table"] = table
             if row.get("dest_dir"):
                 spec["dest_dir"] = row["dest_dir"]
             sh["inputs"].append(spec)
         else:  # output
-            if not row.get("expected"):
-                errors.append(f"{n}行目[{sid}]: 出力には expected（正解ファイル名）が必要です。")
-                continue
             if itype == "database" and not table:
                 errors.append(f"{n}行目[{sid}]: 出力=database には table が必要です。")
                 continue
-            spec = {"type": itype, "expected": row["expected"]}
+            spec = {"type": itype, "expected": row.get("expected", "")}
             if itype == "database":
                 spec["table"] = table
-                spec["export_as"] = fname   # DB 출력의 file 열 = export CSV 파일명
+                spec["export_as"] = fname      # 비면 자동
             else:
-                spec["file"] = fname        # 파일 출력의 file 열 = 산출 파일명
+                spec["file"] = fname           # 비면 자동
             if row.get("name"):
                 spec["name"] = row["name"]
             sh["outputs"].append(spec)
 
-    # 셸 단위 검증(입력·출력 ≥1, program 일관).
+    # 셸 단위 검증(입력·출력 ≥1, program 일관) + 빈 파일명 자동 채움.
     for sid in order:
         sh = shells[sid]
         if not sh["inputs"]:
@@ -138,6 +139,8 @@ def mapping_to_definition(csv_text: str) -> dict:
             errors.append(f"[{sid}]: 出力（kind=output）が1件もありません。")
         if len(sh["programs"]) > 1:
             errors.append(f"[{sid}]: program が行ごとに異なります: {sorted(sh['programs'])}")
+        if sh["inputs"] and sh["outputs"]:
+            _autofill_names(sid, sh)
 
     if not order and not errors:
         errors.append("有効なシェル行がありません。")
@@ -158,6 +161,38 @@ def mapping_to_definition(csv_text: str) -> dict:
         for sid in order
     ]
     return {"ok": True, "yaml": text, "count": len(order), "shells": summary, "errors": []}
+
+
+def _name(sid: str, count: int, idx: int, table: str | None, role: str) -> str:
+    """파일명 베이스: 항목 1개면 {sid}, 여러 개면 {sid}_{테이블명}(없으면 {sid}_{role}{idx})."""
+    if count == 1:
+        return sid
+    if table:
+        return f"{sid}_{table}"
+    return f"{sid}_{role}{idx}"
+
+
+def _autofill_names(sid: str, sh: dict) -> None:
+    """빈 파일명(input.csv / output.export_as|file / expected)을 규칙으로 채운다(D-035).
+
+    내용(테이블·타입·배치)은 수기, **파일명만** 자동. 이미 적힌 값은 건드리지 않는다.
+    """
+    n_in, n_out = len(sh["inputs"]), len(sh["outputs"])
+    for i, sp in enumerate(sh["inputs"], start=1):
+        if not sp.get("csv"):
+            sp["csv"] = _name(sid, n_in, i, sp.get("table"), "in") + ".csv"
+    for k, sp in enumerate(sh["outputs"], start=1):
+        base = _name(sid, n_out, k, sp.get("table"), "out")
+        if sp["type"] == "database":
+            if not sp.get("export_as"):
+                sp["export_as"] = base + ".csv"
+            tobe = sp["export_as"]
+        else:
+            if not sp.get("file"):
+                sp["file"] = base + ".csv"   # 확장자 미상이면 csv 기본(필요 시 file 칸에 직접 기입)
+            tobe = sp["file"]
+        if not sp.get("expected"):
+            sp["expected"] = tobe            # 정답은 To-Be와 같은 이름(폴더가 달라 충돌 없음)
 
 
 def _emit_shell(sid: str, sh: dict) -> dict:

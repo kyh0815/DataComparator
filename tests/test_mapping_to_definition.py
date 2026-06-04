@@ -57,7 +57,7 @@ def test_blank_program_uses_stub_by_first_input_type():
 
 
 def test_missing_required_column_rejected():
-    r = m.mapping_to_definition("shell_id,kind,type\n001,input,file\n")  # file 열 없음
+    r = m.mapping_to_definition("shell_id,kind\n001,input\n")  # type 열 없음(file은 선택)
     assert r["ok"] is False and any("必須列" in e for e in r["errors"])
 
 
@@ -69,14 +69,50 @@ def test_bad_kind_and_type_rejected():
     assert any("kind" in e for e in r["errors"]) and any("type" in e for e in r["errors"])
 
 
-def test_output_requires_expected():
+def test_blank_filenames_autofilled_single_io():
+    """1입력·1출력에서 file/expected를 비우면 {shell_id}.csv로 자동 채워진다(내용은 수기, 파일명은 규칙)."""
     csv = (
-        "shell_id,kind,type,table,file,expected\n"
-        "001,input,file,,a.csv,\n"
-        "001,output,file,,a.csv,\n"   # expected 비어있음
+        "shell_id,kind,type,table\n"
+        "001,input,database,trans\n"
+        "001,output,database,result\n"
     )
     r = m.mapping_to_definition(csv)
-    assert r["ok"] is False and any("expected" in e for e in r["errors"])
+    assert r["ok"]
+    t = yaml.safe_load(r["yaml"])["tests"][0]
+    assert t["input"]["tables"][0]["csv"] == "001.csv"
+    assert t["outputs"][0]["export_as"] == "001.csv"
+    assert t["outputs"][0]["expected"] == "001.csv"   # 정답은 To-Be와 같은 이름
+
+
+def test_autofill_multi_io_uses_table_name():
+    """다입력/다출력은 {shell_id}_{테이블명}.csv로 충돌 없이 자동 채움."""
+    csv = (
+        "shell_id,kind,type,table\n"
+        "001,input,database,trans\n"
+        "001,input,database,cust\n"
+        "001,output,database,res_a\n"
+        "001,output,database,res_b\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"]
+    t = yaml.safe_load(r["yaml"])["tests"][0]
+    assert [x["csv"] for x in t["input"]["tables"]] == ["001_trans.csv", "001_cust.csv"]
+    assert [o["export_as"] for o in t["outputs"]] == ["001_res_a.csv", "001_res_b.csv"]
+    assert [o["expected"] for o in t["outputs"]] == ["001_res_a.csv", "001_res_b.csv"]
+
+
+def test_provided_filenames_are_respected():
+    """이미 적힌 파일명/정답은 그대로 둔다(자동은 빈 칸만)."""
+    csv = (
+        "shell_id,kind,type,table,file,expected\n"
+        "001,input,database,trans,my_in.csv,\n"
+        "001,output,database,res,my_out.csv,my_gold.csv\n"
+    )
+    r = m.mapping_to_definition(csv)
+    t = yaml.safe_load(r["yaml"])["tests"][0]
+    assert t["input"]["tables"][0]["csv"] == "my_in.csv"
+    assert t["outputs"][0]["export_as"] == "my_out.csv"
+    assert t["outputs"][0]["expected"] == "my_gold.csv"
 
 
 def test_db_input_requires_table():

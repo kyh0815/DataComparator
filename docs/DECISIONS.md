@@ -576,3 +576,11 @@
 - **고객 작성 흐름**: 우리가 **기입용 템플릿**을 만들고 고객이 채워 반환. `tools/checklist_to_template.py`가 **체크리스트 항목명 목록 → 빈 매핑 CSV 템플릿**(항목마다 입력행+출력행, `shell_id` 자동 zero-pad, `test_name` 선반영) 생성. 고객은 빈 칸(type·program·table·file·expected)만 채우고 다중 입출력은 행 추가. 미기입 템플릿은 변환기가 거부(채우라는 신호). 채운 CSV → `mapping_to_definition.py` → yaml.
 
 **미결**: 고객 체크리스트의 **실제 파일 형식**(텍스트/엑셀/표)에 맞춘 입력 어댑터는 샘플 확인 후(현재 생성기는 "1줄=1항목" 텍스트 입력 전제, 앞 번호/불릿 제거). **검증**: `tests/test_checklist_to_template.py` 6개 + `test_mapping_to_definition.py` 12개 통과.
+
+### D-035 보조2. 빈 파일명 자동 채움 (내용은 수기, 파일명은 규칙)
+
+**가정 확정(사용자)**: 정의 파일의 **내용물(어느 셸·입력/출력 테이블·배치·항목)은 고객/수기로** 채우고(데이터로 유추 불가한 사실), 도구는 **파일명처럼 규칙으로 정해지는 것만** 자동 채운다. → `mapping_to_definition.py`가 `file`·`expected` 빈 칸을 자동 채움(둘 다 선택 열로 강등, `table`은 DB의 사실이라 필수 유지).
+
+**파일명 규칙(최적화)**: 셸의 입력(또는 출력)이 **1개면 `{shell_id}.csv`**, **여러 개면 `{shell_id}_{테이블명}.csv`**(테이블 없는 파일 입출력은 `{shell_id}_in{n}`/`{shell_id}_out{n}.csv`). **정답(expected)** 빈 칸은 그 출력의 **To-Be 이름과 동일**(asis_output_dir vs tobe_output_dir로 폴더가 달라 충돌 없음, 데모 관례와 일치). **이미 적힌 이름은 그대로 존중**(자동은 빈 칸만). 입력CSV·DB export·정답은 우리가 정하는 이름이라 안전; 파일출력 file은 확장자 미상이면 csv 기본(필요 시 직접 기입).
+
+**효과**: 고객은 `type`·`table`(과 `test_name`)만 채우면 됨 — 체크리스트 템플릿과 합쳐지면 "항목명 선반영 + 테이블만 기입 + 파일명 자동". **검증**: `tests/test_mapping_to_definition.py` 14개(단일/다중 자동·제공값 존중 포함) + checklist 6개 통과.
