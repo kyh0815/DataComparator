@@ -232,17 +232,15 @@
     <span class="bar"></span>
     <div class="ttl">
       <h1>現新比較 自動検証ツール</h1>
-      <p>メインフレーム → Linux バッチ出力の同等性を、バイト単位で自動検証</p>
     </div>
   </div>
 </header>
 
 <main>
-  <!-- ① 設定 / 接続（接이식 · 설치 시 1회） -->
+  <!-- ① 設定 / 接続 -->
   <details class="settings" id="settings" {% if settings_open %}open{% endif %}>
     <summary>
       設定 / 接続
-      <span class="sub">DB接続テスト・config.yaml 保存（設置時のみ）</span>
       <span class="chev">▶</span>
     </summary>
     <div class="panel-body">
@@ -254,29 +252,22 @@
         <div class="field"><label class="lab">パスワード環境変数 <span class="opt">(password_env)</span></label><input type="text" id="c-pwenv" value="{{ conn.password_env }}"></div>
         <div class="field"><label class="lab">エンコーディング</label><input type="text" id="c-encoding" value="{{ conn.encoding }}"></div>
       </div>
-      <div class="callout sec">
-        <div>パスワードはツールに入力・保存しません（<b>モデルA</b>）。DBA が環境変数 <code>{{ conn.password_env }}</code> または <code>.pgpass</code> に設定し、ツールはそこから取得します。</div>
-      </div>
       <div class="callout warn">
-        <div>検証専用の <b>最小権限アカウント</b> と <b>検証専用 DB / スキーマ</b> を使用してください。本ツールは入力テーブルを TRUNCATE+INSERT、結果テーブルに INSERT するため、<b>本番 DB を指すと汚染します</b>。</div>
+        <div>検証専用 DB／最小権限アカウントで実行してください（入力テーブルを TRUNCATE します）。</div>
       </div>
       <div class="actions">
         <button class="ghost" id="c-test">接続テスト（読み取り）</button>
         <button class="ghost" id="c-save">config.yaml に保存</button>
-      </div>
-      <div class="callout info">
-        <div><b>検証の内容（シェル毎の入力・出力・テーブル・バッチ）は定義ファイルが正本</b>です（<code>config.yaml</code> の <code>definition_file</code>）。この画面では接続確認と保存のみで、I/Oタイプやテーブルは選びません。</div>
       </div>
       <div class="checks" id="c-checks"></div>
       <div class="toast" id="c-toast"></div>
     </div>
   </details>
 
-  <!-- ② 検証実行（定義ファイル駆動 · ボタン1つ） -->
+  <!-- ② 検証実行 -->
   <div class="panel">
     <div class="panel-head">
       <h2>検証実行</h2>
-      <span class="sub">定義ファイル駆動 · Shell 1〜1000 自動実行</span>
     </div>
     <div class="panel-body">
       <!-- 検証定義は config の definition_file が正本 — 画面では列挙しない(ボタン+モニタ+結果)。
@@ -286,18 +277,12 @@
         <div class="def-note" id="def-msg">{{ definition.message }} 「設定 / 接続」または <code>config.yaml</code> の <code>definition_file</code> を確認してください。</div>
       </div>
       <div class="grid">
-        <div class="field"><label class="lab">設定ファイル <span class="opt">(config.yaml)</span></label><input type="text" id="config" value="{{ default_config }}"><div class="hint">DB接続・ディレクトリ・定義ファイルの場所</div></div>
-        <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"><div class="hint">未指定なら定義の全シェル</div></div>
+        <div class="field"><label class="lab">設定ファイル <span class="opt">(config.yaml)</span></label><input type="text" id="config" value="{{ default_config }}"></div>
+        <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"></div>
       </div>
       <div class="actions">
         <button class="run big" id="run">▶ 検証実行</button>
-        <label class="chk"><input type="checkbox" id="verbose"> 差分を上限なしで全件表示（200行超）</label>
-      </div>
-      <div class="callout sec">
-        <div>各シェルの <b>入力ロード → バッチ実行 → 結果比較</b> がリアルタイムに表示され、出力単位（1シェルに出力2件なら結果2件）で OK/NG/ERROR/MISSING を集計します。終了後にサマリーと CSV レポートを出力します。</div>
-      </div>
-      <div class="callout warn">
-        <div>現在「新環境バッチ」は <b>stub（デモ用）</b> です — 実検証は実バッチ置換後（導入段階で <code>program</code> を実行ファイルに差し替え）。同梱サンプルは <code>config.yaml.example</code> が <code>samples/asis/</code> を指します。</div>
+        <label class="chk"><input type="checkbox" id="verbose"> 差分を全件表示</label>
       </div>
     </div>
   </div>
