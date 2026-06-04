@@ -24,18 +24,19 @@ class LoaderError(Exception):
     """CSV 적재 실패(파일 없음·헤더 불일치 등). DB 예외는 그대로 전파한다."""
 
 
-def copy_input_file(csv_path: Path, dest_dir: Path) -> Path:
+def copy_input_file(csv_path: Path, dest_dir: Path, dest_name: str | None = None) -> Path:
     """파일 입력 흐름: As-Is 입력 CSV를 야간 배치 입력 디렉토리에 바이트 복사한다 (D-022).
 
     인코딩 변환은 하지 않는다(원본 Shift-JIS 바이트 그대로 — stub이 읽을 때 디코드한다).
-    dest_dir는 없으면 생성한다. 복사된 파일 경로를 반환한다. 원본이 없으면 LoaderError.
+    dest_dir는 없으면 생성한다. dest_name이 주어지면 그 이름으로 격납한다(#7-3, 없으면 원본명).
+    복사된 파일 경로를 반환한다. 원본이 없으면 LoaderError.
     """
     csv_path = Path(csv_path)
     if not csv_path.is_file():
         raise LoaderError(f"복사할 입력 파일이 없습니다: {csv_path}")
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / csv_path.name
+    dest = dest_dir / (dest_name or csv_path.name)
     shutil.copyfile(csv_path, dest)  # 바이트 그대로 복사 (메타데이터 불필요)
     return dest
 

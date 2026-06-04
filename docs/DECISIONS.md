@@ -459,6 +459,22 @@
 
 ---
 
+## D-033. 기획서 7.1 풀스키마 복원 — 다중 입력·다중 출력 (브랜치 feat/fullschema-multi-io)
+
+**배경**: D-021/022에서 Boss 기획 7.1 정의 구조를 프로토용 **경량화(입력 1·출력 1)**했는데, 실 운영 배치는 7.1대로 **한 셸이 여러 테이블/파일을 입력으로 읽고(조인), DB와 파일로 동시에 출력**하는 경우가 흔함(사장님 확인). 따라서 7.1 풀스키마(다중 입력·다중 출력)를 **복원**한다. 이는 새 설계가 아니라 프로토 단순화의 supersede이며, 코어(범용 적재/추출/바이트비교)는 그대로 재사용한다.
+
+**확정 결정(회의)**: ① **다중 출력 흔함** → 출력 단위 집계(셸이 아니라 **출력**당 OK/NG, 리포트/카운트/필터). ② **다중 입력(매번 여러 테이블 적재) 필요**. ③ 한 셸의 **프로그램 여러 개는 잡 1개로 묶어 1회 실행 + 최종 출력만 비교**(다중 배치 실행 로직 불요). ④ 입력 방식은 **정의 파일(yaml) 우선**, 매핑표(long CSV)는 후속.
+
+**단계화(안전)**: 파급이 격리된 **다중 입력(P1)** 먼저, 결과 단위가 바뀌는 **다중 출력 캐스케이드(P2)**는 별도.
+
+**P1 — 다중 입력(완료)**: `InputSpec`(csv/type/table/dest_dir) 추가, `ShellDefinition.inputs: list[InputSpec]`. 정의 로더가 신형 `input.tables:[...]`와 구형 단일(`input.table`)을 **모두 파싱→inputs[]로 정규화**(단일 호환 필드는 inputs[0]에서 파생, `__post_init__`가 직접생성 시도 백필 — 단일 진실). 오케스트레이터 `_load_step`이 inputs[]를 **루프 적재**(DB 적재마다 commit, D-023 ① 유지), `_needs_db`도 입력 다건 반영. **하위호환**: 기존 단일형 정의·테스트 무수정 통과(160 passed). 코어 함수(`load_input_csv`)는 그대로 재사용(드리프트 0).
+
+**P2 — 다중 출력(예정, 게이트)**: `output[]` 리스트(각 expected) + runner 다중 출력 추출 + `ComparisonResult.output_name`(셸당 결과 N개) + 리포트 (test_id,output_name) 행 + RunSummary total=출력 수 + 진행 이벤트/ GUI 출력별 표시·카드·필터. **결과 단위 변경(셸→(셸,출력))이 최대 파급** — D-016 합항등 유지, total 의미를 출력 수로 못박음.
+
+**SPEC 영향**: 현 SPEC은 단일 입출력 전제 → 본 결정이 명시적 supersede(SPEC/매핑표 형식은 P2에서 갱신).
+
+---
+
 ## D-030. 정의 파일 주도 업로드 검증 — 셸별 정의 yml 업로드 (Phase B 일부 선반영)
 
 **결정**: 업로드 검증에 **정의 파일(`test_definition.yaml`) 주도 모드**를 추가한다(D-028 Phase B의 "셸별 정의" 일부 선반영). 정의 파일을 업로드하면 그것이 **정본**이 되어 셸별 입력/출력 타입·테이블·배치를 정의대로 N셸 검증한다. Core·`models` 무수정, `src/gui/`만 확장.
@@ -515,3 +531,77 @@
 > ## D-XXX. (제목)
 > **결정**: ...
 > **이유**: ...
+
+---
+
+## D-034. UI 경량화 + 정의 파일 주도 일원화 (T7-3 / 회의 2026-06-03 방향)
+
+**결정**: GUI를 회의 확정 방향 — **"버튼 1개 → 자동 실행(Shell 1~1000) → 실시간 모니터링 → 결과"** — 로 경량화한다. 운영 타깃은 **디렉토리 기반**: 데이터·정답·정의 파일이 `config.yaml`이 가리키는 디렉토리에 이미 있고(설치 시 준비), 화면은 그 정의를 그대로 실행만 한다(`/run` SSE = CLI와 동일한 `run_full_comparison(config, on_progress)`). **Core·models 무수정**, `src/gui/`만 변경.
+
+1. **단일 화면**: ① **設定/接続**(접이식 `<details>`, 정의 미리보기 실패 시에만 펼침) — 접속테스트(읽기전용)·config.yaml 저장. 설치 시 1회. ② **検証実行** — config 정의 파일을 요약해 **실행 전 미리보기**(N셸 + 셸별 I/O 타입, 다중 입출력은 `×N` 카운트, T7-1/T7-2 반영) 후 [検証実行] 버튼 → 실시간 모니터링(셸 행·3단계·출력별 블록) → 요약(출력 단위)·카드 필터·리포트.
+2. **걷어낸 것(불필요·간결, 사용자 지시)**: 3탭+위저드, **테이블선택 3칸 폼**(input/output type·table), 브라우저 **업로드-CSV 검증**, **매핑표→yaml 생성**. 그에 딸린 라우트(`/verify/run`·`/definition/parse`·`/definition/from-mapping`·`/definition/mapping-template`)·`upload.py` 미사용 함수(`prepare_jobs`·`prepare_jobs_from_definition`·`definition_from_mapping`·`MAPPING_TEMPLATE_CSV` 등)·해당 테스트를 제거. → **D-028~031(Phase 5/6 업로드·매핑 자산)을 supersede**(git 브랜치에 이력 보존, 필요 시 복원).
+3. **검증 정의의 정본 = 정의 파일**(DEFINITION_SPEC). 화면에 입력타입·테이블 선택칸을 두지 않아 "화면 3칸 vs 정의 파일" 드리프트 원천을 제거(자가검증 ②). 셸마다 타입·테이블·배치가 다른 실무 케이스를 정의 파일이 그대로 표현.
+4. **재사용>재구현(자가검증 ①)**: 실시간 모니터링·요약/필터·diff 렌더·`/run` SSE·접속테스트/저장·`summarize_definition`(미리보기로 재사용)은 그대로 — 경량화는 **삭제가 아니라 정의 파일 주도로의 흡수**.
+
+**이유**: 회의 확정 — 실 운영은 셸 수십~수백(최대 1000)이라 브라우저 업로드가 아니라 디렉토리 기반이어야 하고, 검증 내용은 정의 파일 한 곳이 정본이어야 한다. 업로드/매핑 UI는 프로토 시연·준비용 자산이었으나 운영 화면에선 불필요. "불필요한 건 제거하고 간결하게"(사용자).
+
+**deferred(유지)**: 정교 비교·무시 규칙(D-022), 매핑표(long CSV)→정의 생성(보조 도구로 분리 가능), 물리 다중 DB 접속, Core/CLI/리포트 일본어화, 실 설치 패키징. **SAM 등 확장자 실데이터 QA**(2순위)는 별도.
+
+**검증**: `tests/test_gui.py`(직렬화·`/run` SSE·report traversal·연결설정 저장/테스트·정의 미리보기 임베드·다중I/O 카운트) 그린. 라이브 렌더: 단일 화면, 업로드/매핑 어휘 부재, 정의 미리보기 N셸 표시.
+
+---
+
+## D-035. 매핑표(Long CSV) → 정의 yaml 생성 — 독립 도구·다중 입출력 (D-031 풀스키마 후속)
+
+**결정**: 수기 YAML을 피하려고 고객이 **스프레드시트(CSV)** 로 셸-입출력 매핑을 채우면 `test_definition.yaml`로 변환한다. D-031(GUI 매핑표→yaml)이 **단일 입출력(셸당 1행)** 만 됐고 T7-3(D-034)에서 GUI와 함께 제거됐는데, 사용자 요청으로 **풀스키마(다중 입출력) + 독립 도구**로 복원한다.
+
+1. **Long 형식**(셸당 1행 불가의 해법): 한 셸이 입력 N·출력 M(가변 길이)이라 납작한 1행으론 부족 → **입출력 항목당 1행, `shell_id`로 그룹화**. 열: `shell_id·kind(input|output)·type(database|file)·program·table·file·expected·name·test_name·timeout`. `file`=입력CSV/ DB출력 export CSV/ 파일출력 산출파일. `program` 공란=동봉 stub(첫 입력 타입 기준, 데모).
+2. **독립 CLI 도구** `tools/mapping_to_definition.py`(make_golden.py처럼 tools/): `python tools/mapping_to_definition.py mapping.csv -o test_definition.yaml`. **GUI에 넣지 않음** — T7-3(D-034) 경량화 유지. 설치 준비용: CSV 채움→변환 1회→yaml→config의 `definition_file`→경량 GUI/CLI로 실행.
+3. **로더 실필드명으로 방출**(input.tables[] + outputs[] + execution.shell_program + test_id) — 규격서(DEFINITION_SPEC)의 *목표* 명칭이 아니라 `src/config/definition.py`가 실제 읽는 이름. 핵심 로직 `mapping_to_definition(csv_text)->{ok,yaml,count,shells,errors}`로 분리(테스트 가능).
+4. **엄격 생성 + round-trip**(D-031 §2·3 계승): 한 행이라도 오류(필수열·kind/type·file/table/expected 누락·셸당 입출력 0건·program 불일치)면 전체 거부(부분 생성=전체검증 착시 차단, 행 번호 메시지). 생성 yaml을 `load_definitions`로 재파싱해 깨진 정의 차단. Excel 대비 utf-8-sig/cp932 디코드.
+5. **예시 교체**: `samples/shell_mapping.long.example.csv`(Long, 다중 입출력 셸 001 + 단일 002) 동봉. 옛 단일 입출력 `samples/shell_mapping.example.csv`(D-031, GUI 기능과 함께 사장)는 제거 — git 이력 보존, 혼동 방지. YAML 템플릿(`test_definition.template.yaml`) 헤더에 이 CSV 경로를 안내(쉬운 작성 경로).
+
+**이유**: "CSV가 YAML 손코딩보다 쉽다"(사용자). 셸별 정의의 *사실*(테이블·배치)은 데이터로 유추 불가라 표로 받되, yaml 문법은 도구가 짠다. 다중 입출력은 Long 형식이라야 표현되며, 운영 화면(경량 GUI)과 분리된 **설치 준비 도구**라 T7-3 방향과 양립한다.
+
+**deferred(유지)**: Excel(.xlsx) 직접 파싱 안 함(CSV로 저장 — 의존 최소화, CLAUDE 3-5). 매핑 자동 추론(파일만으로 테이블 유추) 불가. 정교 비교(D-022) 등 동일.
+
+**검증**: `tests/test_mapping_to_definition.py` 12개(다중I/O 그룹화·round-trip·필수열·kind/type·expected/table 누락·출력0건·program 불일치·CLI·동봉예시) 통과. 전체 148 passed(+DB skip). CLI 스모크: 동봉 예시 → 셸 001(입력3·출력2)/002(입력1·출력1) yaml 생성, 로더 통과.
+
+### D-035 보조. 체크리스트 → 기입용 매핑 템플릿 (고객 작성 흐름)
+
+고객의 **Test case가 "검증 항목 체크리스트"**(전각 체크·맥시멈 체크 200byte·… 식)인 것이 확인됨(사용자). 이를 정의 파일로 잇기 위해:
+
+- **검증 단위(셸 1건) = 체크리스트 항목 1개**. 같은 배치를 여러 항목으로 시험하면 정의 엔트리 여러 개(`program` 반복, `test_name`만 다름). 결과는 출력 통짜 바이트 비교이며, **항목 분류·판정은 안 함**(diff만 제공; 전각/반각 무시 같은 규칙 비교는 정교비교 D-022 deferred).
+- **순서·추적**: 정의(=CSV 행) 순서대로 실행·리포트 → **체크리스트 순서로 정렬**. `test_id`=항목번호, `test_name`=항목명 → 리포트·화면에 항목명 표시(1:1 추적). 디렉토리는 "순서"가 아니라 **파일명**으로 묶임(폴더 평평, 명명으로 항목 구분; 서브폴더 분할은 모델 밖).
+- **고객 작성 흐름**: 우리가 **기입용 템플릿**을 만들고 고객이 채워 반환. `tools/checklist_to_template.py`가 **체크리스트 항목명 목록 → 빈 매핑 CSV 템플릿**(항목마다 입력행+출력행, `shell_id` 자동 zero-pad, `test_name` 선반영) 생성. 고객은 빈 칸(type·program·table·file·expected)만 채우고 다중 입출력은 행 추가. 미기입 템플릿은 변환기가 거부(채우라는 신호). 채운 CSV → `mapping_to_definition.py` → yaml.
+
+**미결**: 고객 체크리스트의 **실제 파일 형식**(텍스트/엑셀/표)에 맞춘 입력 어댑터는 샘플 확인 후(현재 생성기는 "1줄=1항목" 텍스트 입력 전제, 앞 번호/불릿 제거). **검증**: `tests/test_checklist_to_template.py` 6개 + `test_mapping_to_definition.py` 12개 통과.
+
+### D-035 보조2. 빈 파일명 자동 채움 (내용은 수기, 파일명은 규칙)
+
+**가정 확정(사용자)**: 정의 파일의 **내용물(어느 셸·입력/출력 테이블·배치·항목)은 고객/수기로** 채우고(데이터로 유추 불가한 사실), 도구는 **파일명처럼 규칙으로 정해지는 것만** 자동 채운다. → `mapping_to_definition.py`가 `file`·`expected` 빈 칸을 자동 채움(둘 다 선택 열로 강등, `table`은 DB의 사실이라 필수 유지).
+
+**파일명 규칙(최적화)**: 셸의 입력(또는 출력)이 **1개면 `{shell_id}.csv`**, **여러 개면 `{shell_id}_{테이블명}.csv`**(테이블 없는 파일 입출력은 `{shell_id}_in{n}`/`{shell_id}_out{n}.csv`). **정답(expected)** 빈 칸은 그 출력의 **To-Be 이름과 동일**(asis_output_dir vs tobe_output_dir로 폴더가 달라 충돌 없음, 데모 관례와 일치). **이미 적힌 이름은 그대로 존중**(자동은 빈 칸만). 입력CSV·DB export·정답은 우리가 정하는 이름이라 안전; 파일출력 file은 확장자 미상이면 csv 기본(필요 시 직접 기입).
+
+**효과**: 고객은 `type`·`table`(과 `test_name`)만 채우면 됨 — 체크리스트 템플릿과 합쳐지면 "항목명 선반영 + 테이블만 기입 + 파일명 자동". **검증**: `tests/test_mapping_to_definition.py` 14개(단일/다중 자동·제공값 존중 포함) + checklist 6개 통과.
+
+---
+
+## D-036. 정의 항목별 격납 패스 override — 사장님 규격 정합 (Phase 7, T7-5)
+
+**결정**: 사장님이 보내주신 정의 파일 최소 항목(체크리스트 번호 / As-Is 입력·출력의 명·종류·격납패스 / To-Be 격납 테이블·파일·패스 / 실행shell / To-Be 출력 명·종류·패스)을 충족하도록 모델·로더·경로 해석을 보강한다. 핵심은 **격납 패스(저장 경로)를 항목별로 담는 것**인데, 과거 회의 확정(D-021/DEFINITION_SPEC §1 "디렉토리=config 공통, 정의엔 파일명만")과 양립시키기 위해 **"config 공통 + 항목별 선택적 override"** 방식을 택한다(사용자 확정 — "가장 자연스럽고 효율적인 방식").
+
+1. **새 항목별 필드(전부 선택, 비면 config 공통 = 하위호환)**:
+   - `InputSpec.src_dir`(#4 As-Is 입력 격납 패스), `InputSpec.dest_name`(#7-3 To-Be 격납 파일명). (`table`=#7-1, `dest_dir`=#7-4는 기존)
+   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.expected_type`(#6 As-Is 출력 종류·정보용), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존)
+2. **경로 해석 단일화(드리프트 차단)**: `src/core/paths.py` 신설 — `input_source_path`/`input_dest_dir`/`input_dest_path`/`output_asis_path`/`output_tobe_path`. "항목 경로 있으면 그걸, 없으면 config 공통". orchestrator(적재처·정답 경로)·runner(읽기처·To-Be 산출)·make_golden이 **모두 이 헬퍼를 공유**(기존 runner.resolve_input_dir/_tobe_path/_input_file_path 흡수·제거). 복사처=읽기처가 같은 규칙을 타 파일셸 드리프트를 구조적으로 차단.
+3. **#6(As-Is 출력 종류)는 메타**: 비교는 통짜 바이트(D-004)라 판정에 영향 없음 — 리포트·기록·문서용 정보로만 보유(바이트 자기일치 유지, [[dc-self-review]]).
+4. **#7-2(DB의 to_be 격납 패스)는 필드 미생성**: 우리 도구는 psycopg2로 CSV를 테이블에 **직접 적재**(스테이징 파일 경로 불요)하므로, DB 입력의 To-Be 격납지는 **테이블명(#7-1)**이 전부다. "DB는 경로 N/A". 만약 사장님 의도가 ⓐ적재 전 스테이징 디렉토리 또는 ⓑ스키마명이면 추후 `InputSpec.stage_dir`/`schema` 한 칸으로 확장(의미 확정 후) — **사장님 확인 대기 항목**.
+5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`expected_type`·`tobe_dir`)을 수용/방출 → 11항목이 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
+6. **`_needs_db` 보정**: 출력 중 **하나라도** database면 conn을 열도록(기존 1차 출력만 보던 것 → outputs 전건). 다중 출력에서 2번째가 DB여도 export 가능.
+
+**이유**: 검증 항목(셸)마다 데이터/정답/산출물의 실제 위치가 다를 수 있다는 사장님 규격을 그대로 받되, 대다수 케이스(공통 디렉토리)는 config 한 곳으로 간결하게 — override는 필요한 셸만. 경로 조립을 한 모듈로 모아 드리프트(복사처≠읽기처)를 원천 차단.
+
+**deferred(유지)**: #7-2 의미 확정 후 DB 스테이징/스키마 필드, 정교 비교(D-022), 물리 다중 DB 접속, Core/CLI/리포트 일본어화. SAM 등 확장자 실데이터 QA(2순위).
+
+**검증**: `tests/test_paths.py` 8개(override·fallback·rename·부모생성·디렉토리 미상 에러) + `test_definition.py` 항목별 경로 파싱 2개 + `test_mapping_to_definition.py` 경로 열 1개 + 기존 스위트 그린(하위호환: 경로 미기재 정의 무수정 동작).

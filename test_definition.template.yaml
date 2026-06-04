@@ -1,0 +1,70 @@
+# ============================================================================
+#  test_definition.yaml 빈 템플릿 (신형: 다중 입력·다중 출력 / Phase 7, D-033)
+# ----------------------------------------------------------------------------
+#  복사해서 값만 채우면 됩니다:
+#     cp test_definition.template.yaml test_definition.yaml
+#  규격 정본: docs/DEFINITION_SPEC.md   /   결정 이력: D-033·D-034·D-035
+#
+#  💡 YAML 손코딩이 부담스러우면 **스프레드시트(CSV)로 채워 변환**할 수 있습니다(D-035):
+#     예시: samples/shell_mapping.long.example.csv (Long 형식: 입출력 항목당 1행, shell_id로 묶음)
+#     변환: python tools/mapping_to_definition.py mapping.csv -o test_definition.yaml
+#
+#  ⚠️ 필드명 주의 (규격서 ↔ 실제 로더 차이):
+#     이 템플릿은 **실제 로더(src/config/definition.py)가 읽는 필드명**으로 작성됨.
+#     DEFINITION_SPEC.md는 *목표* 명칭을 쓰므로 일부 이름이 다릅니다(아래가 실동작):
+#       · 셸 식별자  : test_id            (규격서의 shell_id 아님)
+#       · 배치 경로  : execution.shell_program  (규격서의 top-level program 아님)
+#       · 입력 파일명: csv                (규격서의 file 아님)
+#       · 다중 입력  : input.tables: [...]       (규격서의 inputs[] 아님)
+#       · 다중 출력  : outputs: [...]            (규격서와 동일)
+#
+#  처리 흐름(셸 1건당): 입력 적재/복사 → program 1회 실행 → 출력 정규화(DB는 CSV export)
+#                       → asis 정답과 **바이트 비교** → 출력마다 OK/NG/ERROR/MISSING.
+#  집계 단위 = 출력(한 셸에 출력 2개면 결과 2건).
+#
+#  경로 규칙: 디렉토리는 config.yaml이 정함(asis_input_dir / asis_output_dir /
+#            tobe_output_dir / tobe_input_dir). 여기엔 **파일명만** 적습니다.
+#  DB 접속: config.yaml 공통 1곳(여기 안 적음). 비밀번호는 환경변수(모델A).
+# ============================================================================
+
+tests:
+
+  # ── 예시 A. 다중 입력 + 다중 출력 (신형 풀스키마) ──────────────────────────
+  - test_id: "001"                      # [필수] 셸(잡) 식별자. 문자열(숫자면 3자리 zero-pad)
+    test_name: "결제 거래명세"            # [선택] 사람용 이름(없으면 test_id)
+
+    input:
+      type: database                    # tables 항목에서 type 생략 시 상속할 기본값
+      tables:                           # [필수, ≥1] 다중 입력 — 셸이 읽는 모든 테이블/파일
+        - { csv: 取引.csv,  type: database, table: transaction_log }  # DB 적재(TRUNCATE+INSERT)
+        - { csv: 顧客.csv,  type: database, table: customer_master }  # 조인용 또 다른 테이블
+        - { csv: 夜間.csv,  type: file }                              # 파일 입력(배치가 직접 읽음)
+        #   csv      : [필수] 입력 파일명 (config.asis_input_dir 기준). DB 적재분은 헤더=컬럼명
+        #   type     : database | file
+        #   table    : type=database면 [필수] 적재 대상 테이블(검증 전용 테이블이어야)
+        #   dest_dir : [선택] type=file 복사 위치(없으면 config.tobe_input_dir)
+
+    execution:
+      shell_program: /opt/batch/job001  # [필수] 실행할 배치(잡) 경로. 내부 PGM 다수라도 1회 호출
+      timeout: 300                      # [선택] 초(기본 60)
+
+    outputs:                            # [필수, ≥1] 다중 출력 — 배치가 낸 모든 결과
+      - type: database                  #   DB에 쓴 결과 → 도구가 CSV로 export 후 비교
+        table: result_a                 #   [type=database 필수] 결과가 쓰인 테이블
+        export_as: 出A.csv              #   [type=database 필수] export할 CSV 파일명(tobe_output_dir)
+        expected: 正解A.csv             #   [필수] 정답 파일명(asis_output_dir) — 바이트 비교 대상
+        name: 結果A                     #   [선택] 리포트/화면 라벨(없으면 export_as/file)
+      - type: file                      #   배치가 파일로 낸 결과 → 그대로 비교(확장자 무관)
+        file: 出B.sam                   #   [type=file 필수] 배치 산출 파일명(tobe_output_dir). SAM/CSV 등
+        expected: 正解B.sam             #   [필수] 정답 파일명(asis_output_dir)
+
+  # ── 예시 B. 단일 입력 + 단일 출력 (구형 호환 — 가장 간단) ───────────────────
+  #    입력 1·출력 1이면 input.tables / outputs 리스트 없이 단일 블록으로도 됩니다.
+  - test_id: "002"
+    test_name: "야간 집계"
+    input:   { type: file, csv: 002.csv }                         # 단일 입력(파일)
+    execution: { shell_program: /opt/batch/job002, timeout: 60 }
+    output:  { type: database, table: tobe_result, export_csv: 002.csv }  # 단일 출력(구형: export_csv)
+    expected_output_csv: 002.csv        # 구형: 출력 블록 밖 최상위에 정답 파일명
+
+  # ── 1000건까지 같은 패턴으로 반복 ──────────────────────────────────────────

@@ -4,9 +4,9 @@
 - `test_connection`: 실제로 접속해 `SELECT 1` + (조건부) 입력/출력 테이블 존재 확인. **읽기전용**
   — DDL/쓰기 없음(운영 DB 오염 방지). 비밀번호는 **받지 않고** 서버 env(password_env)에서만
   끌어온다(모델 A, D-019 §6 확장). env에 없으면 .pgpass/trust 등에 위임.
-- `save_connection`: DB 접속·인코딩·경로만 config.yaml에 **원자적 저장**(+.bak 백업). 검증 정의값
+- `save_connection`: DB 접속·인코딩만 config.yaml에 **원자적 저장**(+.bak 백업). 검증 정의값
   (테이블·배치·타입)은 여기 저장하지 않는다 — models.Config 필드가 아니라 ShellDefinition 값이라
-  Core 무수정을 깨므로, /verify/run 폼으로 전달한다(A).
+  Core 무수정을 깨므로, **정의 파일이 정본**이다(T7-3 일원화, DEFINITION_SPEC).
 
 검증 정의값을 config.yaml에 넣지 않으므로 password도 절대 기록하지 않는다(password_env 이름만).
 print/CLI 출력 금지(CLAUDE.md 3-1) — 결과는 dict로 돌려 web 계층이 렌더한다.

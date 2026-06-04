@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from src.core.models import ShellDefinition
+from src.core.models import InputSpec, OutputSpec, ShellDefinition
 
 _VALID_IO_TYPES = ("database", "file")
 
@@ -61,40 +61,133 @@ def _build_definition(entry: object, idx: int, path: Path) -> ShellDefinition:
     test_id = _pad_test_id(_req(entry, "test_id", idx, path))
     inp = _req_block(entry, "input", idx, path)
     execution = _req_block(entry, "execution", idx, path)
-    out = _req_block(entry, "output", idx, path)
 
-    input_type = _req_choice(inp, "type", _VALID_IO_TYPES, test_id, path)
-    output_type = _req_choice(out, "type", _VALID_IO_TYPES, test_id, path)
+    inputs = _build_inputs(inp, test_id, path)  # D-033: 다중 입력(신 tables[] / 구 단일)
+    outputs = _build_outputs(entry, test_id, path)  # D-033 P2: 다중 출력(신 outputs[] / 구 단일)
+    fi, fo = inputs[0], outputs[0]  # 하위호환 단일 필드는 1차 입력/출력에서 파생
 
     definition = ShellDefinition(
         test_id=test_id,
         test_name=str(entry.get("test_name", test_id)),
-        input_type=input_type,
-        input_csv=str(_req(inp, "csv", idx, path)),
-        output_type=output_type,
-        expected_output_csv=str(_req(entry, "expected_output_csv", idx, path)),
+        input_type=fi.type,
+        input_csv=fi.csv,
+        output_type=fo.type,
+        expected_output_csv=fo.expected,
         shell_program=str(_req(execution, "shell_program", idx, path)),
         timeout_seconds=int(execution.get("timeout", 60)),
-        input_table=_opt_str(inp, "table"),
-        input_dest_dir=_opt_str(inp, "dest_dir"),
-        output_table=_opt_str(out, "table"),
-        output_file=_opt_str(out, "file"),
-        export_csv=_opt_str(out, "export_csv"),
+        input_table=fi.table,
+        input_dest_dir=fi.dest_dir,
+        output_table=fo.table,
+        output_file=fo.file,
+        export_csv=fo.export_as,
+        inputs=inputs,
+        outputs=outputs,
     )
     _validate_io(definition, path)
     return definition
 
 
+def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
+    """output을 OutputSpec 리스트로. 신형 `outputs:[...]`(각 expected) 또는 구형 단일(`output`+`expected_output_csv`).
+
+    구형 키 `export_csv`는 OutputSpec.export_as로 매핑(의미 동일). 각 출력은 expected 필수.
+    """
+    rows = entry.get("outputs")
+    if rows is not None:
+        if not isinstance(rows, list) or not rows:
+            raise DefinitionError(f"[{test_id}] outputs는 비어있지 않은 리스트여야 합니다: {path}")
+        specs = []
+        for j, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise DefinitionError(f"[{test_id}] outputs[{j}] 항목이 매핑이 아닙니다: {path}")
+            otype = str(row.get("type", ""))
+            if otype not in _VALID_IO_TYPES:
+                raise DefinitionError(
+                    f"[{test_id}] outputs[{j}].type는 {_VALID_IO_TYPES} 중 하나여야 합니다: {path}"
+                )
+            specs.append(OutputSpec(
+                type=otype,
+                expected=str(_req(row, "expected", f"{test_id}.output[{j}]", path)),
+                table=_opt_str(row, "table"),
+                export_as=_opt_str(row, "export_as"),
+                file=_opt_str(row, "file"),
+                name=_opt_str(row, "name"),
+                expected_dir=_opt_str(row, "expected_dir"),  # #7 As-Is 출력 격납 패스
+                expected_type=_opt_str(row, "expected_type"),  # #6 As-Is 출력 종류(메타)
+                tobe_dir=_opt_str(row, "tobe_dir"),  # #11 To-Be 출력 격납 패스
+            ))
+        return specs
+    # 구형 단일: output 블록 + 최상위 expected_output_csv
+    out = _req_block(entry, "output", test_id, path)
+    otype = _req_choice(out, "type", _VALID_IO_TYPES, test_id, path)
+    return [OutputSpec(
+        type=otype,
+        expected=str(_req(entry, "expected_output_csv", test_id, path)),
+        table=_opt_str(out, "table"),
+        export_as=_opt_str(out, "export_csv"),  # 구형 키
+        file=_opt_str(out, "file"),
+        expected_dir=_opt_str(out, "expected_dir"),
+        expected_type=_opt_str(out, "expected_type"),
+        tobe_dir=_opt_str(out, "tobe_dir"),
+    )]
+
+
+def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
+    """input 블록을 InputSpec 리스트로. 신형 `tables:[...]` 또는 구형 단일(`type/csv/table`) 모두 수용.
+
+    신형은 항목별 type을 허용(없으면 input.type 상속). 구형은 1개짜리 리스트로 정규화한다.
+    """
+    default_type = str(inp.get("type", "database"))
+    rows = inp.get("tables")
+    if rows is not None:
+        if not isinstance(rows, list) or not rows:
+            raise DefinitionError(f"[{test_id}] input.tables는 비어있지 않은 리스트여야 합니다: {path}")
+        specs = []
+        for j, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                raise DefinitionError(f"[{test_id}] input.tables[{j}] 항목이 매핑이 아닙니다: {path}")
+            itype = str(row.get("type", default_type))
+            if itype not in _VALID_IO_TYPES:
+                raise DefinitionError(
+                    f"[{test_id}] input.tables[{j}].type는 {_VALID_IO_TYPES} 중 하나여야 합니다: {path}"
+                )
+            specs.append(InputSpec(
+                csv=str(_req(row, "csv", f"{test_id}.input[{j}]", path)),
+                type=itype,
+                table=_opt_str(row, "table"),
+                dest_dir=_opt_str(row, "dest_dir"),  # #7-4 To-Be 격납 패스
+                src_dir=_opt_str(row, "src_dir"),  # #4 As-Is 입력 격납 패스
+                dest_name=_opt_str(row, "dest_name"),  # #7-3 To-Be 격납 파일명
+            ))
+        return specs
+    # 구형 단일
+    itype = _req_choice(inp, "type", _VALID_IO_TYPES, test_id, path)
+    return [InputSpec(
+        csv=str(_req(inp, "csv", test_id, path)),
+        type=itype,
+        table=_opt_str(inp, "table"),
+        dest_dir=_opt_str(inp, "dest_dir"),
+        src_dir=_opt_str(inp, "src_dir"),
+        dest_name=_opt_str(inp, "dest_name"),
+    )]
+
+
 def _validate_io(d: ShellDefinition, path: Path) -> None:
-    """입력/출력 type별로 필요한 키가 채워졌는지 검증한다."""
-    if d.input_type == "database" and not d.input_table:
-        raise DefinitionError(f"[{d.test_id}] input.type=database이면 input.table이 필요합니다: {path}")
-    if d.output_type == "database" and not (d.output_table and d.export_csv):
-        raise DefinitionError(
-            f"[{d.test_id}] output.type=database이면 output.table과 output.export_csv가 필요합니다: {path}"
-        )
-    if d.output_type == "file" and not d.output_file:
-        raise DefinitionError(f"[{d.test_id}] output.type=file이면 output.file이 필요합니다: {path}")
+    """입력/출력 type별로 필요한 키가 채워졌는지 검증한다(inputs[]·outputs[] 전건)."""
+    for i, spec in enumerate(d.inputs, start=1):
+        if spec.type == "database" and not spec.table:
+            raise DefinitionError(
+                f"[{d.test_id}] input(테이블 {i})이 database이면 table이 필요합니다: {path}"
+            )
+    for k, o in enumerate(d.outputs, start=1):
+        if o.type == "database" and not (o.table and o.export_as):
+            raise DefinitionError(
+                f"[{d.test_id}] output({k})=database이면 table과 export_as(export_csv)가 필요합니다: {path}"
+            )
+        if o.type == "file" and not o.file:
+            raise DefinitionError(f"[{d.test_id}] output({k})=file이면 file이 필요합니다: {path}")
+        if not o.expected:
+            raise DefinitionError(f"[{d.test_id}] output({k})은 expected(정답 파일)가 필요합니다: {path}")
 
 
 def _req(block: dict, key: str, idx: object, path: Path) -> object:

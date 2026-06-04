@@ -44,12 +44,17 @@ class DiffLine:
 
 @dataclass
 class ComparisonResult:
-    """한 셸의 비교 결과. diff_lines는 status가 NG일 때만 채워진다."""
+    """한 (셸, 출력)의 비교 결과. diff_lines는 status가 NG일 때만 채워진다.
+
+    D-033 P2: 한 셸이 출력 여러 건이면 출력마다 결과 1건(output_name으로 구분). 단일 출력이면
+    output_name=None(또는 단일 라벨). 집계는 출력 단위(결과 1건 = 출력 1건).
+    """
 
     shell_id: str
     status: ComparisonStatus
     diff_lines: list[DiffLine] = field(default_factory=list)
     error_message: str | None = None
+    output_name: str | None = None  # D-033: 출력 식별자(다중 출력). 단일/배치오류는 None
 
 
 @dataclass
@@ -128,26 +133,98 @@ class OutputConfig:
 
 
 @dataclass
-class ShellDefinition:
-    """정의 파일(test_definition.yaml)의 테스트 1건 메타데이터 (D-021·D-022).
+class InputSpec:
+    """한 셸이 적재할 입력 1건 (기획 7.1 input.tables[] 복원, D-033).
 
-    Boss 기획 7.1 구조의 경량 버전. 입력·출력 각각 'database'|'file' 유형을 갖는다.
-    프로토 미사용 필드(comparison_rules·success_criteria 등)는 자리만 채운다.
+    한 셸이 여러 테이블/파일을 입력으로 받을 수 있어(배치가 여러 테이블 조인) inputs 리스트의 한 항목.
+    경로 필드(src_dir·dest_dir)는 **항목별 선택적 override**(D-036): 비면 config 공통 디렉토리.
+    """
+
+    csv: str  # #2 As-Is 입력데이터 명 (파일명, asis_input_dir 기준)
+    type: str = "database"  # #3 As-Is 입력데이터 종류: "database" | "file"
+    table: str | None = None  # #7-1 type==database: To-Be 격납 테이블(적재 대상)
+    dest_dir: str | None = None  # #7-4 type==file: To-Be 격납 패스(없으면 config.tobe_input_dir)
+    src_dir: str | None = None  # #4 As-Is 입력 격납 패스 override(없으면 config.asis_input_dir)
+    dest_name: str | None = None  # #7-3 type==file: To-Be 격납 파일명(없으면 csv 그대로)
+
+
+@dataclass
+class OutputSpec:
+    """한 셸의 출력 1건 (기획 7.1 outputs[] 복원, D-033 P2).
+
+    type=database면 결과 테이블을 CSV로 export(export_as), type=file이면 배치 산출 파일(file)을 그대로.
+    To-Be 산출물(tobe_output_dir 기준 tobe_name)을 정답(expected, asis_output_dir 기준)과 바이트 비교.
+    """
+
+    type: str  # #10 To-Be 출력데이터 종류: "database" | "file"
+    expected: str  # #5 As-Is 출력데이터 명 (정답 파일명, asis_output_dir 기준)
+    table: str | None = None  # type == database (결과 테이블)
+    export_as: str | None = None  # #9 type==database: To-Be 출력 명(export CSV 파일명)
+    file: str | None = None  # #9 type==file: To-Be 출력 명(배치 산출 파일명)
+    name: str | None = None  # 라벨(리포트/화면). 없으면 export_as/file에서 파생
+    expected_dir: str | None = None  # #7 As-Is 출력 격납 패스 override(없으면 config.asis_output_dir)
+    expected_type: str | None = None  # #6 As-Is 출력데이터 종류(정보·리포트용. 비교는 바이트라 판정 불변)
+    tobe_dir: str | None = None  # #11 To-Be 출력 격납 패스 override(없으면 config.tobe_output_dir)
+
+    @property
+    def label(self) -> str:
+        """리포트·화면용 출력 식별자."""
+        return self.name or self.export_as or self.file or self.type
+
+    @property
+    def tobe_name(self) -> str:
+        """tobe_output_dir 기준 To-Be 산출 파일명(database=export_as / file=file)."""
+        return self.export_as if self.type == "database" else self.file
+
+
+@dataclass
+class ShellDefinition:
+    """정의 파일(test_definition.yaml)의 테스트 1건 메타데이터 (D-021·D-022 → D-033 다중입출력).
+
+    Boss 기획 7.1 구조. 입력 여러 건(inputs[]) 적재 + 출력 여러 건(outputs[]) 비교. 단일 필드는
+    inputs[0]/outputs[0]에서 파생한 하위호환 뷰 — 적재/비교는 리스트를 정본으로 루프한다.
     """
 
     test_id: str  # 3자리 zero-pad 셸 ID (예: "001")
     test_name: str
-    input_type: str  # "database" | "file"
-    input_csv: str  # asis_input_dir 기준 입력 CSV 파일명
+    input_type: str  # 하위호환: inputs[0].type (1차 입력)
+    input_csv: str  # 하위호환: inputs[0].csv
     output_type: str  # "database" | "file"
     expected_output_csv: str  # asis_output_dir 기준 정답지 파일명
     shell_program: str  # 기동할 stub(=shell) 경로
     timeout_seconds: int = 60
-    input_table: str | None = None  # input_type == database
-    input_dest_dir: str | None = None  # input_type == file (복사 대상; 없으면 config.tobe_input_dir)
+    input_table: str | None = None  # 하위호환: inputs[0].table
+    input_dest_dir: str | None = None  # 하위호환: inputs[0].dest_dir
     output_table: str | None = None  # output_type == database (결과 테이블)
     output_file: str | None = None  # output_type == file (배치가 직접 생성하는 파일명)
     export_csv: str | None = None  # output_type == database (다운로드 CSV 파일명)
+    # D-033: 다중 입력. definition 로더가 항상 채운다(단일도 1개짜리 리스트). 단일 필드는
+    # inputs[0]에서 파생한 하위호환 뷰 — 적재는 inputs[]를 정본으로 루프한다(orchestrator).
+    inputs: list[InputSpec] = field(default_factory=list)
+    # D-033 P2: 다중 출력. 단일 필드(output_*·expected_output_csv)는 outputs[0]에서 파생한 호환 뷰.
+    outputs: list[OutputSpec] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # inputs/outputs 미지정으로 생성된 경우(직접 생성·구형 경로) 단일 필드에서 1건 파생 — 단일 진실.
+        if not self.inputs and self.input_csv:
+            self.inputs = [
+                InputSpec(
+                    csv=self.input_csv,
+                    type=self.input_type,
+                    table=self.input_table,
+                    dest_dir=self.input_dest_dir,
+                )
+            ]
+        if not self.outputs and self.output_type:
+            self.outputs = [
+                OutputSpec(
+                    type=self.output_type,
+                    expected=self.expected_output_csv,
+                    table=self.output_table,
+                    export_as=self.export_csv,
+                    file=self.output_file,
+                )
+            ]
 
 
 @dataclass

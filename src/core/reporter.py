@@ -18,6 +18,7 @@ from .models import ComparisonResult, ComparisonStatus, RunSummary
 # CSV 헤더 (SPEC 4-2). 순서가 곧 컬럼 순서.
 _CSV_HEADER = [
     "shell_id",
+    "output",  # D-033 P2: 출력 식별자(다중 출력). 단일/배치오류는 '-'
     "status",
     "diff_line_count",
     "first_diff_line",
@@ -79,6 +80,7 @@ def _row_for(result: ComparisonResult) -> list[str]:
     first = result.diff_lines[0] if result.diff_lines else None
     return [
         result.shell_id,
+        result.output_name or _NA,
         result.status.value,
         str(len(result.diff_lines)) if compared else _NA,
         str(first.line_number) if first is not None else _NA,
@@ -97,7 +99,10 @@ def _write_detail(result: ComparisonResult, details_dir: Path) -> None:
         return
 
     details_dir.mkdir(parents=True, exist_ok=True)
-    detail_path = details_dir / f"{result.shell_id}.diff"
+    # 다중 출력이면 셸 안에서 출력별로 파일을 분리(충돌 방지). 파일명 안전화.
+    stem = result.shell_id if not result.output_name else f"{result.shell_id}_{result.output_name}"
+    stem = stem.replace("/", "_").replace(" ", "_")
+    detail_path = details_dir / f"{stem}.diff"
     with detail_path.open("w", encoding="utf-8", newline="\n") as f:
         for line in result.diff_lines:
             f.write(f"L{line.line_number}\n")

@@ -77,7 +77,7 @@ class _Proc:
 
 def test_argv_db_input_db_output(tmp_path):
     """DB입력/DB출력: --input-table 있음, --output-table 있음, --output-path 없음(dead-arg 제거)."""
-    argv, env, out, timeout = runner._build_command(
+    argv, env, timeout = runner._build_command(
         _def("001", "database", "database"), _config(tmp_path), clean=False
     )
     assert argv[0].endswith("stub_batch/run_batch_db.py")
@@ -85,12 +85,11 @@ def test_argv_db_input_db_output(tmp_path):
     assert "--input-table" in argv and "transaction_log" in argv
     assert "--output-table" in argv
     assert "--output-path" not in argv  # DB출력엔 출력경로를 stub에 넘기지 않음
-    assert out == tmp_path / "tobe_output" / "001.csv"
 
 
 def test_argv_file_input_file_output(tmp_path):
     """파일입력/파일출력: --input-file(복사 위치), --output-path 있음, --output-table 없음."""
-    argv, env, out, timeout = runner._build_command(
+    argv, env, timeout = runner._build_command(
         _def("006", "file", "file"), _config(tmp_path), clean=False
     )
     assert argv[0].endswith("stub_batch/run_batch_file.py")
@@ -103,7 +102,7 @@ def test_argv_file_input_file_output(tmp_path):
 def test_password_not_in_argv_but_in_env(tmp_path):
     """비밀번호는 argv에 절대 없고 env(POSTGRES_PASSWORD)로만 전달된다(ps 노출 방지)."""
     cfg = _config(tmp_path, password="topsecret")
-    argv, env, _out, _t = runner._build_command(_def("001", "database", "database"), cfg, False)
+    argv, env, _t = runner._build_command(_def("001", "database", "database"), cfg, False)
     assert "topsecret" not in " ".join(argv)
     assert env["POSTGRES_PASSWORD"] == "topsecret"
 
@@ -114,7 +113,7 @@ def test_clean_flag_appended(tmp_path):
 
 
 def test_timeout_uses_definition(tmp_path):
-    _argv, _env, _out, timeout = runner._build_command(
+    _argv, _env, timeout = runner._build_command(
         _def("001", "database", "database", timeout_seconds=123), _config(tmp_path), False
     )
     assert timeout == 123
@@ -145,8 +144,8 @@ def test_file_output_returns_path_without_export(tmp_path, monkeypatch):
         raise AssertionError("파일 출력에서는 export를 호출하면 안 된다")
 
     monkeypatch.setattr(runner, "export_table_to_csv", _no_export)
-    out = runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
-    assert out == tmp_path / "tobe_output" / "006.csv"
+    resolved = runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
+    assert resolved[0][1] == tmp_path / "tobe_output" / "006.csv"
 
 
 def test_db_output_calls_exporter(tmp_path, monkeypatch):
@@ -156,7 +155,7 @@ def test_db_output_calls_exporter(tmp_path, monkeypatch):
         runner, "export_table_to_csv",
         lambda conn, table, out, encoding: calls.append((table, out, encoding)) or out,
     )
-    out = runner.run_batch(_def("001", "database", "database"), _config(tmp_path), conn=object())
+    runner.run_batch(_def("001", "database", "database"), _config(tmp_path), conn=object())
     assert calls == [("tobe_result", tmp_path / "tobe_output" / "001.csv", "Shift_JIS")]
 
 
@@ -202,10 +201,10 @@ def test_ok_db_output_golden_equals_tobe(db_conn, tmp_path):
     cfg = _real_config(tmp_path)
     d = _def("001", "database", "database")  # 실제 transaction_log(시드 50건) 사용
 
-    golden = runner.run_batch(d, cfg, db_conn, clean=True)
+    golden = runner.run_batch(d, cfg, db_conn, clean=True)[0][1]
     gbytes = golden.read_bytes()
     db_conn.rollback()  # export 읽기 트랜잭션 해제(오케스트레이터의 셸 단위 경계 모사, SPEC 3-1)
-    tobe = runner.run_batch(d, cfg, db_conn, clean=False)
+    tobe = runner.run_batch(d, cfg, db_conn, clean=False)[0][1]
     tbytes = tobe.read_bytes()
     db_conn.rollback()
 
@@ -232,10 +231,10 @@ def test_file_input_db_output_ng_detected(db_conn, tmp_path):
     )
     d = _def("008", "file", "database")
 
-    golden = runner.run_batch(d, cfg, db_conn, clean=True)
+    golden = runner.run_batch(d, cfg, db_conn, clean=True)[0][1]
     gbytes = golden.read_bytes()
     db_conn.rollback()  # export 읽기 트랜잭션 해제(셸 단위 경계 모사)
-    tobe = runner.run_batch(d, cfg, db_conn, clean=False)
+    tobe = runner.run_batch(d, cfg, db_conn, clean=False)[0][1]
     db_conn.rollback()
 
     gold_file = tmp_path / "golden_008.csv"

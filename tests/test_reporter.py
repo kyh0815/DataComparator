@@ -124,3 +124,19 @@ def test_all_ok_no_details_dir(tmp_path):
     )
     assert not details_dir.exists()
     assert summary.ok_count == 2
+
+
+def test_report_has_output_column_and_per_output_rows(tmp_path):
+    """D-033 P2: 리포트에 output 컬럼 + 셸당 출력별 행."""
+    from src.core.reporter import generate_report
+    from src.core.models import ComparisonResult, ComparisonStatus
+    results = [
+        ComparisonResult("001", ComparisonStatus.OK, output_name="A.csv"),
+        ComparisonResult("001", ComparisonStatus.NG, output_name="B.sam"),
+    ]
+    summ = generate_report(results, tmp_path)
+    text = summ.report_csv_path.read_text(encoding="utf-8-sig")
+    lines = text.splitlines()
+    assert lines[0].split(",")[:3] == ["shell_id", "output", "status"]
+    assert "001,A.csv,OK" in text and "001,B.sam,NG" in text
+    assert summ.total == 2

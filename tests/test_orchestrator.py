@@ -134,9 +134,9 @@ def test_no_db_shells_never_connects(tmp_path, monkeypatch):
     defs = [_def("006", "file", "file"), _def("007", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs, connect=_must_not_connect,
-        run_batch=lambda d, c, conn, clean=False: tmp_path / f"{d.test_id}.csv",
+        run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))
     assert summary.total == 2 and summary.ok_count == 2
@@ -150,9 +150,9 @@ def test_runs_without_callback(tmp_path, monkeypatch):
     defs = [_def("006", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs,
-        run_batch=lambda d, c, conn, clean=False: tmp_path / f"{d.test_id}.csv",
+        run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))  # on_progress=None
     assert summary.total == 1
@@ -164,9 +164,9 @@ def test_progress_events_sequence(tmp_path, monkeypatch):
     defs = [_def("006", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs,
-        run_batch=lambda d, c, conn, clean=False: tmp_path / f"{d.test_id}.csv",
+        run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     events: list[ProgressEvent] = []
     orchestrator.run_full_comparison(_config(tmp_path), on_progress=events.append)
@@ -196,12 +196,12 @@ def test_one_shell_error_does_not_block_others(tmp_path, monkeypatch):
     def _run(d, c, conn, clean=False):
         if d.test_id == "007":
             raise RunnerError("종료코드 1")
-        return tmp_path / f"{d.test_id}.csv"
+        return [(d.outputs[0], tmp_path / f"{d.test_id}.csv")]
 
     _patch_pipeline(
         monkeypatch, definitions=defs, run_batch=_run,
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     events: list[ProgressEvent] = []
     summary = orchestrator.run_full_comparison(_config(tmp_path), on_progress=events.append)
@@ -225,12 +225,12 @@ def test_shell_ids_selects_subset_in_definition_order(tmp_path, monkeypatch):
 
     def _run(d, c, conn, clean=False):
         processed.append(d.test_id)
-        return tmp_path / "x.csv"
+        return [(d.outputs[0], tmp_path / "x.csv")]
 
     _patch_pipeline(
         monkeypatch, definitions=defs, run_batch=_run,
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path), shell_ids=["009", "006"])
     assert processed == ["006", "009"]  # 정의 순서 유지(요청 순서 아님)
@@ -250,9 +250,9 @@ def test_shell_ids_none_runs_all(tmp_path, monkeypatch):
     defs = [_def("006", "file", "file"), _def("007", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs,
-        run_batch=lambda d, c, conn, clean=False: tmp_path / "x.csv",
+        run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / "x.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: dest / src.name,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
     )
     summary = orchestrator.run_full_comparison(_config(tmp_path))
     assert summary.total == 2
@@ -270,7 +270,7 @@ def test_db_input_commits_then_shell_rolls_back(tmp_path, monkeypatch):
 
     def _run(d, c, conn, clean=False):
         run_calls.append(conn)
-        return tmp_path / f"{d.test_id}.csv"
+        return [(d.outputs[0], tmp_path / f"{d.test_id}.csv")]
 
     _patch_pipeline(
         monkeypatch, definitions=defs,
@@ -289,21 +289,23 @@ def test_db_input_commits_then_shell_rolls_back(tmp_path, monkeypatch):
 
 
 def test_file_input_copies_to_shared_resolved_dir(tmp_path, monkeypatch):
-    """파일 입력 복사처 = runner.resolve_input_dir(tobe_input_dir 우선) — 드리프트 차단(🔴1)."""
+    """파일 입력 복사처 = paths.input_dest_dir(tobe_input_dir 우선) — 드리프트 차단(🔴1)."""
     copy_calls = []
     defs = [_def("006", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs,
-        run_batch=lambda d, c, conn, clean=False: tmp_path / f"{d.test_id}.csv",
+        run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: copy_calls.append((src, dest)) or (dest / src.name),
+        copy_file=lambda src, dest, dest_name=None: copy_calls.append((src, dest, dest_name))
+        or (dest / (dest_name or src.name)),
     )
     cfg = _config(tmp_path)
     orchestrator.run_full_comparison(cfg)
 
-    src, dest = copy_calls[0]
+    src, dest, dest_name = copy_calls[0]
     assert src == cfg.asis_input_dir / "006.csv"
-    assert dest == cfg.tobe_input_dir  # Runner._input_file_path와 동일한 base
+    assert dest == cfg.tobe_input_dir  # paths.input_dest_dir와 동일한 base(override 없으면 config 공통)
+    assert dest_name is None  # dest_name 미지정 → 입력 파일명 그대로
 
 
 # --- DB 통합 (RUN_DB_TESTS=1 일 때만) -------------------------------------------
@@ -373,7 +375,7 @@ def test_db_consecutive_shells_no_truncate_block(tmp_path):
                 cfg.asis_input_dir / d.input_csv, admin, d.input_table, encoding=cfg.encoding
             )
             admin.commit()
-            golden = run_batch(d, cfg, admin, clean=True)
+            golden = run_batch(d, cfg, admin, clean=True)[0][1]
             (cfg.asis_output_dir / d.expected_output_csv).write_bytes(golden.read_bytes())
             admin.rollback()  # 셸 경계 모사(읽기락 해제)
 
@@ -398,3 +400,60 @@ def test_db_consecutive_shells_no_truncate_block(tmp_path):
             )
         admin.commit()
         admin.close()
+
+
+# --- D-033: 다중 입력 적재 ---------------------------------------------------------
+
+
+def test_multi_input_loads_each_table(tmp_path, monkeypatch):
+    """inputs[]의 각 DB 입력이 대응 테이블에 적재되고, 적재마다 commit된다(D-023 ①)."""
+    from src.core.models import InputSpec
+
+    loaded = []
+    conn = _FakeConn()
+    d = _def("001", "database", "file", inputs=[
+        InputSpec(csv="trans.csv", type="database", table="transaction_log"),
+        InputSpec(csv="cust.csv", type="database", table="customer_master"),
+    ])
+    _patch_pipeline(
+        monkeypatch, definitions=[d],
+        connect=lambda **k: conn,
+        run_batch=lambda *a, **k: [(a[0].outputs[0], tmp_path / "001.csv")],
+        compare=lambda *a, **k: ComparisonResult("001", ComparisonStatus.OK),
+        load_csv=lambda src, c, table, encoding: loaded.append(table),
+    )
+    orchestrator.run_full_comparison(_config(tmp_path))
+    assert loaded == ["transaction_log", "customer_master"]      # 둘 다 적재
+    assert conn.calls.count("commit") == 2                       # 적재마다 commit
+
+
+# --- D-033 P2: 다중 출력 (셸당 결과 N건) ------------------------------------------
+
+
+def test_multi_output_yields_result_per_output(tmp_path, monkeypatch):
+    """한 셸에 출력 2개 → 결과 2건(출력별 output_name), RunSummary는 출력 단위 집계."""
+    from src.core.models import OutputSpec
+
+    outs = [
+        OutputSpec(type="database", table="result_a", export_as="A.csv", expected="正解A.csv"),
+        OutputSpec(type="file", file="B.sam", expected="正解B.sam"),
+    ]
+    d = _def("001", "database", "file", outputs=outs)
+    # 출력별로 다른 status: A=OK, B=NG
+    statuses = {"A.csv": ComparisonStatus.OK, "B.sam": ComparisonStatus.NG}
+
+    def _compare(asis, tobe, encoding):
+        return ComparisonResult("x", statuses[tobe.name])
+
+    _patch_pipeline(
+        monkeypatch, definitions=[d],
+        connect=lambda **k: _FakeConn(),
+        load_csv=lambda *a, **k: 0,
+        run_batch=lambda dd, c, conn, clean=False: [(o, tmp_path / o.tobe_name) for o in dd.outputs],
+        compare=_compare,
+    )
+    summary = orchestrator.run_full_comparison(_config(tmp_path))
+    assert summary.total == 2                       # 출력 단위(셸 1개에 출력 2개)
+    assert summary.ok_count == 1 and summary.ng_count == 1
+    names = sorted((r.shell_id, r.output_name, r.status.value) for r in summary.results)
+    assert names == [("001", "A.csv", "OK"), ("001", "B.sam", "NG")]

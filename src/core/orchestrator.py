@@ -34,8 +34,9 @@ from .models import (
     RunSummary,
     ShellDefinition,
 )
+from .paths import input_dest_dir, input_source_path, output_asis_path
 from .reporter import generate_report
-from .runner import resolve_input_dir, run_batch
+from .runner import run_batch
 
 
 class OrchestratorError(Exception):
@@ -67,14 +68,15 @@ def run_full_comparison(
                 on_progress,
                 ProgressEvent(ProgressKind.SHELL_START, definition.test_id, index, total),
             )
-            result = _process_shell(definition, config, conn, index, total, on_progress)
-            results.append(result)
-            _emit(
-                on_progress,
-                ProgressEvent(
-                    ProgressKind.SHELL_DONE, definition.test_id, index, total, result=result
-                ),
-            )
+            shell_results = _process_shell(definition, config, conn, index, total, on_progress)
+            results.extend(shell_results)  # D-033 P2: 셸당 결과 N건(출력 단위)
+            for r in shell_results:  # 출력마다 SHELL_DONE(GUI가 출력별로 그림)
+                _emit(
+                    on_progress,
+                    ProgressEvent(
+                        ProgressKind.SHELL_DONE, definition.test_id, index, total, result=r
+                    ),
+                )
     finally:
         if conn is not None:
             conn.close()
@@ -89,10 +91,12 @@ def _process_shell(
     index: int,
     total: int,
     on_progress: Callable[[ProgressEvent], None] | None,
-) -> ComparisonResult:
-    """한 셸을 Load → Run → Compare로 처리하고 ComparisonResult를 반환한다.
+) -> list[ComparisonResult]:
+    """한 셸을 Load → Run → (출력마다) Compare로 처리하고 결과 리스트를 반환한다(D-033 P2).
 
-    예외는 ERROR 결과로 매핑한다(다음 셸 진행). finally에서 셸 단위 트랜잭션 경계를 정리한다.
+    배치 1회 실행 후 outputs[]마다 정답과 비교 → 출력 단위 결과 N건. 결과의 shell_id는 정의의
+    test_id로, output_name은 출력 라벨로 못박는다(compare_files는 파일명 파생이라). 예외는 셸 단위
+    ERROR 1건. finally에서 셸 단위 트랜잭션 경계를 정리한다(D-023 ②).
     """
     step = "load"
     try:
@@ -100,21 +104,27 @@ def _process_shell(
         _emit_step(on_progress, definition, index, total, "load", "OK")
 
         step = "run"
-        tobe_path = run_batch(definition, config, conn, clean=False)
+        resolved = run_batch(definition, config, conn, clean=False)  # [(OutputSpec, tobe_path)]
         _emit_step(on_progress, definition, index, total, "run", "OK")
 
         step = "compare"
-        asis_path = config.asis_output_dir / definition.expected_output_csv
-        result = compare_files(asis_path, tobe_path, encoding=config.encoding)
-        _emit_step(on_progress, definition, index, total, "compare", result.status.value)
-        return result
+        results: list[ComparisonResult] = []
+        multi = len(definition.outputs) > 1  # 단일 출력은 output_name=None(리포트 '-'·화면 라벨 없음)
+        for out, tobe_path in resolved:
+            asis_path = output_asis_path(out, config)  # #5·#7 항목별 경로 override 반영
+            r = compare_files(asis_path, tobe_path, encoding=config.encoding)
+            r.shell_id = definition.test_id  # 파일명 파생 대신 셸 ID로 못박음
+            r.output_name = out.label if multi else None
+            results.append(r)
+        _emit_step(on_progress, definition, index, total, "compare", _worst_status(results))
+        return results
     except Exception as exc:  # noqa: BLE001 — 어떤 셸 오류도 ERROR로 흡수(SPEC 3-1·8)
         _emit_step(on_progress, definition, index, total, step, "ERROR")
-        return ComparisonResult(
+        return [ComparisonResult(
             shell_id=definition.test_id,
             status=ComparisonStatus.ERROR,
             error_message=str(exc),
-        )
+        )]
     finally:
         # D-023 ②: exporter read 트랜잭션(ACCESS SHARE 락)을 해제해 다음 셸 TRUNCATE가 막히지
         # 않게 한다. DB 입력 적재분은 _load_step에서 이미 commit됐으므로 rollback은 안전하다.
@@ -123,14 +133,20 @@ def _process_shell(
 
 
 def _load_step(definition: ShellDefinition, config: Config, conn) -> None:
-    """Load 단계: input_type에 따라 DB 적재 또는 파일 복사로 분기한다(SPEC 3-1)."""
-    src = config.asis_input_dir / definition.input_csv
-    if definition.input_type == "database":
-        load_input_csv(src, conn, definition.input_table, encoding=config.encoding)
-        conn.commit()  # D-023 ①: stub(별도 connection)이 적재분을 보도록 즉시 commit
-    else:
-        # 복사처(여기)와 Runner의 읽기처가 같은 헬퍼를 공유 → 드리프트 차단(🔴 리뷰 대응).
-        copy_input_file(src, resolve_input_dir(definition, config))
+    """Load 단계: 셸의 입력 **여러 건**을 각각 DB 적재 또는 파일 복사로 처리한다(D-033 다중입력).
+
+    한 배치가 여러 테이블을 조인해 읽으므로, inputs[]의 각 항목을 대응 테이블/디렉토리에 적재한다.
+    DB 적재분은 stub(별도 connection)이 보도록 즉시 commit(D-023 ①). 모든 입력 적재 후 배치 실행.
+    """
+    for spec in definition.inputs:
+        src = input_source_path(spec, config)  # #2·#4 항목별 As-Is 원천 경로
+        if spec.type == "database":
+            load_input_csv(src, conn, spec.table, encoding=config.encoding)
+            conn.commit()  # D-023 ①
+        else:
+            # 파일 입력은 항목별 To-Be 격납 디렉토리/파일명으로 복사(#7-3·#7-4).
+            # 복사처(여기)=Runner 읽기처가 paths 헬퍼를 공유 → 드리프트 차단.
+            copy_input_file(src, input_dest_dir(spec, config), dest_name=spec.dest_name)
 
 
 def _load_definitions(config: Config) -> list[ShellDefinition]:
@@ -182,9 +198,19 @@ def _open_connection_if_needed(definitions: list[ShellDefinition], config: Confi
         raise OrchestratorError(f"DB 접속 실패: {exc}") from exc
 
 
+def _worst_status(results: list[ComparisonResult]) -> str:
+    """compare STEP 표시용 — 출력 중 OK 아닌 게 있으면 그 상태값, 모두 OK면 'OK'."""
+    for r in results:
+        if r.status != ComparisonStatus.OK:
+            return r.status.value
+    return "OK"
+
+
 def _needs_db(definition: ShellDefinition) -> bool:
-    """이 셸이 DB connection을 필요로 하는가(입력 적재 또는 출력 export)."""
-    return definition.input_type == "database" or definition.output_type == "database"
+    """이 셸이 DB connection을 필요로 하는가(입력 중 하나라도 DB 적재, 또는 출력 중 하나라도 export)."""
+    return any(s.type == "database" for s in definition.inputs) or any(
+        o.type == "database" for o in definition.outputs
+    )
 
 
 def _emit(
