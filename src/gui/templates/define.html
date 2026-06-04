@@ -80,7 +80,8 @@
       <div class="field">
         <label class="lab">マッピング表（Long形式 CSV）</label>
         <input type="file" id="csv" accept=".csv,text/csv">
-        <div class="hint">列: shell_id, kind(input/output), type(database/file), table, file, expected, name, test_name …（空欄は自動）</div>
+        <div class="hint">列: shell_id, kind(input/output), type(database/file), table, file, expected, name, test_name …（空欄は自動）
+          <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
       </div>
       <div class="actions">
         <button class="run" id="gen">定義を生成</button>
@@ -103,25 +104,6 @@
     </div>
   </div>
 
-  <!-- ② チェックリスト → 記入テンプレ(補助) -->
-  <details class="panel">
-    <summary>チェックリスト → 記入用テンプレ（CSV）を作る</summary>
-    <div class="panel-body">
-      <div class="field">
-        <label class="lab">検証項目（1行＝1項目）</label>
-        <textarea id="checklist" placeholder="全角チェック&#10;最大長チェック&#10;桁あふれチェック"></textarea>
-      </div>
-      <div class="row">
-        <div><label class="lab">入力 行数/項目</label><input type="number" id="in-n" class="num" value="1" min="1"></div>
-        <div><label class="lab">出力 行数/項目</label><input type="number" id="out-n" class="num" value="1" min="1"></div>
-      </div>
-      <div class="actions">
-        <button class="ghost" id="tmpl">記入テンプレ CSV をダウンロード</button>
-      </div>
-      <div class="toast" id="tmpl-toast"></div>
-      <div class="callout">項目ごとに <code>shell_id</code>・<code>test_name</code> を埋めた空CSVを作ります。<code>type</code>・<code>table</code> 等を記入し、上の「①」に戻して定義を生成します。</div>
-    </div>
-  </details>
 </main>
 
 <script>
@@ -170,19 +152,6 @@ $("save").onclick=async()=>{
   finally{ $("save").disabled=false; }
 };
 $("dl").onclick=()=>{ if(GEN_YAML) download(GEN_YAML, "test_definition.yaml", false); };
-
-/* ② チェックリスト → テンプレ */
-$("tmpl").onclick=async()=>{
-  const t=$("tmpl-toast");
-  const fd=new FormData();
-  fd.append("text", $("checklist").value);
-  fd.append("inputs", $("in-n").value); fd.append("outputs", $("out-n").value);
-  try{
-    const r=await (await fetch("/definition/checklist-template",{method:"POST",body:fd})).json();
-    if(r.ok){ download(r.csv, "mapping_template.csv", true); t.className="toast ok"; t.textContent=`✓ ${r.count} 項目のテンプレを作成しました`; }
-    else{ t.className="toast bad"; t.textContent=r.message||"失敗しました"; }
-  }catch(e){ t.className="toast bad"; t.textContent="通信エラー: "+e; }
-};
 </script>
 </body>
 </html>

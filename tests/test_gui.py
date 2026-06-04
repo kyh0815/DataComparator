@@ -296,10 +296,12 @@ def test_from_csv_requires_file(client):
     assert r["ok"] is False
 
 
-def test_checklist_template_returns_csv(client):
-    r = client.post("/definition/checklist-template",
-                    data={"text": "A\nB\n", "inputs": "1", "outputs": "1"}).get_json()
-    assert r["ok"] and r["count"] == 2 and r["csv"].startswith("shell_id,")
+def test_sample_csv_downloads(client):
+    """정의 CSV 샘플(동봉 Long 예시)을 화면에서 받을 수 있다."""
+    resp = client.get("/definition/sample-csv")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert body.startswith("shell_id,kind,type")  # Long 형식 헤더
 
 
 def test_save_writes_to_config_definition_file(client, tmp_path):

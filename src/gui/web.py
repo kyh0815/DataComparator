@@ -6,7 +6,7 @@
 
 화면(페이지 2개):
 - "/" 検証実行 — "設定/接続"(접이식, DB 테스트·config 저장) + 정의 파일 실행(/run SSE 모니터링).
-- "/define" 定義作成 — 매핑표(CSV)→정의 yaml 생성·config 저장 + 체크리스트→기입 템플릿(D-037, 설치 준비).
+- "/define" 定義作成 — 매핑표(CSV)→정의 yaml 생성·config 저장 + 샘플 CSV 다운로드(D-037, 설치 준비).
   운영(실행)과 준비(정의 만들기)를 **별도 화면**으로 분리 — 실행 화면은 버튼+모니터+결과로 유지.
 
 설계 결정:
@@ -37,7 +37,6 @@ from werkzeug.utils import secure_filename
 
 from src.config.settings import load_config, parse_shell_selector
 from src.core import run_full_comparison
-from tools.checklist_to_template import checklist_to_template
 from tools.mapping_to_definition import mapping_to_definition
 
 from . import connection
@@ -187,17 +186,13 @@ def definition_from_csv():
     return jsonify(mapping_to_definition(_decode(file.read())))
 
 
-@app.route("/definition/checklist-template", methods=["POST"])
-def definition_checklist_template():
-    """체크리스트(1줄=1항목 텍스트) → 고객 기입용 빈 매핑 CSV 템플릿을 돌려준다."""
-    text = request.form.get("text", "")
-    if not text.strip():
-        return jsonify({"ok": False, "message": "チェックリスト（1行＝1項目）を入力してください。"})
-    inputs = max(1, int(request.form.get("inputs", 1) or 1))
-    outputs = max(1, int(request.form.get("outputs", 1) or 1))
-    csv_text = checklist_to_template(text, inputs=inputs, outputs=outputs)
-    n = len([ln for ln in text.splitlines() if ln.strip()])
-    return jsonify({"ok": True, "csv": csv_text, "count": n})
+@app.route("/definition/sample-csv")
+def definition_sample_csv():
+    """정의 파일 CSV 샘플(동봉 Long 형식 예시)을 다운로드로 돌려준다."""
+    sample = _REPO_ROOT / "samples" / "shell_mapping.long.example.csv"
+    if not sample.is_file():
+        abort(404)
+    return send_file(sample, as_attachment=True, download_name="shell_mapping.long.example.csv")
 
 
 @app.route("/definition/save", methods=["POST"])

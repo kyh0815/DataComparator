@@ -613,10 +613,10 @@
 **결정**: T7-3(D-034)에서 운영 화면 경량화를 위해 GUI에서 걷어냈던 **매핑표(CSV)→정의 yaml 생성**을, **실행 화면과 분리된 별도 페이지 `/define`(定義作成)** 로 복원한다. "어떻게든 그걸 하는 화면이 있어야 한다"(사용자) — CLI 도구만으로는 부족.
 
 1. **페이지 2분할**: `/` 検証実行(운영=버튼+모니터+결과, 그대로 유지) / `/define` 定義作成(준비=정의 만들기). 헤더에 상호 링크. 실행 화면의 경량성은 보존(준비 기능이 섞이지 않음).
-2. **/define 기능**: ① 매핑표(Long CSV) 업로드 → `mapping_to_definition`(tools 재사용) → 미리보기(셸·입출력 카운트)/오류 행 표시 → **config의 definition_file에 저장** 또는 YAML 다운로드. ② 체크리스트(1줄=1항목) → `checklist_to_template` → 기입용 빈 CSV 다운로드(BOM). 둘 다 **tools/ 로직을 그대로 재사용**(드리프트 없음, 별도 구현 아님).
-3. **새 라우트**: `/define`(GET), `/definition/from-csv`(POST, 읽기전용 생성), `/definition/checklist-template`(POST), `/definition/save`(POST, config의 definition_file에 기록). 엄격 생성·round-trip은 tools 그대로(한 행이라도 오류면 전체 거부).
+2. **/define 기능**: 매핑표(Long CSV) 업로드 → `mapping_to_definition`(tools 재사용) → 미리보기(셸·입출력 카운트)/오류 행 표시 → **config의 definition_file에 저장** 또는 YAML 다운로드. 작성 시작점으로 **동봉 정의 CSV 샘플**(`samples/shell_mapping.long.example.csv`)을 화면에서 다운로드 제공. tools/ 로직 그대로 재사용(드리프트 없음). *(체크리스트→기입 템플릿 생성은 사용자 판단으로 GUI 미포함 — CLI `tools/checklist_to_template.py`로만 유지.)*
+3. **새 라우트**: `/define`(GET), `/definition/from-csv`(POST, 읽기전용 생성), `/definition/sample-csv`(GET, 샘플 다운로드), `/definition/save`(POST, config의 definition_file에 기록). 엄격 생성·round-trip은 tools 그대로(한 행이라도 오류면 전체 거부).
 4. **D-034와의 관계**: 운영 화면을 경량화한다는 D-034 원칙은 유지하되, "준비 작업도 화면이 필요하다"는 요구에 맞춰 **준비를 별도 화면으로** 둔 것(걷어낸 게 아니라 분리). 업로드-CSV "검증"(즉석 비교)·테이블선택 3칸·탭/위저드는 여전히 미복원.
 
 **이유**: 정의 작성(CSV→yaml)은 설치 준비의 핵심인데 CLI만 두면 비개발 사용자가 못 쓴다. 운영(실행)과 준비(정의 생성)를 **별도 화면으로 분리**하면 실행 화면의 간결함과 준비 화면의 기능성을 모두 얻는다.
 
-**검증**: `tests/test_gui.py` +7(=25개: /define 렌더·링크·from-csv 생성/거부/파일필수·checklist 템플릿·save가 definition_file에 기록) 통과. 라이브: 동봉 `samples/shell_mapping.long.example.csv` 업로드 → 2셸(001 입력3·출력2 / 002 입력1·출력1) 생성, 데모 정의 무사. 전체 178 passed.
+**검증**: `tests/test_gui.py` +7(=25개: /define 렌더·링크·from-csv 생성/거부/파일필수·sample-csv 다운로드·save가 definition_file에 기록) 통과. 라이브: 동봉 `samples/shell_mapping.long.example.csv` 업로드 → 2셸(001 입력3·출력2 / 002 입력1·출력1) 생성, 데모 정의 무사. 전체 178 passed.
