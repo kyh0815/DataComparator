@@ -115,21 +115,9 @@
   .toast.ok { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); }
   .toast.bad { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); }
 
-  /* ---------- definition preview ---------- */
+  /* ---------- definition 警告（読み込めない時のみ） ---------- */
   .def-preview { border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 15px; background:#fbfcfd; margin-bottom:16px; }
   .def-head { font-weight:700; color:var(--accent); margin-bottom:9px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .def-head .badge-n { font-family:var(--mono); font-size:12px; background:var(--accent); color:#fff; border-radius:999px; padding:1px 9px; }
-  .def-head .fname { font-family:var(--mono); font-size:12px; color:var(--ink-2); font-weight:600; }
-  .shelllist { display:flex; flex-wrap:wrap; gap:6px; }
-  .schip { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:7px; padding:4px 8px; background:#fff; font-size:12px; box-shadow:var(--shadow); }
-  .schip .sid { font-family:var(--mono); font-weight:700; color:var(--ink); }
-  .schip .flow { display:inline-flex; align-items:center; gap:5px; }
-  .schip .arrow { color:var(--muted-2); font-weight:700; }
-  .schip .mult { font-size:10px; color:var(--accent); font-weight:700; }
-  .schip.more { color:var(--muted); font-weight:600; background:#fbfcfd; box-shadow:none; }
-  .ttag { font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:4px; letter-spacing:.2px; border:1px solid; }
-  .ttag.db { background:var(--accent-bg); color:#234e7d; border-color:var(--accent-bd); }
-  .ttag.file { background:#eef2e9; color:#3d5a2b; border-color:#cfe0bd; }
   .def-note { color:var(--muted); font-weight:500; margin-top:9px; font-size:11.5px; }
   .def-preview.bad { background:var(--warn-bg); border-color:var(--warn-bd); }
   .def-preview.bad .def-head { color:#6e4a00; }
@@ -291,18 +279,12 @@
       <span class="sub">定義ファイル駆動 · Shell 1〜1000 自動実行</span>
     </div>
     <div class="panel-body">
-      {% if definition.ok %}
-      <div class="def-preview" id="def-preview">
-        <div class="def-head">検証定義<span class="badge-n">{{ definition.count }} シェル</span></div>
-        <div class="shelllist" id="def-shells"></div>
-        <div class="def-note">この定義（config の <code>definition_file</code>）を、設定済みディレクトリのデータに対して順次実行します。</div>
-      </div>
-      {% else %}
-      <div class="def-preview bad" id="def-preview">
+      <!-- 検証定義は config の definition_file が正本 — 画面では列挙しない(ボタン+モニタ+結果)。
+           読み込めない時だけ警告を出す(設定不備の検知)。 -->
+      <div class="def-preview bad" id="def-preview" {% if definition.ok %}style="display:none"{% endif %}>
         <div class="def-head">検証定義が読み込めません</div>
-        <div class="def-note">{{ definition.message }} 「設定 / 接続」または <code>config.yaml</code> の <code>definition_file</code> を確認してください。</div>
+        <div class="def-note" id="def-msg">{{ definition.message }} 「設定 / 接続」または <code>config.yaml</code> の <code>definition_file</code> を確認してください。</div>
       </div>
-      {% endif %}
       <div class="grid">
         <div class="field"><label class="lab">設定ファイル <span class="opt">(config.yaml)</span></label><input type="text" id="config" value="{{ default_config }}"><div class="hint">DB接続・ディレクトリ・定義ファイルの場所</div></div>
         <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"><div class="hint">未指定なら定義の全シェル</div></div>
@@ -364,22 +346,8 @@ let running = false;
 let es = null;                       // SSE ハンドル
 let lastConfig = "{{ default_config }}";
 
-/* ───────── 定義プレビュー（サーバ埋め込み JSON をチップ描画） ───────── */
+/* ───────── 定義の読み込み状態（列挙はしない · 失敗時のみ警告） ───────── */
 const DEF = {{ definition | tojson }};
-function tTag(t){ return t==="database" ? '<span class="ttag db">DB</span>' : '<span class="ttag file">ファイル</span>'; }
-function renderDefShells(){
-  if (!DEF || !DEF.ok) return;
-  const cont=$("def-shells"); if(!cont) return;
-  const CAP=24;
-  const chips=(DEF.shells||[]).slice(0,CAP).map(s=>{
-    const im = s.input_count>1 ? `<span class="mult">×${s.input_count}</span>` : "";
-    const om = s.output_count>1 ? `<span class="mult">×${s.output_count}</span>` : "";
-    return `<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span>`+
-      `<span class="flow">${tTag(s.input_type)}${im}<span class="arrow">→</span>${tTag(s.output_type)}${om}</span></span>`;
-  }).join("");
-  const more = (DEF.shells||[]).length>CAP ? `<span class="schip more">他 ${DEF.shells.length-CAP} 件</span>` : "";
-  cont.innerHTML = chips + more;
-}
 
 /* ───────── 設定: 永続化 + フォーム ───────── */
 const CONN_FIELDS = ["c-host","c-port","c-dbname","c-user","c-pwenv","c-encoding","config"];
@@ -442,23 +410,15 @@ $("c-save").addEventListener("click", async () => {
   finally{ btn.disabled=false; btn.textContent="config.yaml に保存"; }
 });
 
-// 設定保存後など、サーバから定義プレビューを取り直してチップを更新。
+// 設定保存後など、定義が読めるかだけ確認（読めれば警告を隠す、ダメなら理由表示）。
 async function refreshDefPreview(){
   try{
     const r=await (await fetch("/definition/preview?config="+encodeURIComponent($("config").value))).json();
-    DEF.ok=r.ok; DEF.count=r.count; DEF.shells=r.shells; DEF.message=r.message;
+    DEF.ok=r.ok; DEF.message=r.message;
     const pv=$("def-preview"); if(!pv) return;
-    if (r.ok){
-      pv.classList.remove("bad");
-      pv.innerHTML=`<div class="def-head">検証定義<span class="badge-n">${r.count} シェル</span></div>`+
-        `<div class="shelllist" id="def-shells"></div>`+
-        `<div class="def-note">この定義（config の <code>definition_file</code>）を、設定済みディレクトリのデータに対して順次実行します。</div>`;
-      renderDefShells();
-    } else {
-      pv.classList.add("bad");
-      pv.innerHTML=`<div class="def-head">検証定義が読み込めません</div><div class="def-note">${escapeHtml(r.message||"")}</div>`;
-    }
-  }catch(e){ /* プレビューは補助情報 — 失敗しても実行は可能 */ }
+    if (r.ok){ pv.style.display="none"; }
+    else { pv.style.display=""; const m=$("def-msg"); if(m) m.textContent=(r.message||"")+" 「設定 / 接続」または config.yaml の definition_file を確認してください。"; }
+  }catch(e){ /* 補助情報 — 失敗しても実行は可能 */ }
 }
 
 /* ───────── 結果レンダリング（イベント駆動） ───────── */
@@ -692,7 +652,6 @@ for (const c of document.querySelectorAll('.scard')) c.addEventListener("click",
   const f=c.getAttribute("data-f");
   setFilter(f==="*" ? null : f);
 });
-renderDefShells();
 </script>
 </body>
 </html>
