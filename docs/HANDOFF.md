@@ -25,7 +25,7 @@
 | **시연 한정(교체 대상)** | `stub_batch/run_batch_db.py`·`run_batch_file.py` (가짜 배치) | 🔁 진짜 배치로 |
 | | `db/schema.sql` (금융 도메인 시연 스키마) | 🔁 실 스키마로 |
 | | `test_definition.yaml` (시연 10셸·경량 스키마) | 🔁 실 셸·풀스키마로 |
-| | `samples/` (시연 입력·골든) | 🔁 실 데이터로 |
+| | `samples/` (시연 입력·골든) | 🔁 실 데이터로 (정답=**변환 후 As-Is 출력 수령**, make_golden 아님) |
 | | `config.yaml` (시연 환경값) | 🔁 클라이언트 환경값 |
 
 핵심: **Core·정의 파일 메커니즘은 그대로 두고, 위 5개 부품만 교체**하면 실 운영으로 간다.
@@ -73,9 +73,10 @@ Runner가 그 경로를 **실행파일로 직접 호출**하므로(파이썬 하
     `rollback`으로 exporter의 읽기 트랜잭션을 해제해 다음 셸의 `TRUNCATE`가 락 걸리지 않게 한다.
     배치가 자기 트랜잭션만 정상 commit하면 이 경계는 유지된다.
 
-**(3) 바이트 비교를 통과하려면 출력 직렬화가 골든과 같아야 한다**(D-004/D-027): 컬럼 순서·인코딩
-(Shift-JIS)·줄바꿈(`\n`)·정렬이 골든과 다르면 false-NG. 데이터 교체 후 골든은 `tools/make_golden.py`로
-재생성한다(3-6).
+**(3) 정답(골든)은 생성이 아니라 "변환 후 As-Is 출력"을 수령한다**(실환경): 정답 = 코드 변환 툴이 낸
+*변환 후 As-Is 출력*을 `asis_output_dir`에 그대로 둔 것. To-Be 출력과 **같은 변환 표준 포맷**이라 데이터가
+같으면 바이트도 같다(D-004). 표기만 미세하게 어긋나는 false-NG는 그때 가벼운 정규화로(D-022, 5장).
+※ `tools/make_golden.py`(stub `--clean`로 골든 생성)는 **진짜 As-Is 출력이 없는 데모 한정** — 실환경 미사용(3-6).
 
 > 요약: 파일-출력 배치는 "`--output-path`에 정해진 포맷으로 써라"가 전부지만, **DB-출력 배치는
 > ⓐ 정의된 테이블에 ⓑ commit하고 ⓒ 트랜잭션 경계를 지켜야** 한다. "stub만 바꾸면 된다"를 믿고
@@ -112,11 +113,13 @@ summary = run_full_comparison(config, on_progress=callback, shell_ids=None)
 - Core는 `print`를 하지 않으므로(CLAUDE 3-1) 출력 충돌이 없다. `src/cli/output.py`가 콜백→터미널
   렌더의 참조 구현이다.
 
-### 3-6. 데이터 교체 후 골든 재생성
+### 3-6. 정답(골든)은 "변환 후 As-Is 출력"을 배치 — 생성 아님
 
-실 입력으로 바꾼 뒤 `tools/make_golden.py`로 정답지(골든)를 재생성한다. 골든은 배치의 `--clean`
-경로로 만들어져 To-Be와 **같은 직렬화**를 타므로 false-NG가 구조적으로 차단된다(D-027). 입력 자체는
-`tools/make_samples.py`가 참조 예시.
+**실환경**: 정답지 = 코드 변환 툴이 낸 **변환 후 As-Is 출력 데이터**를 `asis_output_dir`(정의의 `expected`)에
+그대로 둔다. To-Be 출력과 동일 변환 표준 포맷이라 통짜 바이트 비교가 성립(CONTEXT 3-1 파이프라인). `make_golden` 안 돌린다.
+
+**데모 한정**: 진짜 As-Is 출력이 없을 때만 `tools/make_golden.py`가 stub `--clean` 경로로 골든을 *흉내내* 생성한다
+(To-Be와 같은 직렬화라 false-NG 차단, D-027). 입력 예시는 `tools/make_samples.py`. **둘 다 시연용이며 실 데이터로 교체 시 미사용.**
 
 ---
 
