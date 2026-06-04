@@ -584,3 +584,24 @@
 **파일명 규칙(최적화)**: 셸의 입력(또는 출력)이 **1개면 `{shell_id}.csv`**, **여러 개면 `{shell_id}_{테이블명}.csv`**(테이블 없는 파일 입출력은 `{shell_id}_in{n}`/`{shell_id}_out{n}.csv`). **정답(expected)** 빈 칸은 그 출력의 **To-Be 이름과 동일**(asis_output_dir vs tobe_output_dir로 폴더가 달라 충돌 없음, 데모 관례와 일치). **이미 적힌 이름은 그대로 존중**(자동은 빈 칸만). 입력CSV·DB export·정답은 우리가 정하는 이름이라 안전; 파일출력 file은 확장자 미상이면 csv 기본(필요 시 직접 기입).
 
 **효과**: 고객은 `type`·`table`(과 `test_name`)만 채우면 됨 — 체크리스트 템플릿과 합쳐지면 "항목명 선반영 + 테이블만 기입 + 파일명 자동". **검증**: `tests/test_mapping_to_definition.py` 14개(단일/다중 자동·제공값 존중 포함) + checklist 6개 통과.
+
+---
+
+## D-036. 정의 항목별 격납 패스 override — 사장님 규격 정합 (Phase 7, T7-5)
+
+**결정**: 사장님이 보내주신 정의 파일 최소 항목(체크리스트 번호 / As-Is 입력·출력의 명·종류·격납패스 / To-Be 격납 테이블·파일·패스 / 실행shell / To-Be 출력 명·종류·패스)을 충족하도록 모델·로더·경로 해석을 보강한다. 핵심은 **격납 패스(저장 경로)를 항목별로 담는 것**인데, 과거 회의 확정(D-021/DEFINITION_SPEC §1 "디렉토리=config 공통, 정의엔 파일명만")과 양립시키기 위해 **"config 공통 + 항목별 선택적 override"** 방식을 택한다(사용자 확정 — "가장 자연스럽고 효율적인 방식").
+
+1. **새 항목별 필드(전부 선택, 비면 config 공통 = 하위호환)**:
+   - `InputSpec.src_dir`(#4 As-Is 입력 격납 패스), `InputSpec.dest_name`(#7-3 To-Be 격납 파일명). (`table`=#7-1, `dest_dir`=#7-4는 기존)
+   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.expected_type`(#6 As-Is 출력 종류·정보용), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존)
+2. **경로 해석 단일화(드리프트 차단)**: `src/core/paths.py` 신설 — `input_source_path`/`input_dest_dir`/`input_dest_path`/`output_asis_path`/`output_tobe_path`. "항목 경로 있으면 그걸, 없으면 config 공통". orchestrator(적재처·정답 경로)·runner(읽기처·To-Be 산출)·make_golden이 **모두 이 헬퍼를 공유**(기존 runner.resolve_input_dir/_tobe_path/_input_file_path 흡수·제거). 복사처=읽기처가 같은 규칙을 타 파일셸 드리프트를 구조적으로 차단.
+3. **#6(As-Is 출력 종류)는 메타**: 비교는 통짜 바이트(D-004)라 판정에 영향 없음 — 리포트·기록·문서용 정보로만 보유(바이트 자기일치 유지, [[dc-self-review]]).
+4. **#7-2(DB의 to_be 격납 패스)는 필드 미생성**: 우리 도구는 psycopg2로 CSV를 테이블에 **직접 적재**(스테이징 파일 경로 불요)하므로, DB 입력의 To-Be 격납지는 **테이블명(#7-1)**이 전부다. "DB는 경로 N/A". 만약 사장님 의도가 ⓐ적재 전 스테이징 디렉토리 또는 ⓑ스키마명이면 추후 `InputSpec.stage_dir`/`schema` 한 칸으로 확장(의미 확정 후) — **사장님 확인 대기 항목**.
+5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`expected_type`·`tobe_dir`)을 수용/방출 → 11항목이 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
+6. **`_needs_db` 보정**: 출력 중 **하나라도** database면 conn을 열도록(기존 1차 출력만 보던 것 → outputs 전건). 다중 출력에서 2번째가 DB여도 export 가능.
+
+**이유**: 검증 항목(셸)마다 데이터/정답/산출물의 실제 위치가 다를 수 있다는 사장님 규격을 그대로 받되, 대다수 케이스(공통 디렉토리)는 config 한 곳으로 간결하게 — override는 필요한 셸만. 경로 조립을 한 모듈로 모아 드리프트(복사처≠읽기처)를 원천 차단.
+
+**deferred(유지)**: #7-2 의미 확정 후 DB 스테이징/스키마 필드, 정교 비교(D-022), 물리 다중 DB 접속, Core/CLI/리포트 일본어화. SAM 등 확장자 실데이터 QA(2순위).
+
+**검증**: `tests/test_paths.py` 8개(override·fallback·rename·부모생성·디렉토리 미상 에러) + `test_definition.py` 항목별 경로 파싱 2개 + `test_mapping_to_definition.py` 경로 열 1개 + 기존 스위트 그린(하위호환: 경로 미기재 정의 무수정 동작).

@@ -112,6 +112,9 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
                 export_as=_opt_str(row, "export_as"),
                 file=_opt_str(row, "file"),
                 name=_opt_str(row, "name"),
+                expected_dir=_opt_str(row, "expected_dir"),  # #7 As-Is 출력 격납 패스
+                expected_type=_opt_str(row, "expected_type"),  # #6 As-Is 출력 종류(메타)
+                tobe_dir=_opt_str(row, "tobe_dir"),  # #11 To-Be 출력 격납 패스
             ))
         return specs
     # 구형 단일: output 블록 + 최상위 expected_output_csv
@@ -123,6 +126,9 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
         table=_opt_str(out, "table"),
         export_as=_opt_str(out, "export_csv"),  # 구형 키
         file=_opt_str(out, "file"),
+        expected_dir=_opt_str(out, "expected_dir"),
+        expected_type=_opt_str(out, "expected_type"),
+        tobe_dir=_opt_str(out, "tobe_dir"),
     )]
 
 
@@ -149,7 +155,9 @@ def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
                 csv=str(_req(row, "csv", f"{test_id}.input[{j}]", path)),
                 type=itype,
                 table=_opt_str(row, "table"),
-                dest_dir=_opt_str(row, "dest_dir"),
+                dest_dir=_opt_str(row, "dest_dir"),  # #7-4 To-Be 격납 패스
+                src_dir=_opt_str(row, "src_dir"),  # #4 As-Is 입력 격납 패스
+                dest_name=_opt_str(row, "dest_name"),  # #7-3 To-Be 격납 파일명
             ))
         return specs
     # 구형 단일
@@ -159,6 +167,8 @@ def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
         type=itype,
         table=_opt_str(inp, "table"),
         dest_dir=_opt_str(inp, "dest_dir"),
+        src_dir=_opt_str(inp, "src_dir"),
+        dest_name=_opt_str(inp, "dest_name"),
     )]
 
 

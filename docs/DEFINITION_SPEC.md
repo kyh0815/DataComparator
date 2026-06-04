@@ -15,6 +15,8 @@
 
 > **DB 접속은 정의 파일에 넣지 않는다**(회의 확정 — 검증 DB 1곳 공통). 비밀번호는 모델A(env, D-019).
 > **디렉토리는 config 공통, 정의엔 파일명만**(회의 확정). 실제 경로 = `config의 dir` + `정의의 파일명`.
+> **단, 셸/항목마다 위치가 다르면 항목별 경로 override 가능**(D-036, 사장님 규격): `src_dir`·`dest_dir`·
+> `expected_dir`·`tobe_dir`를 항목에 적으면 그 경로가 config 공통보다 우선한다(비우면 config 공통).
 
 ---
 
@@ -87,10 +89,12 @@ tests:
 
 | 필드 | 필수 | 의미 |
 |---|---|---|
-| `file` | ✅ | 입력 파일명(`asis_input_dir` 기준). DB 적재 대상은 **CSV**여야(헤더=컬럼 매핑) |
-| `type` | ✅ | `database`(테이블 적재) \| `file`(디렉토리 복사) |
-| `table` | type=database면 ✅ | 적재 대상 테이블. 도구가 `TRUNCATE+INSERT`(검증 전용 테이블이어야) |
-| `dest_dir` | — | type=file일 때 복사 위치(없으면 `config.tobe_input_dir`) |
+| `file`(=`csv`) | ✅ | 입력 파일명(`asis_input_dir` 기준). DB 적재 대상은 **CSV**여야(헤더=컬럼 매핑) — 규격 #2 |
+| `type` | ✅ | `database`(테이블 적재) \| `file`(디렉토리 복사) — 규격 #3 |
+| `table` | type=database면 ✅ | To-Be 격납(적재 대상) 테이블. 도구가 `TRUNCATE+INSERT` — 규격 #7-1 |
+| `src_dir` | — | As-Is 입력 격납 패스 override(없으면 `config.asis_input_dir`) — 규격 #4 |
+| `dest_dir` | — | type=file의 To-Be 격납 패스(없으면 `config.tobe_input_dir`) — 규격 #7-4 |
+| `dest_name` | — | type=file의 To-Be 격납 파일명(없으면 입력 파일명 그대로) — 규격 #7-3 |
 
 > 한 배치가 여러 테이블을 조인해 읽으므로 inputs는 **여러 건**. DB 적재분은 항목마다 commit(D-023 ①).
 > *(현재 구현 필드명: `csv` — 규격 확정 시 `file`로 별칭/정렬 예정. 의미 동일.)*
@@ -99,11 +103,14 @@ tests:
 
 | 필드 | 필수 | 의미 |
 |---|---|---|
-| `type` | ✅ | `database`(결과 테이블 → CSV export) \| `file`(배치 산출 파일 그대로) |
+| `type` | ✅ | To-Be 출력 종류: `database`(결과 테이블 → CSV export) \| `file`(배치 산출 파일 그대로) — 규격 #10 |
 | `table` | type=database면 ✅ | 배치가 결과를 쓴 테이블 |
-| `export_as` | type=database면 ✅ | export할 CSV 파일명(`tobe_output_dir`) |
-| `file` | type=file면 ✅ | 배치가 만든 파일명(`tobe_output_dir`, 확장자 무관) |
-| `expected` | ✅ | **정답 파일명**(`asis_output_dir`). To-Be 출력과 **바이트 비교** |
+| `export_as` | type=database면 ✅ | To-Be 출력 명: export할 CSV 파일명(`tobe_output_dir`) — 규격 #9 |
+| `file` | type=file면 ✅ | To-Be 출력 명: 배치가 만든 파일명(`tobe_output_dir`, 확장자 무관) — 규격 #9 |
+| `expected` | ✅ | As-Is 출력(정답) 명(`asis_output_dir`). To-Be 출력과 **바이트 비교** — 규격 #5 |
+| `expected_dir` | — | As-Is 출력 격납 패스 override(없으면 `config.asis_output_dir`) — 규격 #7 |
+| `expected_type` | — | As-Is 출력 종류(정보용 — 비교는 바이트라 판정 불변) — 규격 #6 |
+| `tobe_dir` | — | To-Be 출력 격납 패스 override(없으면 `config.tobe_output_dir`) — 규격 #11 |
 | `name` | — | 출력 식별자(리포트/화면 라벨; 없으면 `export_as`/`file`) |
 
 > **출력 형식과 SAM**: 비교는 **통짜 바이트**(D-004)라 형식을 해석하지 않는다.

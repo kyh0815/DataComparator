@@ -186,3 +186,37 @@ def test_single_output_normalized(tmp_path):
     """구형 단일 출력도 outputs 1건으로 정규화(하위호환)."""
     d = load_definitions(_write(tmp_path, _VALID))[0]
     assert len(d.outputs) == 1 and d.outputs[0].expected == "001.csv"
+
+
+# --- D-036: 항목별 격납 패스 override(사장님 규격 #4·#6·#7·#7-3·#7-4·#11) -------------
+
+
+def test_per_item_paths_parsed(tmp_path):
+    """입력/출력 항목에 격납 패스·메타 필드가 적히면 그대로 InputSpec/OutputSpec에 실린다."""
+    text = """
+tests:
+  - test_id: "001"
+    input:
+      tables:
+        - { csv: in.csv, type: file, src_dir: /mnt/asis/in, dest_dir: /mnt/tobe/in, dest_name: staged.csv }
+    execution: { shell_program: x.py }
+    outputs:
+      - type: file
+        file: out.dat
+        expected: gold.dat
+        expected_type: file
+        expected_dir: /mnt/asis/out
+        tobe_dir: /mnt/tobe/out
+"""
+    d = load_definitions(_write(tmp_path, text))[0]
+    i = d.inputs[0]
+    assert (i.src_dir, i.dest_dir, i.dest_name) == ("/mnt/asis/in", "/mnt/tobe/in", "staged.csv")
+    o = d.outputs[0]
+    assert (o.expected_dir, o.expected_type, o.tobe_dir) == ("/mnt/asis/out", "file", "/mnt/tobe/out")
+
+
+def test_per_item_paths_default_none(tmp_path):
+    """경로 필드 미기재 시 None(= config 공통 디렉토리 사용, 하위호환)."""
+    d = load_definitions(_write(tmp_path, _VALID))[0]
+    assert d.inputs[0].src_dir is None and d.inputs[0].dest_name is None
+    assert d.outputs[0].expected_dir is None and d.outputs[0].tobe_dir is None

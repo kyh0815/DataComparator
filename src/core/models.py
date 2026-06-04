@@ -137,12 +137,15 @@ class InputSpec:
     """한 셸이 적재할 입력 1건 (기획 7.1 input.tables[] 복원, D-033).
 
     한 셸이 여러 테이블/파일을 입력으로 받을 수 있어(배치가 여러 테이블 조인) inputs 리스트의 한 항목.
+    경로 필드(src_dir·dest_dir)는 **항목별 선택적 override**(D-036): 비면 config 공통 디렉토리.
     """
 
-    csv: str  # asis_input_dir 기준 입력 CSV 파일명
-    type: str = "database"  # "database" | "file"
-    table: str | None = None  # type == database (적재 대상 테이블)
-    dest_dir: str | None = None  # type == file (복사 대상; 없으면 config.tobe_input_dir)
+    csv: str  # #2 As-Is 입력데이터 명 (파일명, asis_input_dir 기준)
+    type: str = "database"  # #3 As-Is 입력데이터 종류: "database" | "file"
+    table: str | None = None  # #7-1 type==database: To-Be 격납 테이블(적재 대상)
+    dest_dir: str | None = None  # #7-4 type==file: To-Be 격납 패스(없으면 config.tobe_input_dir)
+    src_dir: str | None = None  # #4 As-Is 입력 격납 패스 override(없으면 config.asis_input_dir)
+    dest_name: str | None = None  # #7-3 type==file: To-Be 격납 파일명(없으면 csv 그대로)
 
 
 @dataclass
@@ -153,12 +156,15 @@ class OutputSpec:
     To-Be 산출물(tobe_output_dir 기준 tobe_name)을 정답(expected, asis_output_dir 기준)과 바이트 비교.
     """
 
-    type: str  # "database" | "file"
-    expected: str  # 정답 파일명 (asis_output_dir 기준)
+    type: str  # #10 To-Be 출력데이터 종류: "database" | "file"
+    expected: str  # #5 As-Is 출력데이터 명 (정답 파일명, asis_output_dir 기준)
     table: str | None = None  # type == database (결과 테이블)
-    export_as: str | None = None  # type == database (export CSV 파일명, tobe_output_dir)
-    file: str | None = None  # type == file (배치 산출 파일명, tobe_output_dir)
+    export_as: str | None = None  # #9 type==database: To-Be 출력 명(export CSV 파일명)
+    file: str | None = None  # #9 type==file: To-Be 출력 명(배치 산출 파일명)
     name: str | None = None  # 라벨(리포트/화면). 없으면 export_as/file에서 파생
+    expected_dir: str | None = None  # #7 As-Is 출력 격납 패스 override(없으면 config.asis_output_dir)
+    expected_type: str | None = None  # #6 As-Is 출력데이터 종류(정보·리포트용. 비교는 바이트라 판정 불변)
+    tobe_dir: str | None = None  # #11 To-Be 출력 격납 패스 override(없으면 config.tobe_output_dir)
 
     @property
     def label(self) -> str:

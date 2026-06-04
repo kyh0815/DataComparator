@@ -28,6 +28,7 @@ from pathlib import Path
 
 from .exporter import export_table_to_csv
 from .models import Config, OutputSpec, ShellDefinition
+from .paths import input_dest_path, output_tobe_path
 
 
 class RunnerError(Exception):
@@ -68,7 +69,7 @@ def run_batch(
 
     resolved: list[tuple[OutputSpec, Path]] = []
     for out in definition.outputs:
-        tobe = _tobe_path(out, config)
+        tobe = output_tobe_path(out, config)
         if out.type == "database":
             if conn is None:
                 raise RunnerError(
@@ -105,11 +106,11 @@ def _build_command(
     if definition.input_type == "database":
         argv += ["--input-table", definition.input_table or "transaction_log"]
     else:
-        argv += ["--input-file", str(_input_file_path(definition, config))]
+        argv += ["--input-file", str(input_dest_path(definition.inputs[0], config))]
 
     # 출력 분기 (1차 출력 기준)
     if first.type == "file":
-        argv += ["--output-path", str(_tobe_path(first, config))]
+        argv += ["--output-path", str(output_tobe_path(first, config))]
     else:
         argv += ["--output-table", first.table]
 
@@ -129,33 +130,3 @@ def _resolve_program(definition: ShellDefinition, config: Config) -> Path:
     base = config.definition_file.parent if config.definition_file else Path.cwd()
     program = Path(definition.shell_program)
     return program if program.is_absolute() else (base / program).resolve()
-
-
-def _tobe_path(output: OutputSpec, config: Config) -> Path:
-    """출력 1건의 To-Be 산출 경로 = tobe_output_dir / tobe_name(export_as 또는 file)."""
-    path = config.tobe_output_dir / output.tobe_name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def resolve_input_dir(definition: ShellDefinition, config: Config) -> Path:
-    """파일 입력 셸의 raw 복사 디렉토리를 결정한다 — **단일 진실**.
-
-    오케스트레이터(T3-1)의 copy_input_file *복사처*와 Runner의 *읽기처*가 반드시
-    일치해야 한다(드리프트 시 파일셸 전멸). 그래서 양쪽이 이 헬퍼를 공유한다.
-    우선순위: config.tobe_input_dir > definition.input_dest_dir. 둘 다 없으면 RunnerError.
-    """
-    base = config.tobe_input_dir
-    if base is None:
-        if not definition.input_dest_dir:
-            raise RunnerError(
-                f"[{definition.test_id}] ファイル入力先ディレクトリが不明です"
-                "（tobe_input_dir/input_dest_dir 不足）。"
-            )
-        base = Path(definition.input_dest_dir)
-    return base
-
-
-def _input_file_path(definition: ShellDefinition, config: Config) -> Path:
-    """파일 입력 셸의 복사된 raw 파일 경로(오케스트레이터가 copy_input_file로 둔 위치)."""
-    return resolve_input_dir(definition, config) / definition.input_csv

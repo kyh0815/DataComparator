@@ -34,8 +34,9 @@ from .models import (
     RunSummary,
     ShellDefinition,
 )
+from .paths import input_dest_dir, input_source_path, output_asis_path
 from .reporter import generate_report
-from .runner import resolve_input_dir, run_batch
+from .runner import run_batch
 
 
 class OrchestratorError(Exception):
@@ -110,7 +111,7 @@ def _process_shell(
         results: list[ComparisonResult] = []
         multi = len(definition.outputs) > 1  # 단일 출력은 output_name=None(리포트 '-'·화면 라벨 없음)
         for out, tobe_path in resolved:
-            asis_path = config.asis_output_dir / out.expected
+            asis_path = output_asis_path(out, config)  # #5·#7 항목별 경로 override 반영
             r = compare_files(asis_path, tobe_path, encoding=config.encoding)
             r.shell_id = definition.test_id  # 파일명 파생 대신 셸 ID로 못박음
             r.output_name = out.label if multi else None
@@ -138,13 +139,14 @@ def _load_step(definition: ShellDefinition, config: Config, conn) -> None:
     DB 적재분은 stub(별도 connection)이 보도록 즉시 commit(D-023 ①). 모든 입력 적재 후 배치 실행.
     """
     for spec in definition.inputs:
-        src = config.asis_input_dir / spec.csv
+        src = input_source_path(spec, config)  # #2·#4 항목별 As-Is 원천 경로
         if spec.type == "database":
             load_input_csv(src, conn, spec.table, encoding=config.encoding)
             conn.commit()  # D-023 ①
         else:
-            # 파일 입력은 모두 tobe_input_dir로 복사(복사처=Runner 읽기처 공유 헬퍼 → 드리프트 차단).
-            copy_input_file(src, resolve_input_dir(definition, config))
+            # 파일 입력은 항목별 To-Be 격납 디렉토리/파일명으로 복사(#7-3·#7-4).
+            # 복사처(여기)=Runner 읽기처가 paths 헬퍼를 공유 → 드리프트 차단.
+            copy_input_file(src, input_dest_dir(spec, config), dest_name=spec.dest_name)
 
 
 def _load_definitions(config: Config) -> list[ShellDefinition]:
@@ -205,8 +207,10 @@ def _worst_status(results: list[ComparisonResult]) -> str:
 
 
 def _needs_db(definition: ShellDefinition) -> bool:
-    """이 셸이 DB connection을 필요로 하는가(입력 중 하나라도 DB 적재, 또는 출력 export)."""
-    return any(s.type == "database" for s in definition.inputs) or definition.output_type == "database"
+    """이 셸이 DB connection을 필요로 하는가(입력 중 하나라도 DB 적재, 또는 출력 중 하나라도 export)."""
+    return any(s.type == "database" for s in definition.inputs) or any(
+        o.type == "database" for o in definition.outputs
+    )
 
 
 def _emit(

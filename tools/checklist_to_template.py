@@ -25,7 +25,11 @@ import sys
 from pathlib import Path
 
 # 헤더 = 매핑 CSV(Long)와 동일(그대로 mapping_to_definition.py에 먹임).
-_HEADER = ["shell_id", "kind", "type", "program", "table", "file", "expected", "name", "test_name", "timeout"]
+# 뒤쪽 격납 패스 열(src_dir~tobe_dir)은 **선택**(비우면 config 공통 디렉토리) — 사장님 규격 11항목 대응.
+_HEADER = [
+    "shell_id", "kind", "type", "program", "table", "file", "expected", "name", "test_name", "timeout",
+    "src_dir", "dest_dir", "dest_name", "expected_dir", "expected_type", "tobe_dir",
+]
 # 줄 앞 번호/불릿: "1)" "1." "①~⑳" "-" "・" "*" "•" 등.
 _BULLET = re.compile(r"^\s*(?:\d+\s*[\)\.\:]|[①-⑳]|[-・*•‣◦])\s*")
 
@@ -43,6 +47,7 @@ def parse_checklist(text: str) -> list[str]:
 def checklist_to_template(text: str, inputs: int = 1, outputs: int = 1) -> str:
     """체크리스트 → 빈 기입 CSV 템플릿 문자열. 항목마다 입력 inputs행 + 출력 outputs행."""
     items = parse_checklist(text)
+    pad = [""] * (len(_HEADER) - 10)  # 선택 격납 패스 열(빈 칸 = config 공통)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(_HEADER)
@@ -50,9 +55,9 @@ def checklist_to_template(text: str, inputs: int = 1, outputs: int = 1) -> str:
         sid = str(idx).zfill(3)  # 로더와 같은 3자리 zero-pad
         for j in range(max(1, inputs)):
             # test_name은 셸 첫 행에만(매핑 로더가 셸별 첫 비어있지 않은 값을 씀).
-            w.writerow([sid, "input", "", "", "", "", "", "", name if j == 0 else "", ""])
+            w.writerow([sid, "input", "", "", "", "", "", "", name if j == 0 else "", "", *pad])
         for _ in range(max(1, outputs)):
-            w.writerow([sid, "output", "", "", "", "", "", "", "", ""])
+            w.writerow([sid, "output", "", "", "", "", "", "", "", "", *pad])
     return buf.getvalue()
 
 

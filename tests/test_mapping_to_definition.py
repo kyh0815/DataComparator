@@ -45,6 +45,25 @@ def test_generated_yaml_round_trips_through_loader(tmp_path):
     assert d0.shell_program == "/opt/job1"
 
 
+def test_per_item_path_columns_flow_into_definition(tmp_path):
+    """격납 패스 열(src_dir·dest_dir·dest_name·expected_dir·expected_type·tobe_dir)이 yaml→로더로 실린다 (D-036)."""
+    csv = (
+        "shell_id,kind,type,program,table,file,expected,src_dir,dest_dir,dest_name,"
+        "expected_dir,expected_type,tobe_dir\n"
+        "001,input,file,/opt/j,,in.csv,,/mnt/asis/in,/mnt/tobe/in,staged.csv,,,\n"
+        "001,output,file,,,out.dat,gold.dat,,,,/mnt/asis/out,file,/mnt/tobe/out\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"]
+    p = tmp_path / "def.yaml"
+    p.write_text(r["yaml"], encoding="utf-8")
+    d = load_definitions(p)[0]
+    i = d.inputs[0]
+    assert (i.src_dir, i.dest_dir, i.dest_name) == ("/mnt/asis/in", "/mnt/tobe/in", "staged.csv")
+    o = d.outputs[0]
+    assert (o.expected_dir, o.expected_type, o.tobe_dir) == ("/mnt/asis/out", "file", "/mnt/tobe/out")
+
+
 def test_blank_program_uses_stub_by_first_input_type():
     csv = (
         "shell_id,kind,type,program,table,file,expected\n"

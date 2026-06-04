@@ -289,21 +289,23 @@ def test_db_input_commits_then_shell_rolls_back(tmp_path, monkeypatch):
 
 
 def test_file_input_copies_to_shared_resolved_dir(tmp_path, monkeypatch):
-    """파일 입력 복사처 = runner.resolve_input_dir(tobe_input_dir 우선) — 드리프트 차단(🔴1)."""
+    """파일 입력 복사처 = paths.input_dest_dir(tobe_input_dir 우선) — 드리프트 차단(🔴1)."""
     copy_calls = []
     defs = [_def("006", "file", "file")]
     _patch_pipeline(
         monkeypatch, definitions=defs,
         run_batch=lambda d, c, conn, clean=False: [(d.outputs[0], tmp_path / f"{d.test_id}.csv")],
         compare=lambda a, b, encoding: ComparisonResult(a.stem, ComparisonStatus.OK),
-        copy_file=lambda src, dest: copy_calls.append((src, dest)) or (dest / src.name),
+        copy_file=lambda src, dest, dest_name=None: copy_calls.append((src, dest, dest_name))
+        or (dest / (dest_name or src.name)),
     )
     cfg = _config(tmp_path)
     orchestrator.run_full_comparison(cfg)
 
-    src, dest = copy_calls[0]
+    src, dest, dest_name = copy_calls[0]
     assert src == cfg.asis_input_dir / "006.csv"
-    assert dest == cfg.tobe_input_dir  # Runner._input_file_path와 동일한 base
+    assert dest == cfg.tobe_input_dir  # paths.input_dest_dir와 동일한 base(override 없으면 config 공통)
+    assert dest_name is None  # dest_name 미지정 → 입력 파일명 그대로
 
 
 # --- DB 통합 (RUN_DB_TESTS=1 일 때만) -------------------------------------------

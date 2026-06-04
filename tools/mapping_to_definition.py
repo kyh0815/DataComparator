@@ -20,6 +20,15 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용):
   name       [선택] 출력 라벨(리포트/화면).
   test_name  [선택] 셸 이름(체크리스트 항목명).   timeout [선택] 초(기본 60).
 
+  ── 항목별 격납 패스(선택, 사장님 규격 #4·#7·#7-3·#7-4·#11 / D-036) ──
+  비우면 config.yaml 공통 디렉토리를 쓴다(권장). 셸별로 위치가 다를 때만 적는다.
+  src_dir       [입력]  As-Is 입력 격납 패스(#4).        없으면 asis_input_dir.
+  dest_dir      [입력]  type=file의 To-Be 격납 패스(#7-4). 없으면 tobe_input_dir.
+  dest_name     [입력]  type=file의 To-Be 격납 파일명(#7-3). 없으면 입력 파일명 그대로.
+  expected_dir  [출력]  As-Is 출력(정답) 격납 패스(#7). 없으면 asis_output_dir.
+  expected_type [출력]  As-Is 출력 종류(#6, 정보용 — 비교는 통짜 바이트라 판정 불변).
+  tobe_dir      [출력]  To-Be 출력 격납 패스(#11).       없으면 tobe_output_dir.
+
 **빈 파일명 자동 규칙**(D-035, 사용자 확정 — 내용은 수기, 파일명은 규칙):
   · 셸의 입력(또는 출력)이 1개면 `{shell_id}.csv`.
   · 여러 개면 `{shell_id}_{테이블명}.csv`(테이블 없으면 `{shell_id}_in{n}` / `{shell_id}_out{n}.csv`).
@@ -113,8 +122,9 @@ def mapping_to_definition(csv_text: str) -> dict:
             spec = {"csv": fname, "type": itype}   # csv는 _autofill_names가 채울 수 있음
             if itype == "database":
                 spec["table"] = table
-            if row.get("dest_dir"):
-                spec["dest_dir"] = row["dest_dir"]
+            for col in ("dest_dir", "src_dir", "dest_name"):  # #4·#7-3·#7-4 항목별 경로(선택)
+                if row.get(col):
+                    spec[col] = row[col]
             sh["inputs"].append(spec)
         else:  # output
             if itype == "database" and not table:
@@ -128,6 +138,9 @@ def mapping_to_definition(csv_text: str) -> dict:
                 spec["file"] = fname           # 비면 자동
             if row.get("name"):
                 spec["name"] = row["name"]
+            for col in ("expected_dir", "expected_type", "tobe_dir"):  # #6·#7·#11 (선택)
+                if row.get(col):
+                    spec[col] = row[col]
             sh["outputs"].append(spec)
 
     # 셸 단위 검증(입력·출력 ≥1, program 일관) + 빈 파일명 자동 채움.

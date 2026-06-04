@@ -33,11 +33,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config.definition import load_definitions
 from src.config.settings import load_config
 from src.core.loader import copy_input_file, load_input_csv
-from src.core.runner import resolve_input_dir, run_batch
+from src.core.paths import input_dest_dir, input_source_path, output_asis_path
+from src.core.runner import run_batch
 
 
 def _needs_db(definitions) -> bool:
-    return any(d.input_type == "database" or d.output_type == "database" for d in definitions)
+    return any(
+        any(s.type == "database" for s in d.inputs)
+        or any(o.type == "database" for o in d.outputs)
+        for d in definitions
+    )
 
 
 def _connect(config):
@@ -47,20 +52,28 @@ def _connect(config):
     )
 
 
-def _make_one(definition, config, conn) -> Path:
-    """한 셸의 골든을 clean 경로로 생성하고 asis_output_dir/{expected_output_csv}로 복사한다."""
-    src = config.asis_input_dir / definition.input_csv
-    if definition.input_type == "database":
-        load_input_csv(src, conn, definition.input_table, encoding=config.encoding)
-        conn.commit()  # stub(별도 connection)이 적재분을 보도록 (D-023 ①)
-    else:
-        copy_input_file(src, resolve_input_dir(definition, config))
+def _make_one(definition, config, conn) -> list[Path]:
+    """한 셸의 골든을 clean 경로로 생성하고 출력마다 As-Is 정답 경로로 복사한다(다중 입출력, D-033/D-036).
 
-    tobe = run_batch(definition, config, conn, clean=True)  # NG 주입 꺼짐 = 골든
-    dest = config.asis_output_dir / definition.expected_output_csv
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(tobe, dest)
-    return dest
+    오케스트레이터와 동일하게 inputs[]를 적재 → run_batch(clean=True)로 출력별 To-Be 산출 →
+    각 출력의 To-Be를 그 출력의 정답 경로(output_asis_path)로 복사한다. 골든·To-Be가 같은
+    직렬화·경로 규칙을 타 false-NG를 구조적으로 차단한다(D-027).
+    """
+    for spec in definition.inputs:
+        src = input_source_path(spec, config)
+        if spec.type == "database":
+            load_input_csv(src, conn, spec.table, encoding=config.encoding)
+            conn.commit()  # stub(별도 connection)이 적재분을 보도록 (D-023 ①)
+        else:
+            copy_input_file(src, input_dest_dir(spec, config), dest_name=spec.dest_name)
+
+    dests: list[Path] = []
+    for out, tobe in run_batch(definition, config, conn, clean=True):  # NG 주입 꺼짐 = 골든
+        dest = output_asis_path(out, config)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(tobe, dest)
+        dests.append(dest)
+    return dests
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,8 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for definition in definitions:
             try:
-                dest = _make_one(definition, config, conn)
-                print(f"[golden] {definition.test_id} → {dest}")
+                for dest in _make_one(definition, config, conn):
+                    print(f"[golden] {definition.test_id} → {dest}")
             finally:
                 if conn is not None:
                     conn.rollback()  # exporter read 트랜잭션 해제 (D-023 ②)
