@@ -1,0 +1,34 @@
+# 현실형 테스트 환경 설정 (Phase 7 다중 입출력 시연·검증).
+#   실행: PGPORT=5433 POSTGRES_PASSWORD=devpw ./run_realistic.sh   (이 dev 박스)
+#   실 배포: port를 실 DB에 맞춤. 비번은 password_env 환경변수에서만(모델A).
+#
+# 데모(config.yaml)와 별개의 자기완결 환경 — 디렉토리·DB 테이블(rt_*) 모두 격리.
+
+encoding: Shift_JIS
+
+paths:
+  asis_input_dir:  ./samples/realistic/asis/input
+  asis_output_dir: ./samples/realistic/asis/output   # 골든(make_golden 생성)
+  tobe_input_dir:  ./out/realistic/tobe_input          # 파일 입력 복사 대상
+  tobe_output_dir: ./out/realistic/tobe_output         # To-Be 산출/Export 위치
+  report_dir:      ./out/realistic/reports
+  definition_file: ./test_definition.realistic.yaml
+
+database:
+  host: localhost
+  port: 5432                          # ⚠️ 이 dev 박스 dc-pg는 5433 (run_realistic.sh가 PGPORT로 덮어씀)
+  dbname: compare_proto
+  user: postgres
+  password_env: POSTGRES_PASSWORD
+
+batch:
+  type: stub
+  timeout_seconds: 120
+
+shells:
+  range: [1, 2]                       # 폴백용(정의 파일이 정본이라 실제론 무시됨)
+
+output:
+  cli_color: true
+  cli_verbose: false
+  report_with_bom: true
