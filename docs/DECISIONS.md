@@ -630,3 +630,11 @@
 → `OutputSpec.expected_type` 삭제, definition 파서·`mapping_to_definition`·`checklist_to_template`
 헤더·샘플 CSV·템플릿 yaml·DEFINITION_SPEC에서 제거. 사장님 11항목 중 #6은 정의에서 빠짐(통짜
 바이트 비교 모델에선 As-Is 출력 종류가 불요 — #7-2와 함께 "모델상 불필요"로 정리). 전체 178 passed.
+
+### D-037 보정2. 매핑 CSV의 1차 키 = checklist (열 이름 명확화)
+
+**결정**(사용자): 매핑 CSV는 **체크리스트 기준**이 포인트 — 1차 키 열을 `shell_id`가 아니라 **`checklist`**(체크리스트 번호)로, 실행 배치 열을 **`shell`**(구형 `program`)로 명명한다. 한 체크리스트가 입력 여러 개(예: A DB 짝수행 + B DB 홀수행을 shell이 Merge → C DB)를 읽고 최종 출력(C) 하나를 검증하는 구조라 **checklist로 묶는 Long 형식**(입출력 항목당 1행)이 정답. `mapping_to_definition`이 `checklist`/`shell`을 우선 인식(구형 `shell_id`/`program`도 호환). 샘플(`samples/shell_mapping.long.example.csv`)을 A·B→C 병합 예시로 교체, `checklist_to_template` 헤더도 동일 명명. (로더 yaml 필드는 그대로 `test_id`/`execution.shell_program` — CSV 열 이름만 사용자 어휘로.)
+
+**이유**: 검증 단위는 셸이 아니라 **체크리스트 항목**이고, 셸(실행 배치)은 그 체크리스트의 한 속성일 뿐. 열 이름이 `shell_id`라 "체크리스트 번호"인지 "실행 셸"인지 혼동됐음 — `checklist`(키)/`shell`(실행 배치)로 분리해 해소.
+
+**검증**: `tests/test_mapping_to_definition.py` +2(checklist 키·다중입력 병합·키열 필수), 샘플→정의 생성 ok(001 입력2·출력1 병합), 전체 그린.

@@ -301,7 +301,7 @@ def test_sample_csv_downloads(client):
     resp = client.get("/definition/sample-csv")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert body.startswith("shell_id,kind,type")  # Long 형식 헤더
+    assert body.startswith("checklist,")  # checklist 기준 Long 형식 헤더
 
 
 def test_save_writes_to_config_definition_file(client, tmp_path):

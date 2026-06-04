@@ -64,6 +64,29 @@ def test_per_item_path_columns_flow_into_definition(tmp_path):
     assert (o.expected_dir, o.tobe_dir) == ("/mnt/asis/out", "/mnt/tobe/out")
 
 
+def test_checklist_key_with_multi_input_merge():
+    """checklist를 1차 키로, 한 체크리스트가 입력 여러 개(A·B 병합)→출력 1개를 가질 수 있다 (사용자 시나리오)."""
+    csv = (
+        "checklist,kind,type,shell,file,table,expected\n"
+        "001,input,database,/opt/job1,A.csv,table_a,\n"
+        "001,input,database,,B.csv,table_b,\n"
+        "001,output,database,,C.csv,table_c,正解C.csv\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"] and r["count"] == 1
+    assert r["shells"][0] == {"test_id": "001", "input_count": 2, "output_count": 1}
+    doc = yaml.safe_load(r["yaml"])
+    t = doc["tests"][0]
+    assert [x["table"] for x in t["input"]["tables"]] == ["table_a", "table_b"]
+    assert t["execution"]["shell_program"] == "/opt/job1"  # shell 열이 실행 배치로
+
+
+def test_checklist_column_required():
+    """checklist(또는 shell_id) 1차 키 열이 없으면 거부."""
+    r = m.mapping_to_definition("kind,type\ninput,database\n")
+    assert r["ok"] is False and any("checklist" in e for e in r["errors"])
+
+
 def test_blank_program_uses_stub_by_first_input_type():
     csv = (
         "shell_id,kind,type,program,table,file,expected\n"

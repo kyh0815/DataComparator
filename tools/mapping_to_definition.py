@@ -9,12 +9,17 @@
 설치 준비용 **독립 CLI 도구**다(GUI 아님 — T7-3 경량화 유지). make_golden.py처럼 tools/에 둔다.
 CSV 채움 → 변환 1회 → yaml → config의 `definition_file`이 가리킴 → 경량 GUI/CLI로 실행.
 
+한 체크리스트가 입력 여러 개(예: A DB + B DB)를 읽어 출력(예: 병합된 C DB)을 내는 구조라,
+**checklist를 1차 키로 묶는 Long 형식**(입출력 항목당 1행, checklist로 그룹화)을 쓴다.
+
 CSV 열(대소문자·순서 무관, 빈 칸 허용):
-  shell_id   [필수] 셸 식별자. 같은 값이 여러 행이면 한 셸로 묶임(입출력 항목들).
+  checklist  [필수] 체크리스트 번호(=검증 단위). 같은 값 행들이 한 체크리스트로 묶임(입력 N·출력 M).
+             (구형 호환: shell_id 도 1차 키로 받음.)
   kind       [필수] input | output
-  type       [필수] database | file
-  program    [선택] 배치(잡) 경로. 셸 내 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
-  table      [입력/출력=database면 필수] 적재/결과 테이블명.
+  type       [필수] database | file  (입력/출력 데이터가 파일인지 DB인지)
+  shell      [선택] 이 체크리스트에서 실행되는 배치(잡) 경로. 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
+             (구형 호환: program)
+  table      [입력/출력=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명(어디에 업로드/적재).
   file       [선택] 파일명. 비우면 자동 생성(아래 규칙). input=입력CSV / output(db)=export CSV / output(file)=산출 파일.
   expected   [선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.
   name       [선택] 출력 라벨(리포트/화면).
@@ -58,8 +63,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config.definition import DefinitionError, load_definitions  # noqa: E402
 
+# 1차 키 = checklist(체크리스트 번호). 같은 값 행들이 한 체크리스트로 묶임(입력 N·출력 M).
+# 구형 호환: shell_id도 1차 키로 받음. 실행 배치는 shell(구형: program) 열.
 # file·expected는 빈 칸이면 규칙으로 자동 채우므로 필수 아님(table은 DB의 사실이라 필수).
-_REQUIRED_COLS = ("shell_id", "kind", "type")
+_KEY_COLS = ("checklist", "shell_id")  # 둘 중 하나는 있어야(checklist 우선)
+_REQUIRED_COLS = ("kind", "type")
 _VALID_KIND = ("input", "output")
 _VALID_TYPE = ("database", "file")
 # 배치 경로 미지정 시 쓰는 동봉 stub(데모 기본 — 실 운영은 program 열에 실 배치 경로).
@@ -79,6 +87,8 @@ def mapping_to_definition(csv_text: str) -> dict:
     missing = [c for c in _REQUIRED_COLS if c not in cols]
     if missing:
         return _fail([f"必須列がありません: {', '.join(missing)}"])
+    if not any(k in cols for k in _KEY_COLS):
+        return _fail([f"必須列がありません: checklist（または shell_id）"])
 
     errors: list[str] = []
     order: list[str] = []                 # 셸 순서 보존
@@ -86,11 +96,11 @@ def mapping_to_definition(csv_text: str) -> dict:
 
     for n, raw in enumerate(reader, start=2):  # 2 = 헤더 다음 첫 데이터 행(사람 기준 행 번호)
         row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
-        sid = row.get("shell_id", "")
+        sid = row.get("checklist") or row.get("shell_id") or ""  # checklist(1차 키) 우선, 구형 shell_id 호환
         kind = row.get("kind", "").lower()
         itype = row.get("type", "").lower()
         if not sid:
-            errors.append(f"{n}行目: shell_id が空です。")
+            errors.append(f"{n}行目: checklist が空です。")
             continue
         if kind not in _VALID_KIND:
             errors.append(f"{n}行目[{sid}]: kind は {_VALID_KIND} のいずれか（受領: '{kind}'）。")
@@ -104,8 +114,9 @@ def mapping_to_definition(csv_text: str) -> dict:
             sh = {"inputs": [], "outputs": [], "programs": set(), "test_name": "", "timeout": ""}
             shells[sid] = sh
             order.append(sid)
-        if row.get("program"):
-            sh["programs"].add(row["program"])
+        prog = row.get("shell") or row.get("program")  # shell(실행 배치) 우선, 구형 program 호환
+        if prog:
+            sh["programs"].add(prog)
         if row.get("test_name") and not sh["test_name"]:
             sh["test_name"] = row["test_name"]
         if row.get("timeout") and not sh["timeout"]:
