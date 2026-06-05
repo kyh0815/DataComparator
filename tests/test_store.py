@@ -85,3 +85,31 @@ def test_corrupt_last_line_is_skipped(tmp_path):
         f.write('{"shell_id": "002", "resul')  # 잘린 줄
     state = store.load_state(p)
     assert list(state) == ["001"]
+
+
+# --- C4: run_id 출처 ------------------------------------------------------------
+
+
+def test_run_id_carried_in_records(tmp_path):
+    """append 시 run_id가 기록되고 load_records로 복원된다(낡은 OK 위장 방지 전제)."""
+    p = tmp_path / "checkpoint.jsonl"
+    store.append_shell(p, "001", [_r("001", ComparisonStatus.OK)], run_id="20260605_090000")
+    rec = store.load_records(p)["001"]
+    assert rec.run_id == "20260605_090000"
+    assert rec.results[0].status == ComparisonStatus.OK
+
+
+def test_latest_records_last_wins_run_id(tmp_path):
+    """재기록 시 run_id도 최신으로 갱신된다(부분 재실행 출처가 최신으로)."""
+    p = tmp_path / "checkpoint.jsonl"
+    store.append_shell(p, "001", [_r("001", ComparisonStatus.NG)], run_id="old")
+    store.append_shell(p, "001", [_r("001", ComparisonStatus.OK)], run_id="new")
+    recs = store.latest_records(p)
+    assert len(recs) == 1 and recs[0].run_id == "new"
+
+
+def test_old_record_without_run_id_is_none(tmp_path):
+    """run_id 없이 기록된(구형) 줄은 run_id=None으로 복원(하위호환)."""
+    p = tmp_path / "checkpoint.jsonl"
+    store.append_shell(p, "001", [_r("001", ComparisonStatus.OK)])  # run_id 미지정
+    assert store.load_records(p)["001"].run_id is None

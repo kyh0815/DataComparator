@@ -322,3 +322,49 @@ def test_save_writes_to_config_definition_file(client, tmp_path):
     r = client.post("/definition/save",
                     data={"yaml": "tests:\n  - test_id: X\n", "config": str(cfgp)}).get_json()
     assert r["ok"] and defp.read_text(encoding="utf-8").startswith("tests:")
+
+
+# --- C3/C4: /preflight · /evidence 엔드포인트 -----------------------------------
+
+
+def test_preflight_endpoint_returns_issues_json(client, monkeypatch):
+    """/preflight는 점검 결과(ok/errors/warnings)를 CSV 좌표 JSON으로 돌려준다(C3 재사용)."""
+    from src.core.preflight import PreflightIssue, PreflightReport
+
+    rep = PreflightReport([
+        PreflightIssue("error", "CK003/出A", "정답 파일이 없습니다: /x"),
+        PreflightIssue("warning", "CK002", "record인데 key가 없습니다"),
+    ])
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace())
+    monkeypatch.setattr(web, "preflight", lambda config: rep)
+    d = client.get("/preflight?config=c.yaml").get_json()
+    assert d["ok"] is False
+    assert d["errors"][0]["coordinate"] == "CK003/出A"
+    assert d["warnings"][0]["message"].startswith("record")
+
+
+def test_preflight_endpoint_config_error_is_ok_false(client, monkeypatch):
+    """config 로드 실패도 화면 메시지로(ok=false, coordinate=config)."""
+    def _boom(p):
+        raise RuntimeError("config 없음")
+
+    monkeypatch.setattr(web, "load_config", _boom)
+    d = client.get("/preflight").get_json()
+    assert d["ok"] is False and d["errors"][0]["coordinate"] == "config"
+
+
+def test_evidence_endpoint_downloads_xlsx(client, monkeypatch, tmp_path):
+    """/evidence는 생성한 試験成績書 파일을 첨부로 내려준다(C4)."""
+    cfg = SimpleNamespace(definition_file=tmp_path / "def.yaml", report_dir=tmp_path)
+    monkeypatch.setattr(web, "load_config", lambda p: cfg)
+    monkeypatch.setattr(web, "load_definitions", lambda p: ["DEF"])
+    monkeypatch.setattr(web.store, "latest_records", lambda p: ["REC"])
+
+    def fake_gen(definitions, records, out):
+        Path(out).write_bytes(b"xlsxdata")
+        return Path(out)
+
+    monkeypatch.setattr(web, "generate_evidence", fake_gen)
+    resp = client.get("/evidence?config=c.yaml")
+    assert resp.status_code == 200
+    assert resp.data == b"xlsxdata"

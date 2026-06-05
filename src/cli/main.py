@@ -23,9 +23,11 @@ import time
 from pathlib import Path
 
 from src.cli.output import CliReporter, print_preflight, should_use_color
-from src.config.definition import DefinitionError
+from src.config.definition import DefinitionError, load_definitions
 from src.config.settings import ConfigError, load_config, parse_shell_selector
 from src.core import OrchestratorError, run_full_comparison
+from src.core import store
+from src.core.evidence import generate_evidence
 from src.core.preflight import preflight
 
 
@@ -72,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="실행 없이 사전 점검만(dry-run 게이트). 문제를 모두 모아 보고 후 종료(C3)",
     )
+    parser.add_argument(
+        "--evidence",
+        action="store_true",
+        help="試験成績書(Excel)만 생성하고 종료 — 체크포인트 머지 최신 상태 기준(C4)",
+    )
     return parser
 
 
@@ -104,6 +111,17 @@ def main(argv: list[str] | None = None) -> int:
             use_color = should_use_color(config.output.cli_color, sys.stdout)
             print_preflight(report, use_color=use_color)
             return 0 if report.ok else 2
+
+        if args.evidence:
+            # C4: 실행 없이 試験成績書(Excel)만 생성 — 체크포인트 머지 최신 상태 + 정의(계획) 기준.
+            if config.definition_file is None:
+                raise DefinitionError("definition_file이 설정되지 않아 試験成績書를 만들 수 없습니다.")
+            definitions = load_definitions(config.definition_file)
+            records = store.latest_records(store.checkpoint_path(config.report_dir))
+            out = config.report_dir / f"試験結果一覧_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            path = generate_evidence(definitions, records, out)
+            print(f"試験成績書を出力しました: {path}")
+            return 0
 
         reporter = CliReporter(
             use_color=should_use_color(config.output.cli_color, sys.stdout),

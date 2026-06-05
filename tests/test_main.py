@@ -230,3 +230,29 @@ def test_selection_flags_are_mutually_exclusive(wired):
         cli_main.main(["--shells", "1-10", "--resume"])
     with pytest.raises(SystemExit):
         cli_main.main(["--resume", "--retry-failed"])
+
+
+# --- C4: --evidence 모드 --------------------------------------------------------
+
+
+def test_evidence_mode_generates_and_exits_zero(wired, monkeypatch, tmp_path, capsys):
+    """--evidence는 정의+체크포인트로 試験成績書를 만들고 0으로 종료(실행 단계 미진입)."""
+    cfg = SimpleNamespace(
+        report_dir=tmp_path, output=SimpleNamespace(cli_color=False),
+        definition_file=tmp_path / "def.yaml",
+    )
+    monkeypatch.setattr(cli_main, "load_config", lambda p: cfg)
+    monkeypatch.setattr(cli_main, "load_definitions", lambda p: ["DEF"])
+    monkeypatch.setattr(cli_main.store, "latest_records", lambda p: ["REC"])
+    seen = {}
+
+    def fake_gen(definitions, records, out):
+        seen["definitions"], seen["records"], seen["out"] = definitions, records, out
+        Path(out).write_text("xlsx", encoding="utf-8")
+        return Path(out)
+
+    monkeypatch.setattr(cli_main, "generate_evidence", fake_gen)
+    assert cli_main.main(["--evidence"]) == 0
+    assert seen["definitions"] == ["DEF"] and seen["records"] == ["REC"]
+    assert "config" not in wired  # run_full_comparison 미호출
+    assert "試験成績書" in capsys.readouterr().out

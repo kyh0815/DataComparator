@@ -283,8 +283,11 @@
       </div>
       <div class="actions">
         <button class="run big" id="run">▶ 検証実行</button>
+        <button class="ghost" id="preflight">✓ 事前点検</button>
+        <button class="ghost" id="evidence">⬇ 試験成績書(Excel)</button>
         <label class="chk"><input type="checkbox" id="verbose"> 差分を全件表示</label>
       </div>
+      <div class="checks" id="preflight-out"></div>
     </div>
   </div>
 
@@ -628,6 +631,30 @@ $("run").addEventListener("click", () => {
   es=new EventSource("/run?"+params.toString());
   es.onmessage=(e)=>{ const m=JSON.parse(e.data); if(m.type==="done") finishRun(); else handleMsg(m); };
   es.onerror=()=> finishRun();
+});
+
+/* ───────── 事前点検 (C3 /preflight) ───────── */
+function renderPreflight(d){
+  const box=$("preflight-out"); box.innerHTML="";
+  const line=(cls,label,i)=>`<div class="${cls}">${label} [${escapeHtml(i.coordinate)}] ${escapeHtml(i.message)}</div>`;
+  let html="";
+  for (const i of (d.errors||[])) html+=line("bad","✖",i);
+  for (const i of (d.warnings||[])) html+=line("warn","▲",i);
+  if (d.ok && !(d.warnings||[]).length) html=`<div class="ok">✓ 事前点検 通過 — 実行可</div>`;
+  else if (d.ok) html=`<div class="warn">▲ 警告あり（${d.warnings.length}件） — 実行可</div>`+html;
+  else html=`<div class="bad">✖ 拒否 — エラー ${d.errors.length}件。修正してください</div>`+html;
+  box.innerHTML=html;
+}
+$("preflight").addEventListener("click", async () => {
+  const btn=$("preflight"); btn.disabled=true; const old=btn.textContent; btn.textContent="点検中…";
+  try {
+    const r=await fetch("/preflight?config="+encodeURIComponent($("config").value));
+    renderPreflight(await r.json());
+  } catch(e){ showBanner("banner","事前点検に失敗: "+e); }
+  finally { btn.disabled=false; btn.textContent=old; }
+});
+$("evidence").addEventListener("click", () => {
+  window.location="/evidence?config="+encodeURIComponent($("config").value);
 });
 
 /* ───────── 初期化 ───────── */

@@ -11,11 +11,23 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import ComparisonResult, ComparisonStatus, DiffLine
 
 CHECKPOINT_NAME = "checkpoint.jsonl"
+# 장기 운영 메모(E 보류): JSONL은 run마다 누적 성장한다. 1000건×다회 운영에서 커지면 fold 후
+# 재기록(compaction)으로 압축할 수 있다 — 현재 fold가 정상 동작하므로 기능엔 영향 없음(보류).
+
+
+@dataclass
+class ShellRecord:
+    """체크포인트의 셸 1건 최신 기록 — 결과 + 출처(run_id). C4 試験成績書의 행 출처 표기에 쓴다."""
+
+    shell_id: str
+    results: list[ComparisonResult] = field(default_factory=list)
+    run_id: str | None = None  # 이 결과를 만든 run 식별자(시각). 낡은 OK 위장 방지(C4 req2)
 
 # 부분 실행 선택 기준(HANDOFF_V3 C5 req3). resume=이어하기, retry=직전 실패 재시험.
 _RESUME_STATUSES = {ComparisonStatus.ERROR.value}  # +미실행(상태에 없는 셸)은 호출측에서 합산
@@ -27,19 +39,28 @@ def checkpoint_path(report_dir: Path) -> Path:
     return Path(report_dir) / CHECKPOINT_NAME
 
 
-def append_shell(path: Path, shell_id: str, results: list[ComparisonResult]) -> None:
-    """한 셸의 결과 묶음을 JSONL 한 줄로 즉시 추가한다(append+flush+fsync, 부분상태 보존)."""
+def append_shell(
+    path: Path, shell_id: str, results: list[ComparisonResult], *, run_id: str | None = None
+) -> None:
+    """한 셸의 결과 묶음을 JSONL 한 줄로 즉시 추가한다(append+flush+fsync, 부분상태 보존).
+
+    run_id(이 결과를 만든 run 식별자=시각)를 함께 박아 C4가 행별 출처를 표기한다(낡은 OK 위장 방지).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    record = {"shell_id": shell_id, "results": [_result_to_dict(r) for r in results]}
+    record = {
+        "shell_id": shell_id,
+        "run_id": run_id,
+        "results": [_result_to_dict(r) for r in results],
+    }
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
         f.flush()
         os.fsync(f.fileno())  # 야간 중단 대비 디스크 확정
 
 
-def load_state(path: Path) -> dict[str, list[ComparisonResult]]:
-    """JSONL을 shell_id last-wins로 fold해 '최신 상태'(shell_id → 결과 리스트)를 반환한다.
+def load_records(path: Path) -> dict[str, ShellRecord]:
+    """JSONL을 shell_id last-wins로 fold해 '최신 상태'(shell_id → ShellRecord)를 반환한다.
 
     같은 셸이 여러 번 기록됐으면 마지막 기록만 남긴다(부분 재실행이 직전 결과를 머지·갱신, req4).
     파일이 없으면 빈 dict. 깨진 줄은 건너뛴다(부분 flush 중 중단 대비).
@@ -47,7 +68,7 @@ def load_state(path: Path) -> dict[str, list[ComparisonResult]]:
     path = Path(path)
     if not path.is_file():
         return {}
-    state: dict[str, list[ComparisonResult]] = {}
+    state: dict[str, ShellRecord] = {}
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -57,15 +78,30 @@ def load_state(path: Path) -> dict[str, list[ComparisonResult]]:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue  # 중단으로 마지막 줄이 깨졌을 수 있음 — 무시(앞 줄들은 유효)
-            state[record["shell_id"]] = [_result_from_dict(d) for d in record.get("results", [])]
+            sid = record["shell_id"]
+            state[sid] = ShellRecord(
+                shell_id=sid,
+                results=[_result_from_dict(d) for d in record.get("results", [])],
+                run_id=record.get("run_id"),
+            )
     return state
 
 
+def load_state(path: Path) -> dict[str, list[ComparisonResult]]:
+    """선택용 뷰: shell_id → 결과 리스트(출처 제외). 부분실행 선택(resume/retry)이 쓴다."""
+    return {sid: rec.results for sid, rec in load_records(path).items()}
+
+
+def latest_records(path: Path) -> list[ShellRecord]:
+    """머지된 최신 상태를 셸 기록 리스트로(출처 run_id 포함). C4 試験成績書 전제."""
+    return list(load_records(path).values())
+
+
 def latest_results(path: Path) -> list[ComparisonResult]:
-    """머지된 최신 상태의 전체 결과를 평탄화해 반환한다(C4 에비던스 전제)."""
+    """머지된 최신 상태의 전체 결과를 평탄화해 반환한다(출처 불요한 소비자용)."""
     results: list[ComparisonResult] = []
-    for shell_results in load_state(path).values():
-        results.extend(shell_results)
+    for rec in load_records(path).values():
+        results.extend(rec.results)
     return results
 
 

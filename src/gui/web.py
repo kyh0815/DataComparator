@@ -35,8 +35,11 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
+from src.config.definition import load_definitions
 from src.config.settings import load_config, parse_shell_selector
-from src.core import run_full_comparison
+from src.core import run_full_comparison, store
+from src.core.evidence import generate_evidence
+from src.core.preflight import preflight
 from tools.mapping_to_definition import mapping_to_definition
 
 from . import connection
@@ -163,6 +166,42 @@ def run():
             _run_lock.release()  # 클라 끊김·예외에도 반드시 해제
 
     return Response(stream(), mimetype="text/event-stream")
+
+
+@app.route("/preflight")
+def preflight_check():
+    """C3 프리플라이트(dry-run) — 실행 없이 점검만. 문제를 모두 모아 JSON으로 돌려준다(C3 재사용).
+
+    쿼리: config(설정 경로). ok=false면 화면이 실행을 막는다(에러가 있으면).
+    """
+    config_path = request.args.get("config") or "./config.yaml"
+    try:
+        report = preflight(load_config(config_path))
+    except Exception as exc:  # noqa: BLE001 — 설정 로드 실패도 화면 메시지로
+        return jsonify({"ok": False, "errors": [{"coordinate": "config", "message": str(exc)}], "warnings": []})
+    to_dict = lambda i: {"coordinate": i.coordinate, "message": i.message}  # noqa: E731
+    return jsonify({
+        "ok": report.ok,
+        "errors": [to_dict(i) for i in report.errors],
+        "warnings": [to_dict(i) for i in report.warnings],
+    })
+
+
+@app.route("/evidence")
+def evidence():
+    """C4 試験成績書(Excel) 다운로드 — 체크포인트 머지 최신 상태 + 정의(계획) 기준."""
+    config_path = request.args.get("config") or "./config.yaml"
+    try:
+        config = load_config(config_path)
+        if config.definition_file is None:
+            abort(400, "definition_file이 설정되지 않았습니다.")
+        definitions = load_definitions(config.definition_file)
+        records = store.latest_records(store.checkpoint_path(config.report_dir))
+        out = config.report_dir / f"試験結果一覧_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+        path = generate_evidence(definitions, records, out)
+    except Exception as exc:  # noqa: BLE001
+        abort(400, str(exc))
+    return send_file(path, as_attachment=True, download_name=path.name)
 
 
 # --- 定義作成 (CSV/체크리스트 → test_definition.yaml) ----------------------------

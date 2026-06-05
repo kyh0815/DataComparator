@@ -18,6 +18,7 @@ CLI/GUI 공통 진입점. 각 셸에 대해 Load → Run → Compare를 호출�
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 import psycopg2
 
@@ -67,6 +68,7 @@ def run_full_comparison(
     total = len(definitions)
     conn = _open_connection_if_needed(definitions, config)
     cp_path = store.checkpoint_path(config.report_dir)
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # 결과 출처(시각). C4가 행별로 표기
 
     results: list[ComparisonResult] = []
     try:
@@ -77,7 +79,7 @@ def run_full_comparison(
             )
             shell_results = _process_shell(definition, config, conn, index, total, on_progress)
             results.extend(shell_results)  # D-033 P2: 셸당 결과 N건(출력 단위)
-            store.append_shell(cp_path, definition.test_id, shell_results)  # C5: 즉시 영속(머지)
+            store.append_shell(cp_path, definition.test_id, shell_results, run_id=run_id)  # C5 즉시 영속
             for r in shell_results:  # 출력마다 SHELL_DONE(GUI가 출력별로 그림)
                 _emit(
                     on_progress,
