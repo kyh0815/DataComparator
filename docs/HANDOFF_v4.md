@@ -4,6 +4,11 @@
 > 코드베이스는 구조적으로 건강(180 테스트 통과, 모듈 분리, 블랙박스 원칙 코어 준수).
 > **재작성 금지. 국소 diff만.**
 
+## 진행 상태 (2026-06 기준)
+**코어 C1~C6 전부 완료.** ✅ C1 비교기 ✅ C2 정의 ✅ C3 프리플라이트 ✅ C5 부분실행+resume ✅ C4 에비던스 ✅ C6 배치결합제거
+테스트: 180(baseline) → **255 passed, 10 skipped** (회귀 0). 커밋됨, 푸시 보류 중.
+다음은 코드가 아니라 **첫 실배치·실데이터 투입(진짜 검증)**. 보류 E1~E6은 필요 신호 시.
+
 ## 도메인 전제 (COBOL→Linux 現新比較)
 - 본질 = **동작 무변경 증명.** As-Is/To-Be 출력은 원칙적으로 같아야 하고, 다른 건
   (a)진짜 결함 또는 (b)알려진 플랫폼 차이뿐.
@@ -25,7 +30,7 @@
 - 모듈 분리(loader/runner/exporter/orchestrator/paths/reporter/web)
 - SSE 진행 파이프라인(on_progress → web queue → _sse → EventSource), 셸별 에러 격리
 - 배치 도메인 로직은 stub_batch/에만(코어로 끌어오지 말 것)
-- 기존 테스트 180건 — 깨지면 안 됨. 변경마다 테스트 추가.
+- 기존 테스트(180 baseline → 현재 240) — 깨지면 안 됨. 변경마다 테스트 추가.
 
 ## C1. 비교기: 바이트 단일 → 모드 선택형 (DB export 비교라 필수)
 compare_files를 모드 분기로. **비교기는 파일경로+옵션만. DB/배치 import 금지(격리 유지).**
@@ -43,8 +48,10 @@ compare_files를 모드 분기로. **비교기는 파일경로+옵션만. DB/배
 - **mask**: 매 실행 정상적으로 다른 컬럼(登録/更新日時·시퀀스ID). 여러 개 ; 구분.
 - encoding: 판정용(text/record). Shift-JIS 기본 + UTF-8. **EBCDIC 스코프 밖.**
 - layout : 고정길이 "start:end;..". delimiter: 기본 ,. has_header: 헤더 행 유무.
-- **정규화는 최소만**: trim(고정길이 패딩), 부호/zeropad 정도. ★date/num/nullblank 풀세트는 보류(E1).
-  원칙: **"통짜가 정답, false-NG 날 때만 그 컬럼에 규칙 추가."** 미니언어 선제 구축 금지.
+- **normalize: 풀세트 구현 완료(date/num/nullblank/zeropad/trim) — 유지.** 기본은 byte, 사용은 출력별 opt-in.
+  원칙 "통짜가 정답, 규칙은 사후"는 *능력 제거*가 아니라 **사용 규율**: normalize/mask는 **실제 false-NG를 확인한
+  그 컬럼에만, 이유를 명시해** 최소로 추가.
+  ⚠ 過정규화 = **false-PASS = 마이그레이션 결함 은폐.** 現新比較에서 false-NG보다 위험(동작 무변경을 거짓 증명).
 
 has_header=true → 양쪽 첫 행 헤더 제외, **이름은 각 파일 자기 헤더로 해석**(To-Be 컬럼 순서변경 내성).
 이름+has_header=false → 프리플라이트 CSV 좌표 에러.
@@ -67,15 +74,23 @@ record 파이프라인은 이터레이터 기반(source→aligner)으로 짜서,
 정의 검증 / 모든 input·expected 파일 존재 / shell 실행파일 / DB 접속 / 출력 디렉토리 쓰기권한.
 정답 파일 누락 = 비교 무의미 → 여기서 반드시 사전 차단.
 
-## C4. 결과 에비던스 = 試験成績書 (실무 납품 필수 — 화면만으론 무의미)
-- 결과 디스크 영속화(SSE/메모리 휘발 방지) — 재접속·내보내기의 전제.
-- **Excel 試験結果一覧**: 全件 / OK / NG / ERROR 件数 + 消化率 + NG明細(체크리스트·항목·차이). 元請け 납품용.
+## C4. 결과 에비던스 = 試験成績書 (실무 납품 필수) ▶ 진행 중
+- **소스 = store.latest_results** (이번 run만 아닌, 전체 1000건 머지 최신 상태).
+- **각 행에 결과 출처(run 시각/식별자) 컬럼 노출** — 낡은 OK가 최신으로 위장 방지(C5 머지 안전장치).
+- Excel 2시트: **요약**(全件/OK/NG/ERROR 件数 + 消化率) + **NG明細**(체크리스트·항목·차이내용 — 개발팀이 보고 고침).
+- **MISSING_ASIS / MISSING_TOBE는 NG와 별도 표기**(정답없음 vs 값틀림 = 개발 대응이 다름).
+- 결과 디스크 영속화는 C5 JSONL이 겸함.
+- GUI `--preflight` 버튼을 이 화면 작업에 함께 노출(C3 기능 재사용, 화면만).
 
-## C5. 부분 실행 + checkpoint/resume — 실무 핵심
-현실은 "전체 1000건 1회"가 아니라 **"NG난 50건만 고쳐서 재실행".**
-- **체크리스트 부분 선택/범위/필터 실행**(예: NG건만, 특정 번호대).
-- run별 checkpoint.json → 재개 시 OK/NG 건너뛰고 ERROR/미실행만.
-- 적재 멱등(loader TRUNCATE). 체크리스트 간 DB 상태 격리/트랜잭션 경계 명시.
+## C5. 부분 실행 + checkpoint/resume — 실무 핵심 ✅ 구현 완료
+현실은 "전체 1000건 1회"가 아니라 **"NG난 50건만 고쳐서 재실행"** → 부분 재실행이 주력, 전체는 옵션.
+구현(store.py, append-only JSONL = report_dir/checkpoint.jsonl):
+- 셸 1건 종료 직후 즉시 기록(append+flush+fsync). 야간 중단 시 부분 상태 보존(깨진 마지막 줄만 버리고 앞줄 복원).
+- 선택 3경로(상호배타): `--shells X`(ID/범위 — OK여도 강제 rerun, 고친 NG 재검증) / `--retry-failed`(직전 NG·ERROR 자동) / `--resume`(미실행+ERROR만, OK/NG 건너뜀).
+- **머지: shell_id last-wins fold** → 부분 결과가 직전 전체에 합쳐져 전체 1000건 최신 상태 유지(= C4 납품물 소스 store.latest_results).
+- ★결과에 run 출처/시각 동반(JSONL 누적이라 자연 확보) — 낡은 OK가 최신으로 위장 방지.
+- 적재 멱등(loader TRUNCATE)·체크리스트 간 DB 격리 유지.
+- 알려진 한계: JSONL **compaction 미구현**(run마다 누적 성장). fold 정상이라 기능 무해, 장기운영 시 추가(보류). 코드 주석/STATE_REPORT 명기.
 
 ## C6. 배치 호출 결합 제거 (경량)
 runner._build_command의 stub CLI 규약 + L106 "transaction_log" 폴백을 config 구동으로 외부화.
@@ -86,7 +101,8 @@ DB는 **첫 프로젝트가 쓰는 1종만** 붙임(psycopg2를 끔찍하게 박
 
 # ── 보류 (가치는 있으나 실무 v1 코어 밖 — 실제 필요해지면) ──
 
-- **E1. normalize 풀세트**(date/num/nullblank/zeropad 미니언어): false-NG가 실제로 난 컬럼에만 사후 추가.
+- **E1. normalize 규칙 *종류* 확장 금지**: 현재 date/num/nullblank/zeropad/trim은 구현·유지.
+  이 외 **신규 규칙 종류**를 실제 필요 신호 전에 선제 추가하지 말 것.
 - **E2. 회차 간 회귀비교**(new OK/new NG 자동 델타): 그냥 재실행+NG리스트로 충분. 편의 기능.
 - **E3. Oracle/DB2 멀티DB 어댑터**: 첫 DB 1종 외. 선제적 추상화 = 과설계.
 - **E4. GB급 외부정렬 스트리밍**: 件당 수만 행이면 불필요. 진짜 대용량 만나면 그때(아키텍처는 C1에서 대비).
@@ -95,10 +111,9 @@ DB는 **첫 프로젝트가 쓰는 1종만** 붙임(psycopg2를 끔찍하게 박
 ---
 
 ## 순서 / 검증
-1. **C1(비교기) + C2(정의) 함께** — 한쪽만은 무의미. record는 이터레이터 기반.
-2. C3 프리플라이트 → C5 부분실행+resume → C4 에비던스 → C6 배치결합 제거.
-3. 단위테스트: byte/text/record, key 순서무관·누락, mask, trim/zeropad, layout, has_header 이름해석.
-   **180 기존 테스트 녹색 유지.**
-4. 보류(E1~E5)는 손대지 말 것. 필요 신호가 오면 그때 별도 판단.
+1. ~~C1+C2~~ ✅ → ~~C3~~ ✅ → ~~C5~~ ✅ → **C4(진행 중)** → **C6(남음)**.
+2. 단위테스트: byte/text/record, key 순서무관·누락, mask, trim/zeropad, layout, has_header 이름해석. **기존 테스트(현재 240) 녹색 유지.**
+3. 보류(E1~E6)는 손대지 말 것. 필요 신호가 오면 그때 별도 판단.
+4. C6 완료 = 코어 종료. 이후는 코드가 아니라 첫 실배치·실데이터 투입.
 
 각 PR 국소 diff, 모듈경계 유지, 모호하면 추측 말고 질문.
