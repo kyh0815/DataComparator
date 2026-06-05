@@ -1,0 +1,3 @@
+checklist,test_name,shell,kind,type,file,expected,name,src_dir,dest_dir,expected_dir,tobe_dir,compare_mode,key,encoding,mask,normalize,has_header
+CK001,顧客残高マスタ日次更新,batch/kokyaku_zandaka_update.py,input,file,torihiki_meisai.csv,,取引明細,asis/input,tobe/input,,,,,,,,
+CK001,,,output,file,kokyaku_zandaka_master.csv,kokyaku_zandaka_master.csv,顧客残高マスタ,,,asis/output,tobe/output,record,KOKYAKU_ID,shift_jis,KOSHIN_NICHIJI,SHITEN_CD:zeropad:4;ZANDAKA:num:2;KISAN_YMD:date;BIKO:nullblank,true
