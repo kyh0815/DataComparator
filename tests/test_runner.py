@@ -288,3 +288,58 @@ def test_run_setup_sql_without_conn_raises(tmp_path):
     d = _def("001", "file", "file", setup=str(sql))
     with pytest.raises(runner.RunnerError, match="conn"):
         runner.run_setup(d, _config(tmp_path), conn=None)
+
+
+# --- C6: 배치 호출 결합 제거 (config 외부화 / 2번째 규약 검증) --------------------
+
+
+def test_render_argv_pair_drop_and_eq_forms():
+    """렌더러: [flag,{값}] 쌍은 빈값이면 함께 드롭, '--f={값}'·'{값}'도 빈값이면 드롭."""
+    ctx = {"shell_id": "001", "input_table": "", "input_file": "/f",
+           "output_table": "T", "output_path": ""}
+    tmpl = ["run", "{shell_id}", "--it", "{input_table}", "--if", "{input_file}",
+            "--ot={output_table}", "--op={output_path}"]
+    assert runner._render_argv(tmpl, ctx) == ["run", "001", "--if", "/f", "--ot=T"]
+
+
+def test_no_transaction_log_fallback(tmp_path):
+    """폴백 제거: 입력 테이블은 정의값만 — 코어가 도메인 상수를 끼워넣지 않는다."""
+    d = _def("001", "database", "database", input_table="MY_TBL")
+    argv, *_ = runner._build_command(d, _config(tmp_path), clean=False)
+    assert "MY_TBL" in argv and "transaction_log" not in argv
+
+
+def test_second_batch_different_convention_via_config_only(tmp_path):
+    """★C6 핵심: 인자 규약·성공코드가 *다른* 2번째 배치를 config만 바꿔 붙인다(코어 0줄 수정).
+
+    같은 stub만 쓰면 결합이 안 풀려도 녹색이라, 일부러 전혀 다른 규약의 배치를 실제 실행해 검증한다.
+    """
+    marker = tmp_path / "argv.txt"
+    script = tmp_path / "batch2.sh"
+    script.write_text(f'#!/bin/sh\necho "$@" > "{marker}"\nexit 7\n', encoding="utf-8")
+    script.chmod(0o755)
+
+    cfg = _config(tmp_path)
+    # 전혀 다른 규약: 서브커맨드 run + shell_id 위치인자 + --src/--dst, DB 인자 없음, 성공코드 7.
+    cfg.batch.command = ["run", "{shell_id}", "--src", "{input_file}", "--dst", "{output_path}"]
+    cfg.batch.success_exit_code = 7
+    cfg.batch.env = {}
+    d = _def("C002", "file", "file", shell_program=str(script))
+
+    resolved = runner.run_batch(d, cfg)  # 성공코드 7 → RunnerError 안 남(코어 무수정)
+
+    got = marker.read_text(encoding="utf-8").split()
+    assert got[0] == "run" and got[1] == "C002"          # 새 규약대로 전달
+    assert "--src" in got and "--dst" in got
+    assert "--shell-id" not in got and "--db-host" not in got  # 옛 규약 흔적 없음
+    assert resolved[0][1] == tmp_path / "tobe_output" / "C002.csv"
+
+
+def test_success_exit_code_is_configurable(tmp_path, monkeypatch):
+    """성공 종료코드가 config 구동 — 기본(0)에서 7은 실패, success_exit_code=7이면 성공."""
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: _Proc(returncode=7))
+    with pytest.raises(runner.RunnerError, match="終了コード 7"):
+        runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
+    cfg = _config(tmp_path)
+    cfg.batch.success_exit_code = 7
+    runner.run_batch(_def("006", "file", "file"), cfg)  # 이제 성공(예외 없음)

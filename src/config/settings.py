@@ -136,13 +136,23 @@ def _build_database(block: dict, path: Path) -> DatabaseConfig:
 
 
 def _build_batch(block: dict, base_dir: Path) -> BatchConfig:
-    """batch 블록을 BatchConfig로. 누락 키는 dataclass 기본값을 따른다."""
+    """batch 블록을 BatchConfig로. 누락 키는 dataclass 기본값(=동봉 stub 계약)을 따른다(C6).
+
+    command(argv 토큰 리스트)·env(추가 env 토큰)·success_exit_code·clean_flag를 config로 외부화한다.
+    """
     defaults = BatchConfig()
     stub_path = block.get("stub_path")
+    command = block.get("command")
+    env = block.get("env")
+    clean_flag = block.get("clean_flag", defaults.clean_flag)
     return BatchConfig(
         type=str(block.get("type", defaults.type)),
         stub_path=_abs_path(stub_path, base_dir, defaults.stub_path),
         timeout_seconds=int(block.get("timeout_seconds", defaults.timeout_seconds)),
+        command=[str(t) for t in command] if command is not None else list(defaults.command),
+        env={str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else dict(defaults.env),
+        success_exit_code=int(block.get("success_exit_code", defaults.success_exit_code)),
+        clean_flag=None if clean_flag is None else str(clean_flag),
     )
 
 

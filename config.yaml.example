@@ -23,6 +23,22 @@ batch:
   type: stub                        # 'stub' | 'netcobol' (추후 확장)
   stub_dir: ./stub_batch            # 셸별 stub(run_batch_db.py / run_batch_file.py)은 정의 파일 execution.shell_program이 선택 (D-022)
   timeout_seconds: 60
+  # ── 배치 호출 계약(C6, 외부화) — 생략 시 아래 기본값(=동봉 stub의 한 사례)을 쓴다 ──
+  # 진짜 배치로 교체할 땐 이 블록만 바꾸면 된다(코어 0줄 수정). 토큰 규칙:
+  #   "{name}"=문맥값 치환. [flag, "{값}"] 쌍은 값이 비면 함께 빠짐(예: 파일 입력 셸은 --input-table 제외).
+  #   placeholder: shell_id/output_type/encoding/db_host/db_port/db_name/db_user/db_password/
+  #                input_table/input_file/output_table/output_path
+  # command:                        # argv 토큰(프로그램 경로는 정의의 shell_program이 앞에 붙음)
+  #   - "--shell-id"
+  #   - "{shell_id}"
+  #   - "--input-table"
+  #   - "{input_table}"             # 파일 입력이면 이 쌍은 자동 제외
+  #   - "--output-path"
+  #   - "{output_path}"             # DB 출력이면 자동 제외
+  # env:                            # 추가 환경변수(비밀번호 등 — argv 노출 금지)
+  #   POSTGRES_PASSWORD: "{db_password}"
+  # success_exit_code: 0            # 이 코드만 성공, 그 외 RunnerError
+  # clean_flag: "--clean"           # 골든 생성(clean) 시 덧붙일 플래그(미지원 배치면 비움)
 
 shells:
   range: [1, 10]    # 정의 파일(test_definition.yaml) 폴백. 정의 파일이 있으면 그쪽 셸 목록이 우선.

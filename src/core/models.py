@@ -111,16 +111,42 @@ class DatabaseConfig:
     password_env: str = "POSTGRES_PASSWORD"
 
 
+# C6: 배치 호출 계약의 기본값(= 동봉 stub의 한 사례). 실 배치는 config.batch로 override한다.
+# 토큰 규칙(runner._render_argv): "{name}"=문맥값 치환. [flag, "{값}"] 쌍은 값이 비면 **함께 드롭**
+# (예: 파일 입력 셸은 input_table이 비어 --input-table 쌍이 빠진다). 도메인 상수·폴백 하드코딩 없음.
+DEFAULT_BATCH_COMMAND: list[str] = [
+    "--shell-id", "{shell_id}",
+    "--output-type", "{output_type}",
+    "--encoding", "{encoding}",
+    "--db-host", "{db_host}",
+    "--db-port", "{db_port}",
+    "--db-name", "{db_name}",
+    "--db-user", "{db_user}",
+    "--input-table", "{input_table}",  # DB 입력일 때만(파일 입력이면 빈값→드롭)
+    "--input-file", "{input_file}",    # 파일 입력일 때만
+    "--output-table", "{output_table}",  # DB 출력일 때만
+    "--output-path", "{output_path}",    # 파일 출력일 때만
+]
+# 비밀번호는 argv가 아니라 env로(ps 노출 방지). 값이 비면 해당 env 미설정.
+DEFAULT_BATCH_ENV: dict[str, str] = {"POSTGRES_PASSWORD": "{db_password}"}
+
+
 @dataclass
 class BatchConfig:
-    """배치 실행 설정. type은 'stub'(현재) 또는 'netcobol'(추후)."""
+    """배치 실행 설정. 호출 계약(argv·env·종료코드)을 config로 외부화한다(C6).
+
+    command/env는 토큰 템플릿이며 동봉 stub의 기본값이 곧 '한 사례'다. 진짜 배치로 교체할 땐
+    config.batch만 바꾸면 되고 코어는 0줄 수정한다(인자명·순서·env·exit code 의미 전부 config).
+    """
 
     type: str = "stub"
-    # DEPRECATED(D-023): 셸별 stub은 test_definition.yaml의 execution.shell_program이 선택한다.
-    # 이 단일 stub_path는 더 이상 Runner가 쓰지 않으나, 기존 설정/테스트 호환을 위해 남겨둔다.
-    # 정식 제거는 별도 정리 Task(연관 test_settings 단언도 함께 갱신).
+    # DEPRECATED(D-023): 셸별 배치는 test_definition.yaml의 execution.shell_program이 선택한다.
     stub_path: Path = Path("./stub_batch/run_batch.py")
     timeout_seconds: int = 60
+    command: list[str] = field(default_factory=lambda: list(DEFAULT_BATCH_COMMAND))  # argv 토큰
+    env: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_BATCH_ENV))  # 추가 env(토큰값)
+    success_exit_code: int = 0  # 이 코드만 성공. 그 외는 RunnerError(종료코드 의미 외부화)
+    clean_flag: str | None = "--clean"  # 골든 생성(clean=True) 시 덧붙일 플래그. 미지원이면 None
 
 
 @dataclass
