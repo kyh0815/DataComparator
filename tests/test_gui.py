@@ -74,13 +74,12 @@ def _sse_messages(raw: bytes) -> list[dict]:
 
 
 def test_index_serves_japanese_page(client):
-    """단일 화면: 설정/접속 + 검증실행. 업로드/매핑/탭 어휘는 제거됐다(T7-3)."""
+    """単一画面(縦アコーディオン): 接続設定 + ①定義 ②事前点検 ③検証実行 ④結果(GUI 재구성)."""
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "現新比較" in body and "検証実行" in body and "設定 / 接続" in body
-    # 걷어낸 업로드/매핑 UI 흔적이 없어야(경량화 회귀 가드).
-    assert "アップロード検証" not in body and "マッピング表" not in body
+    assert "現新比較" in body and "検証実行" in body and "接続設定" in body
+    assert "事前点検" in body and "試験成績書" in body  # 4단계 동선이 한 화면에
 
 
 def test_index_embeds_definition_preview(client, monkeypatch):
@@ -264,9 +263,10 @@ def test_define_page_renders(client):
     assert "定義作成" in body and 'href="/"' in body
 
 
-def test_run_page_links_to_define(client):
-    """검증실행 화면에 定義作成 페이지 링크가 있다(발견성)."""
-    assert '/define' in client.get("/").get_data(as_text=True)
+def test_index_folds_definition_upload(client):
+    """定義作成이 메인 화면 ①단계로 흡수됨(매핑 CSV 업로드 + 샘플 다운로드 링크가 인라인)."""
+    body = client.get("/").get_data(as_text=True)
+    assert "マッピング表" in body and "/definition/sample-csv" in body
 
 
 def test_from_csv_generates_definition(client):
