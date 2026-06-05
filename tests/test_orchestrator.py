@@ -457,3 +457,88 @@ def test_multi_output_yields_result_per_output(tmp_path, monkeypatch):
     assert summary.ok_count == 1 and summary.ng_count == 1
     names = sorted((r.shell_id, r.output_name, r.status.value) for r in summary.results)
     assert names == [("001", "A.csv", "OK"), ("001", "B.sam", "NG")]
+
+
+# --- C5: 체크포인트 + 부분 실행(resume / retry-failed) ----------------------------
+
+from src.core import store  # noqa: E402
+
+
+def _file_defs(*ids):
+    return [_def(i, "file", "file") for i in ids]
+
+
+def _wire_files(monkeypatch, tmp_path, defs, processed, status_by_id=None):
+    """파일 셸 파이프라인 배선. compare는 status_by_id로 셸별 상태를 흉내낸다(기본 OK)."""
+    status_by_id = status_by_id or {}
+
+    def _run(d, c, conn, clean=False):
+        processed.append(d.test_id)
+        return [(d.outputs[0], tmp_path / f"{d.test_id}.csv")]
+
+    def _cmp(a, b, encoding):
+        sid = a.stem
+        return ComparisonResult(sid, status_by_id.get(sid, ComparisonStatus.OK))
+
+    _patch_pipeline(
+        monkeypatch, definitions=defs, run_batch=_run, compare=_cmp,
+        copy_file=lambda src, dest, dest_name=None: dest / (dest_name or src.name),
+    )
+
+
+def test_checkpoint_written_per_shell(tmp_path, monkeypatch):
+    """전체 실행이 끝나면 셸마다 체크포인트에 기록돼 있다."""
+    cfg = _config(tmp_path)
+    _wire_files(monkeypatch, tmp_path, _file_defs("006", "007"), [])
+    orchestrator.run_full_comparison(cfg)
+    state = store.load_state(store.checkpoint_path(cfg.report_dir))
+    assert sorted(state) == ["006", "007"]
+
+
+def test_resume_runs_only_unrun_and_error(tmp_path, monkeypatch):
+    """resume: 직전 OK는 건너뛰고 ERROR + 미실행만 재개한다."""
+    cfg = _config(tmp_path)
+    cp = store.checkpoint_path(cfg.report_dir)
+    store.append_shell(cp, "006", [ComparisonResult("006", ComparisonStatus.OK)])
+    store.append_shell(cp, "007", [ComparisonResult("007", ComparisonStatus.ERROR)])
+    # 009는 정의에만 있고 미실행
+    processed = []
+    _wire_files(monkeypatch, tmp_path, _file_defs("006", "007", "009"), processed)
+    orchestrator.run_full_comparison(cfg, resume=True)
+    assert processed == ["007", "009"]  # 006(OK) 건너뜀
+
+
+def test_retry_failed_runs_ng_and_error(tmp_path, monkeypatch):
+    """retry-failed: 직전 NG + ERROR만 재실행(OK·미실행 제외)."""
+    cfg = _config(tmp_path)
+    cp = store.checkpoint_path(cfg.report_dir)
+    store.append_shell(cp, "006", [ComparisonResult("006", ComparisonStatus.OK)])
+    store.append_shell(cp, "007", [ComparisonResult("007", ComparisonStatus.NG)])
+    store.append_shell(cp, "009", [ComparisonResult("009", ComparisonStatus.ERROR)])
+    processed = []
+    _wire_files(monkeypatch, tmp_path, _file_defs("006", "007", "009"), processed)
+    orchestrator.run_full_comparison(cfg, retry_failed=True)
+    assert sorted(processed) == ["007", "009"]
+
+
+def test_resume_without_checkpoint_is_fatal(tmp_path, monkeypatch):
+    """resume/retry는 직전 실행(체크포인트)이 있어야 — 없으면 OrchestratorError."""
+    _wire_files(monkeypatch, tmp_path, _file_defs("006"), [])
+    with pytest.raises(orchestrator.OrchestratorError, match="체크포인트가 없습니다"):
+        orchestrator.run_full_comparison(_config(tmp_path), resume=True)
+
+
+def test_partial_rerun_merges_into_prior_state(tmp_path, monkeypatch):
+    """부분 재실행 결과가 직전 전체 상태에 머지된다(고친 NG가 OK로 갱신, 나머지 보존)."""
+    cfg = _config(tmp_path)
+    cp = store.checkpoint_path(cfg.report_dir)
+    store.append_shell(cp, "006", [ComparisonResult("006", ComparisonStatus.NG)])
+    store.append_shell(cp, "007", [ComparisonResult("007", ComparisonStatus.OK)])
+    # 006을 고쳐서 명시 재실행 → OK
+    _wire_files(monkeypatch, tmp_path, _file_defs("006", "007"), [],
+                status_by_id={"006": ComparisonStatus.OK})
+    orchestrator.run_full_comparison(cfg, shell_ids=["006"])
+    state = store.load_state(cp)
+    assert state["006"][0].status == ComparisonStatus.OK  # 갱신됨
+    assert state["007"][0].status == ComparisonStatus.OK  # 보존됨(전체 최신 상태 유지)
+    assert sorted(state) == ["006", "007"]

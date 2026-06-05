@@ -219,3 +219,62 @@ def test_per_item_paths_default_none(tmp_path):
     d = load_definitions(_write(tmp_path, _VALID))[0]
     assert d.inputs[0].src_dir is None and d.inputs[0].dest_name is None
     assert d.outputs[0].expected_dir is None and d.outputs[0].tobe_dir is None
+
+
+# --- P0: compare 블록 / setup / in_encoding 운반 (HANDOFF §2·§3) ------------------
+
+_P0 = """
+tests:
+  - test_id: "1"
+    input:
+      tables:
+        - { type: database, table: TBL_A, csv: a.csv, in_encoding: shift_jis }
+    execution: { shell_program: x.sh, setup: db/reset.sql }
+    outputs:
+      - type: database
+        table: TBL_C
+        export_as: c.csv
+        expected: c_expected.dat
+        compare:
+          mode: record
+          key: CUST_ID
+          encoding: utf-8
+          mask: UPD_TS
+          tolerance: 0.001
+          has_header: true
+          normalize: "DT:date;BAL:num:2"
+"""
+
+
+def test_compare_block_parsed_into_outputspec(tmp_path):
+    """출력 compare 블록이 OutputSpec 옵션 + compare_options로 구조화된다."""
+    d = load_definitions(_write(tmp_path, _P0))[0]
+    out = d.outputs[0]
+    assert out.compare_mode == "record" and out.key == "CUST_ID"
+    opts = out.compare_options
+    assert opts.mode == "record"
+    assert opts.encoding == "utf-8"
+    assert opts.mask == ["UPD_TS"]
+    assert opts.tolerance == 0.001
+    assert opts.has_header is True
+    assert opts.normalize == [("DT", "date", None), ("BAL", "num", "2")]
+
+
+def test_setup_and_in_encoding_carried(tmp_path):
+    """setup(execution)·in_encoding(input)이 ShellDefinition/InputSpec로 실린다."""
+    d = load_definitions(_write(tmp_path, _P0))[0]
+    assert d.setup == "db/reset.sql"
+    assert d.inputs[0].in_encoding == "shift_jis"
+
+
+def test_missing_compare_defaults_to_byte(tmp_path):
+    """compare 미지정 출력은 byte 기본(현 동작 보존)."""
+    d = load_definitions(_write(tmp_path, _VALID))[0]
+    assert d.outputs[0].compare_options.mode == "byte"
+    assert d.setup is None
+
+
+def test_invalid_compare_mode_raises(tmp_path):
+    text = _P0.replace("mode: record", "mode: bogus")
+    with pytest.raises(DefinitionError, match="compare.mode"):
+        load_definitions(_write(tmp_path, text))

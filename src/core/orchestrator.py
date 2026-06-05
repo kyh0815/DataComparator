@@ -36,7 +36,8 @@ from .models import (
 )
 from .paths import input_dest_dir, input_source_path, output_asis_path
 from .reporter import generate_report
-from .runner import run_batch
+from .runner import run_batch, run_setup
+from . import store
 
 
 class OrchestratorError(Exception):
@@ -47,19 +48,25 @@ def run_full_comparison(
     config: Config,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     shell_ids: list[str] | None = None,
+    *,
+    resume: bool = False,
+    retry_failed: bool = False,
 ) -> RunSummary:
     """E2E 전체 실행. 정의 파일을 로드해 셸을 순차 처리하고 RunSummary를 반환한다.
 
-    on_progress가 주어지면 셸 시작·단계 완료·셸 완료마다 ProgressEvent를 던진다(없어도 동작).
-    shell_ids가 주어지면(인터페이스의 --shells 명시 선택, D-026) 정의 중 해당 test_id만 처리한다
-    (None=전체, D-024). 정의 파일 순서를 유지하며, 정의에 없는 id 요청은 DefinitionError(fatal).
-    정의 파일 누락·DB 접속 실패도 전파(fatal); 개별 셸 오류는 ERROR 결과로 흡수한다.
+    shell_ids(--shells 명시 선택, D-026)가 주어지면 해당 test_id만 처리한다(None=전체, D-024).
+    resume(이어하기)=미실행+ERROR만, retry_failed(재시험)=직전 NG+ERROR만 — 둘 다 체크포인트
+    기준으로 셸을 추린다(HANDOFF_V3 C5). 셋은 인터페이스에서 상호배타.
+    셸 1건 종료 직후 결과를 체크포인트(JSONL)에 즉시 기록한다(중단 시 부분 상태 보존, req2).
+    정의 파일 누락·DB 접속 실패는 전파(fatal); 개별 셸 오류는 ERROR 결과로 흡수한다.
     """
     definitions = _load_definitions(config)
+    shell_ids = _resolve_selection(definitions, config, shell_ids, resume, retry_failed)
     if shell_ids is not None:
         definitions = _select_definitions(definitions, shell_ids)
     total = len(definitions)
     conn = _open_connection_if_needed(definitions, config)
+    cp_path = store.checkpoint_path(config.report_dir)
 
     results: list[ComparisonResult] = []
     try:
@@ -70,6 +77,7 @@ def run_full_comparison(
             )
             shell_results = _process_shell(definition, config, conn, index, total, on_progress)
             results.extend(shell_results)  # D-033 P2: 셸당 결과 N건(출력 단위)
+            store.append_shell(cp_path, definition.test_id, shell_results)  # C5: 즉시 영속(머지)
             for r in shell_results:  # 출력마다 SHELL_DONE(GUI가 출력별로 그림)
                 _emit(
                     on_progress,
@@ -82,6 +90,30 @@ def run_full_comparison(
             conn.close()
 
     return generate_report(results, config.report_dir)
+
+
+def _resolve_selection(
+    definitions: list[ShellDefinition],
+    config: Config,
+    shell_ids: list[str] | None,
+    resume: bool,
+    retry_failed: bool,
+) -> list[str] | None:
+    """부분 실행 모드를 체크포인트 기준 shell_ids로 환원한다(HANDOFF_V3 C5).
+
+    resume/retry_failed는 직전 run(체크포인트)이 있어야 의미 — 없으면 fatal. 명시 shell_ids가
+    함께 오면(인터페이스가 막지만 방어적으로) 그대로 둔다(셋은 본래 상호배타).
+    """
+    if not (resume or retry_failed):
+        return shell_ids
+    cp_path = store.checkpoint_path(config.report_dir)
+    if not store.has_checkpoint(cp_path):
+        raise OrchestratorError(
+            "체크포인트가 없습니다 — resume/retry는 직전 실행이 있어야 합니다(먼저 1회 실행)."
+        )
+    if resume:
+        return store.shells_to_resume(cp_path, [d.test_id for d in definitions])
+    return store.shells_to_retry(cp_path)
 
 
 def _process_shell(
@@ -112,7 +144,10 @@ def _process_shell(
         multi = len(definition.outputs) > 1  # 단일 출력은 output_name=None(리포트 '-'·화면 라벨 없음)
         for out, tobe_path in resolved:
             asis_path = output_asis_path(out, config)  # #5·#7 항목별 경로 override 반영
-            r = compare_files(asis_path, tobe_path, encoding=config.encoding)
+            opts = out.compare_options  # V3 C2: 출력별 모드·정규화 옵션
+            if opts.encoding is None:  # 출력 인코딩 미지정이면 config 전역
+                opts.encoding = config.encoding
+            r = compare_files(asis_path, tobe_path, opts)
             r.shell_id = definition.test_id  # 파일명 파생 대신 셸 ID로 못박음
             r.output_name = out.label if multi else None
             results.append(r)
@@ -137,11 +172,13 @@ def _load_step(definition: ShellDefinition, config: Config, conn) -> None:
 
     한 배치가 여러 테이블을 조인해 읽으므로, inputs[]의 각 항목을 대응 테이블/디렉토리에 적재한다.
     DB 적재분은 stub(별도 connection)이 보도록 즉시 commit(D-023 ①). 모든 입력 적재 후 배치 실행.
+    setup(준비 SQL/스크립트)이 있으면 적재 전 1회 먼저 실행한다(마스터·참조 테이블·시퀀스).
     """
+    run_setup(definition, config, conn)  # 입력 적재 전 1회(setup 비면 무동작)
     for spec in definition.inputs:
         src = input_source_path(spec, config)  # #2·#4 항목별 As-Is 원천 경로
         if spec.type == "database":
-            load_input_csv(src, conn, spec.table, encoding=config.encoding)
+            load_input_csv(src, conn, spec.table, encoding=spec.in_encoding or config.encoding)
             conn.commit()  # D-023 ①
         else:
             # 파일 입력은 항목별 To-Be 격납 디렉토리/파일명으로 복사(#7-3·#7-4).
@@ -207,9 +244,12 @@ def _worst_status(results: list[ComparisonResult]) -> str:
 
 
 def _needs_db(definition: ShellDefinition) -> bool:
-    """이 셸이 DB connection을 필요로 하는가(입력 중 하나라도 DB 적재, 또는 출력 중 하나라도 export)."""
-    return any(s.type == "database" for s in definition.inputs) or any(
-        o.type == "database" for o in definition.outputs
+    """이 셸이 DB connection을 필요로 하는가(입력 DB 적재·출력 export·또는 .sql setup)."""
+    setup_sql = bool(definition.setup) and str(definition.setup).lower().endswith(".sql")
+    return (
+        setup_sql
+        or any(s.type == "database" for s in definition.inputs)
+        or any(o.type == "database" for o in definition.outputs)
     )
 
 

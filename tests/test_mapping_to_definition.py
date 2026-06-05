@@ -203,3 +203,51 @@ def test_bundled_example_is_valid(tmp_path):
     example = Path(__file__).resolve().parents[1] / "samples" / "shell_mapping.long.example.csv"
     r = m.mapping_to_definition(m._decode(example.read_bytes()))
     assert r["ok"] and r["count"] == 2
+
+
+# --- P0: compare 옵션 / setup / in_encoding 컬럼 운반 (HANDOFF §2·§3) -------------
+
+_P0_CSV = (
+    "checklist,test_name,shell,timeout,setup,kind,type,table,file,expected,name,"
+    "in_encoding,compare_mode,key,encoding,mask,tolerance,normalize,has_header\n"
+    "CK1,merge,batch/m.sh,120,db/reset.sql,input,database,TBL_A,a.csv,,,shift_jis,,,,,,,\n"
+    "CK1,,,,,output,database,TBL_C,c.csv,c_exp.dat,C,,record,CUST_ID,utf-8,UPD_TS,0.001,"
+    "DT:date;BAL:num:2,true\n"
+)
+
+
+def test_p0_columns_carried_to_yaml():
+    """신규 컬럼(setup/in_encoding/compare 9종)이 변환·round-trip된다."""
+    r = m.mapping_to_definition(_P0_CSV)
+    assert r["ok"], r["errors"]
+    doc = yaml.safe_load(r["yaml"])
+    t = doc["tests"][0]
+    assert t["execution"]["setup"] == "db/reset.sql"
+    assert t["input"]["tables"][0]["in_encoding"] == "shift_jis"
+    cmp_block = t["outputs"][0]["compare"]
+    assert cmp_block["mode"] == "record"
+    assert cmp_block["key"] == "CUST_ID"
+    assert cmp_block["mask"] == "UPD_TS"
+    assert cmp_block["normalize"] == "DT:date;BAL:num:2"
+    assert cmp_block["has_header"] is True
+
+
+def test_p0_invalid_compare_mode_csv_coordinate_error():
+    """잘못된 compare_mode는 行番号 포함 CSV 좌표 에러(YAML 노드 아님)."""
+    bad = _P0_CSV.replace(",record,", ",bogus,")
+    r = m.mapping_to_definition(bad)
+    assert not r["ok"]
+    assert any("行目" in e and "compare_mode" in e for e in r["errors"])
+
+
+def test_p0_no_compare_columns_still_byte():
+    """비교 컬럼이 비면 compare 블록 없이 byte 기본(현 동작 보존)."""
+    csv = (
+        "checklist,kind,type,table,file,expected\n"
+        "CK9,input,database,TBL,a.csv,\n"
+        "CK9,output,file,,o.dat,e.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    doc = yaml.safe_load(r["yaml"])
+    assert "compare" not in doc["tests"][0]["outputs"][0]

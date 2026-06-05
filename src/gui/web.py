@@ -188,11 +188,14 @@ def definition_from_csv():
 
 @app.route("/definition/sample-csv")
 def definition_sample_csv():
-    """정의 파일 CSV 샘플(동봉 Long 형식 예시)을 다운로드로 돌려준다."""
-    sample = _REPO_ROOT / "samples" / "shell_mapping.long.example.csv"
+    """정의 파일 CSV 샘플(정본 풀스키마 Long 예시)을 다운로드로 돌려준다.
+
+    정본 1벌(samples/sample_definition_v2.csv)만 둔다 — GUI는 여기서 제공(2벌 손유지 금지, V3 C2).
+    """
+    sample = _REPO_ROOT / "samples" / "sample_definition_v2.csv"
     if not sample.is_file():
         abort(404)
-    return send_file(sample, as_attachment=True, download_name="shell_mapping.long.example.csv")
+    return send_file(sample, as_attachment=True, download_name="sample_definition.csv")
 
 
 @app.route("/definition/save", methods=["POST"])

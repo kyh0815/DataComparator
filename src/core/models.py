@@ -146,6 +146,90 @@ class InputSpec:
     dest_dir: str | None = None  # #7-4 type==file: To-Be 격납 패스(없으면 config.tobe_input_dir)
     src_dir: str | None = None  # #4 As-Is 입력 격납 패스 override(없으면 config.asis_input_dir)
     dest_name: str | None = None  # #7-3 type==file: To-Be 격납 파일명(없으면 csv 그대로)
+    in_encoding: str | None = None  # 입력 적재 인코딩 override(없으면 config 전역). P0 신규
+
+
+def _split_semi(raw: str | None) -> list[str]:
+    """셀 내부 다중값(`;` 구분)을 비지 않은 토큰 리스트로. CSV `,`와 충돌 방지(V3 C2)."""
+    if not raw:
+        return []
+    return [t.strip() for t in str(raw).split(";") if t.strip()]
+
+
+def _parse_layout(raw: str | None) -> list[tuple[int, int]]:
+    """고정길이 layout "start:end;start:end" → [(start,end), ...]. 빈 값이면 []."""
+    slices: list[tuple[int, int]] = []
+    for tok in _split_semi(raw):
+        start_s, _, end_s = tok.partition(":")
+        slices.append((int(start_s), int(end_s)))
+    return slices
+
+
+def _parse_normalize(raw: str | None) -> list[tuple[str, str, str | None]]:
+    """컬럼별 정규화 "COL:rule[:arg];..." → [(col, rule, arg|None), ...].
+
+    rule: date | num | nullblank | zeropad | trim. arg는 num/zeropad의 자리수(없으면 None).
+    """
+    rules: list[tuple[str, str, str | None]] = []
+    for tok in _split_semi(raw):
+        parts = tok.split(":")
+        col = parts[0].strip()
+        rule = parts[1].strip() if len(parts) > 1 else ""
+        arg = parts[2].strip() if len(parts) > 2 else None
+        rules.append((col, rule, arg))
+    return rules
+
+
+def _parse_bool(raw: str | bool | None) -> bool:
+    """has_header 등 불리언 표기("true"/"1"/"yes"=참)를 bool로."""
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("true", "1", "yes", "y") if raw else False
+
+
+@dataclass
+class CompareOptions:
+    """비교기 모드·정규화 옵션(출력 spec에서 주입, V3 C1). compare_files의 유일한 옵션 운반체.
+
+    mode 미지정=byte(현 동작 보존). 문자열 원본은 OutputSpec이 들고, from_raw가 구조화한다.
+    """
+
+    mode: str = "byte"  # byte | text | record
+    encoding: str | None = None  # 판정용 디코드(None이면 호출측이 config 전역으로 채움)
+    key: str | None = None  # record 정렬키(컬럼명 또는 인덱스)
+    mask: list[str] = field(default_factory=list)  # 통째 무시할 컬럼
+    tolerance: float = 0.0  # 수치 허용오차
+    layout: list[tuple[int, int]] = field(default_factory=list)  # 고정길이 슬라이스
+    delimiter: str = ","  # record 필드 구분자
+    has_header: bool = False  # 첫 행이 헤더면 제외 + key/mask/normalize를 컬럼명으로 해석
+    normalize: list[tuple[str, str, str | None]] = field(default_factory=list)  # 컬럼별 정규화
+
+    @classmethod
+    def from_raw(
+        cls,
+        *,
+        mode: str | None = None,
+        encoding: str | None = None,
+        key: str | None = None,
+        mask: str | None = None,
+        tolerance: str | float | None = None,
+        layout: str | None = None,
+        delimiter: str | None = None,
+        has_header: str | bool | None = None,
+        normalize: str | None = None,
+    ) -> "CompareOptions":
+        """OutputSpec의 원본 문자열 옵션을 구조화된 CompareOptions로 파싱한다(순수)."""
+        return cls(
+            mode=(mode or "byte"),
+            encoding=encoding or None,
+            key=(key or None),
+            mask=_split_semi(mask),
+            tolerance=float(tolerance) if tolerance not in (None, "") else 0.0,
+            layout=_parse_layout(layout),
+            delimiter=(delimiter or ","),
+            has_header=_parse_bool(has_header),
+            normalize=_parse_normalize(normalize),
+        )
 
 
 @dataclass
@@ -164,11 +248,39 @@ class OutputSpec:
     name: str | None = None  # 라벨(리포트/화면). 없으면 export_as/file에서 파생
     expected_dir: str | None = None  # #7 As-Is 출력 격납 패스 override(없으면 config.asis_output_dir)
     tobe_dir: str | None = None  # #11 To-Be 출력 격납 패스 override(없으면 config.tobe_output_dir)
+    # V3 C1·C2: 출력별 비교 모드·정규화 옵션(원본 문자열; compare_options가 구조화).
+    compare_mode: str | None = None  # byte | text | record (미지정=byte)
+    key: str | None = None  # record 정렬키(컬럼명 또는 인덱스)
+    encoding: str | None = None  # 출력 판정 인코딩(없으면 config 전역)
+    mask: str | None = None  # 무시 컬럼(; 구분)
+    tolerance: str | None = None  # 수치 허용오차
+    layout: str | None = None  # 고정길이 스펙(start:end; 구분)
+    delimiter: str | None = None  # record 구분자(기본 ,)
+    has_header: bool = False  # export 헤더 행 유무
+    normalize: str | None = None  # 컬럼별 정규화(; 구분)
 
     @property
     def label(self) -> str:
         """리포트·화면용 출력 식별자."""
         return self.name or self.export_as or self.file or self.type
+
+    @property
+    def compare_options(self) -> "CompareOptions":
+        """이 출력의 비교 옵션을 구조화해 반환(orchestrator가 compare_files에 주입, V3 C2).
+
+        encoding은 None일 수 있고(미지정), 호출측(orchestrator)이 config 전역으로 채운다.
+        """
+        return CompareOptions.from_raw(
+            mode=self.compare_mode,
+            encoding=self.encoding,
+            key=self.key,
+            mask=self.mask,
+            tolerance=self.tolerance,
+            layout=self.layout,
+            delimiter=self.delimiter,
+            has_header=self.has_header,
+            normalize=self.normalize,
+        )
 
     @property
     def tobe_name(self) -> str:
@@ -192,6 +304,7 @@ class ShellDefinition:
     expected_output_csv: str  # asis_output_dir 기준 정답지 파일명
     shell_program: str  # 기동할 stub(=shell) 경로
     timeout_seconds: int = 60
+    setup: str | None = None  # 입력 적재 전 1회 실행할 준비 SQL(.sql)/스크립트 경로(선택). P0 신규
     input_table: str | None = None  # 하위호환: inputs[0].table
     input_dest_dir: str | None = None  # 하위호환: inputs[0].dest_dir
     output_table: str | None = None  # output_type == database (결과 테이블)

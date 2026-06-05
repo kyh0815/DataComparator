@@ -75,6 +75,7 @@ def _build_definition(entry: object, idx: int, path: Path) -> ShellDefinition:
         expected_output_csv=fo.expected,
         shell_program=str(_req(execution, "shell_program", idx, path)),
         timeout_seconds=int(execution.get("timeout", 60)),
+        setup=_opt_str(execution, "setup"),  # P0: 입력 적재 전 준비 SQL/스크립트(선택)
         input_table=fi.table,
         input_dest_dir=fi.dest_dir,
         output_table=fo.table,
@@ -114,6 +115,7 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
                 name=_opt_str(row, "name"),
                 expected_dir=_opt_str(row, "expected_dir"),  # #7 As-Is 출력 격납 패스
                 tobe_dir=_opt_str(row, "tobe_dir"),  # #11 To-Be 출력 격납 패스
+                **_compare_kwargs(row, f"{test_id}.output[{j}]", path),  # P0 §3: compare 블록
             ))
         return specs
     # 구형 단일: output 블록 + 최상위 expected_output_csv
@@ -128,6 +130,38 @@ def _build_outputs(entry: dict, test_id: str, path: Path) -> list[OutputSpec]:
         expected_dir=_opt_str(out, "expected_dir"),
         tobe_dir=_opt_str(out, "tobe_dir"),
     )]
+
+
+_VALID_COMPARE_MODES = ("byte", "text", "record")
+
+
+def _compare_kwargs(row: dict, where: object, path: Path) -> dict:
+    """출력 행의 `compare` 블록을 OutputSpec 옵션 kwargs로 변환한다(없으면 빈 dict=byte 기본).
+
+    mode 값만 여기서 검증(byte|text|record). 나머지 정밀 검증(key 누락 경고·이름+무헤더 등)은
+    C3 프리플라이트가 CSV 좌표로 보고한다(V3 C3).
+    """
+    c = row.get("compare")
+    if c is None:
+        return {}
+    if not isinstance(c, dict):
+        raise DefinitionError(f"[{where}] compare 블록이 매핑이 아닙니다: {path}")
+    mode = _opt_str(c, "mode")
+    if mode is not None and mode not in _VALID_COMPARE_MODES:
+        raise DefinitionError(
+            f"[{where}] compare.mode는 {_VALID_COMPARE_MODES} 중 하나여야 합니다(받은 값: {mode}): {path}"
+        )
+    return {
+        "compare_mode": mode,
+        "key": _opt_str(c, "key"),
+        "encoding": _opt_str(c, "encoding"),
+        "mask": _opt_str(c, "mask"),
+        "tolerance": _opt_str(c, "tolerance"),
+        "layout": _opt_str(c, "layout"),
+        "delimiter": _opt_str(c, "delimiter"),
+        "has_header": _opt_bool(c, "has_header"),
+        "normalize": _opt_str(c, "normalize"),
+    }
 
 
 def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
@@ -156,6 +190,7 @@ def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
                 dest_dir=_opt_str(row, "dest_dir"),  # #7-4 To-Be 격납 패스
                 src_dir=_opt_str(row, "src_dir"),  # #4 As-Is 입력 격납 패스
                 dest_name=_opt_str(row, "dest_name"),  # #7-3 To-Be 격납 파일명
+                in_encoding=_opt_str(row, "in_encoding"),  # P0: 입력 적재 인코딩 override
             ))
         return specs
     # 구형 단일
@@ -167,6 +202,7 @@ def _build_inputs(inp: dict, test_id: str, path: Path) -> list[InputSpec]:
         dest_dir=_opt_str(inp, "dest_dir"),
         src_dir=_opt_str(inp, "src_dir"),
         dest_name=_opt_str(inp, "dest_name"),
+        in_encoding=_opt_str(inp, "in_encoding"),
     )]
 
 
@@ -212,6 +248,14 @@ def _req_choice(block: dict, key: str, choices: tuple, idx: object, path: Path) 
 def _opt_str(block: dict, key: str) -> str | None:
     value = block.get(key)
     return None if value is None else str(value)
+
+
+def _opt_bool(block: dict, key: str) -> bool:
+    """has_header 등 불리언. YAML bool 또는 "true"/"1"/"yes" 문자열을 참으로."""
+    value = block.get(key)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("true", "1", "yes", "y") if value is not None else False
 
 
 def _pad_test_id(value: object) -> str:

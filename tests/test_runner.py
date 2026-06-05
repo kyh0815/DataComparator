@@ -250,3 +250,41 @@ def test_failure_shell_raises(tmp_path):
     cfg = _real_config(tmp_path)
     with pytest.raises(runner.RunnerError, match="終了コード 1"):
         runner.run_batch(_def("010", "file", "file"), cfg, conn=None)
+
+
+# --- P0: run_setup (입력 적재 전 준비 SQL/스크립트) ------------------------------
+
+
+def test_run_setup_none_is_noop(tmp_path):
+    """setup 미지정이면 무동작(예외 없음)."""
+    runner.run_setup(_def("001", "file", "file"), _config(tmp_path), conn=None)
+
+
+def test_run_setup_runs_script(tmp_path):
+    """비-.sql setup은 실행파일로 호출된다(마커 파일로 확인)."""
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "prep.sh"
+    script.write_text(f"#!/bin/sh\necho ok > {marker}\n", encoding="utf-8")
+    script.chmod(0o755)
+    d = _def("001", "file", "file", setup=str(script))
+    runner.run_setup(d, _config(tmp_path), conn=None)
+    assert marker.is_file()
+
+
+def test_run_setup_script_failure_raises(tmp_path):
+    """setup 스크립트 종료코드≠0 → RunnerError."""
+    script = tmp_path / "bad.sh"
+    script.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    script.chmod(0o755)
+    d = _def("001", "file", "file", setup=str(script))
+    with pytest.raises(runner.RunnerError, match="setup"):
+        runner.run_setup(d, _config(tmp_path), conn=None)
+
+
+def test_run_setup_sql_without_conn_raises(tmp_path):
+    """.sql setup인데 conn 없음 → RunnerError(.sql은 DB 필요)."""
+    sql = tmp_path / "reset.sql"
+    sql.write_text("SELECT 1;\n", encoding="utf-8")
+    d = _def("001", "file", "file", setup=str(sql))
+    with pytest.raises(runner.RunnerError, match="conn"):
+        runner.run_setup(d, _config(tmp_path), conn=None)

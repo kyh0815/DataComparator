@@ -35,6 +35,35 @@ class RunnerError(Exception):
     """배치 실행 실패(종료코드≠0·timeout·설정 모순). 오케스트레이터가 ERROR로 기록한다."""
 
 
+def run_setup(definition: ShellDefinition, config: Config, conn=None) -> None:
+    """입력 적재 전 1회 실행하는 준비 단계(마스터·참조 테이블·시퀀스 리셋 등). setup 비면 무동작.
+
+    setup 경로가 .sql이면 conn으로 실행(DB 준비), 아니면 실행파일로 호출(스크립트 준비).
+    실패는 RunnerError로 던지고 오케스트레이터가 셸 ERROR로 흡수한다(D-023 흐름과 동일).
+    """
+    setup = definition.setup
+    if not setup:
+        return
+    path = _resolve_relative(setup, config)
+    if str(path).lower().endswith(".sql"):
+        if conn is None:
+            raise RunnerError(
+                f"[{definition.test_id}] setup={setup} は .sql ですが DB 接続(conn)がありません。"
+            )
+        sql = path.read_text(encoding="utf-8")
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        conn.commit()  # 후속 적재/배치가 보도록 즉시 커밋(D-023 ① 정신)
+        return
+    timeout = definition.timeout_seconds or config.batch.timeout_seconds
+    proc = subprocess.run([str(path)], env=dict(os.environ), capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0:
+        raise RunnerError(
+            f"[{definition.test_id}] setup スクリプト失敗(終了コード {proc.returncode}): "
+            f"{setup}\nstderr: {proc.stderr.strip()}"
+        )
+
+
 def run_batch(
     definition: ShellDefinition,
     config: Config,
@@ -127,6 +156,11 @@ def _build_command(
 
 def _resolve_program(definition: ShellDefinition, config: Config) -> Path:
     """shell_program을 절대경로로. 상대경로는 정의 파일 디렉토리(=프로젝트 루트) 기준."""
+    return _resolve_relative(definition.shell_program, config)
+
+
+def _resolve_relative(value: str, config: Config) -> Path:
+    """경로 문자열을 절대경로로. 상대경로는 정의 파일 디렉토리 기준(shell_program과 동일 규칙)."""
     base = config.definition_file.parent if config.definition_file else Path.cwd()
-    program = Path(definition.shell_program)
-    return program if program.is_absolute() else (base / program).resolve()
+    p = Path(value)
+    return p if p.is_absolute() else (base / p).resolve()

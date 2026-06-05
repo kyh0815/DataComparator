@@ -61,8 +61,16 @@ def output_asis_path(out: OutputSpec, config: Config) -> Path:
     return _dir(out.expected_dir, config.asis_output_dir, config) / out.expected
 
 
+def output_tobe_dir(out: OutputSpec, config: Config) -> Path:
+    """출력 1건의 To-Be 산출 디렉토리 = (tobe_dir or tobe_output_dir)  (규격 #11). **부수효과 없음**.
+
+    프리플라이트(C3)가 쓰기권한을 무실행 점검할 때 쓴다(output_tobe_path는 mkdir 부수효과가 있어 부적합).
+    """
+    return _dir(out.tobe_dir, config.tobe_output_dir, config)
+
+
 def output_tobe_path(out: OutputSpec, config: Config) -> Path:
     """출력 1건의 To-Be 산출 경로 = (tobe_dir or tobe_output_dir)/tobe_name  (규격 #9·#11). 부모 생성."""
-    path = _dir(out.tobe_dir, config.tobe_output_dir, config) / out.tobe_name
+    path = output_tobe_dir(out, config) / out.tobe_name
     path.parent.mkdir(parents=True, exist_ok=True)
     return path

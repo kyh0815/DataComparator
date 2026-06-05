@@ -83,10 +83,12 @@ def wired(monkeypatch):
     _FakeReporter.instances = []
     calls = {}
 
-    def fake_run(config, on_progress=None, shell_ids=None):
+    def fake_run(config, on_progress=None, shell_ids=None, *, resume=False, retry_failed=False):
         calls["config"] = config
         calls["on_progress"] = on_progress
         calls["shell_ids"] = shell_ids
+        calls["resume"] = resume
+        calls["retry_failed"] = retry_failed
         return calls.get("summary", _summary(2, 2))
 
     monkeypatch.setattr(cli_main, "load_config", lambda p: _fake_config())
@@ -121,7 +123,7 @@ def test_config_error_returns_2(monkeypatch, capsys):
 
 
 def test_definition_error_returns_2(wired, monkeypatch, capsys):
-    def _boom(config, on_progress=None, shell_ids=None):
+    def _boom(config, on_progress=None, shell_ids=None, **_kw):
         raise DefinitionError("정의 파일이 설정되지 않았습니다")
 
     monkeypatch.setattr(cli_main, "run_full_comparison", _boom)
@@ -130,7 +132,7 @@ def test_definition_error_returns_2(wired, monkeypatch, capsys):
 
 
 def test_orchestrator_error_returns_2(wired, monkeypatch):
-    def _boom(config, on_progress=None, shell_ids=None):
+    def _boom(config, on_progress=None, shell_ids=None, **_kw):
         raise OrchestratorError("DB 접속 실패")
 
     monkeypatch.setattr(cli_main, "run_full_comparison", _boom)
@@ -158,3 +160,73 @@ def test_verbose_sets_app_logger_debug(wired):
     cli_main.main(["--verbose"])
     assert logging.getLogger("src").level == logging.DEBUG
     assert _FakeReporter.instances[-1].verbose is True
+
+
+# --- C3: --preflight 게이트 종료코드 ---------------------------------------------
+
+
+class _FakeReport:
+    def __init__(self, errors=(), warnings=()):
+        self._errors, self._warnings = list(errors), list(warnings)
+        self.issues = self._errors + self._warnings
+
+    @property
+    def errors(self):
+        return self._errors
+
+    @property
+    def warnings(self):
+        return self._warnings
+
+    @property
+    def ok(self):
+        return not self._errors
+
+
+def test_preflight_clean_exits_zero(wired, monkeypatch, capsys):
+    """에러 0건이면 통과(0). run_full_comparison은 호출 안 함."""
+    monkeypatch.setattr(cli_main, "preflight", lambda config: _FakeReport())
+    assert cli_main.main(["--preflight"]) == 0
+    assert "config" not in wired  # 실행 단계 미진입
+
+
+def test_preflight_warning_only_exits_zero(wired, monkeypatch):
+    """경고만 있으면 통과(0) — 실행 허용."""
+    rep = _FakeReport(warnings=[_issue("warning", "001", "k없음")])
+    monkeypatch.setattr(cli_main, "preflight", lambda config: rep)
+    assert cli_main.main(["--preflight"]) == 0
+
+
+def test_preflight_error_exits_two(wired, monkeypatch):
+    """에러가 있으면 거부(2) — 실행하지 않음."""
+    rep = _FakeReport(errors=[_issue("error", "001", "정답 없음")])
+    monkeypatch.setattr(cli_main, "preflight", lambda config: rep)
+    assert cli_main.main(["--preflight"]) == 2
+
+
+def _issue(level, coord, msg):
+    from src.core.preflight import PreflightIssue
+
+    return PreflightIssue(level, coord, msg)
+
+
+# --- C5: 부분 실행 플래그 배선 / 상호배타 ----------------------------------------
+
+
+def test_resume_flag_passed(wired):
+    cli_main.main(["--resume"])
+    assert wired["resume"] is True and wired["retry_failed"] is False
+    assert wired["shell_ids"] is None
+
+
+def test_retry_failed_flag_passed(wired):
+    cli_main.main(["--retry-failed"])
+    assert wired["retry_failed"] is True and wired["resume"] is False
+
+
+def test_selection_flags_are_mutually_exclusive(wired):
+    """--shells/--resume/--retry-failed 동시 사용은 argparse가 거부(SystemExit)."""
+    with pytest.raises(SystemExit):
+        cli_main.main(["--shells", "1-10", "--resume"])
+    with pytest.raises(SystemExit):
+        cli_main.main(["--resume", "--retry-failed"])
