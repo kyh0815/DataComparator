@@ -76,6 +76,7 @@
   details.settings > summary .chev { margin-left:auto; color:var(--muted-2); font-size:12px; transition:transform .15s; }
   details[open].settings > summary .chev { transform:rotate(90deg); }
   details.settings > summary .csum { font-weight:500; font-size:12.5px; color:var(--muted); margin-left:6px; }
+  .csum .okmark { color:var(--c-ok); font-weight:500; }   /* 接続OK를 초록 체크로 명시 */
 
   /* ---------- step accordion ---------- */
   .step { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden; }
@@ -463,7 +464,9 @@ function restoreLocal(){
 }
 function updateConnSummary(){
   const h=$("c-host").value, p=$("c-port").value, d=$("c-dbname").value, e=$("c-encoding").value;
-  $("conn-summary").textContent = h ? `✓ ${h}:${p} / ${d} · ${e}` : "未設定 — クリックして入力";
+  const el=$("conn-summary");
+  if(h){ el.innerHTML = `<span class="okmark">✓</span> ${escapeHtml(h)}:${escapeHtml(p)} / ${escapeHtml(d)} · ${escapeHtml(e)}`; }
+  else { el.textContent = "未設定 — クリックして入力"; }
 }
 function toast(id,msg,ok){ const t=$(id); t.textContent=msg; t.className="toast "+(ok?"ok":"bad"); t.style.display="block"; }
 function connForm(){
