@@ -98,12 +98,12 @@ def preflight(
 def _load_or_report(config: Config, issues: list[PreflightIssue]) -> list[ShellDefinition] | None:
     """정의 로드. 미설정·구조 오류는 에러 1건으로 담고 None 반환(전체 게이트 실패)."""
     if config.definition_file is None:
-        issues.append(PreflightIssue("error", "config", "definition_file이 설정되지 않았습니다."))
+        issues.append(PreflightIssue("error", "config", "definition_file が設定されていません。"))
         return None
     try:
         return load_definitions(config.definition_file)
     except DefinitionError as exc:
-        issues.append(PreflightIssue("error", "定義", f"정의 파일 로드 실패: {exc}"))
+        issues.append(PreflightIssue("error", "定義", f"定義ファイルの読み込みに失敗: {exc}"))
         return None
 
 
@@ -117,7 +117,7 @@ def _check_duplicate_checklists(
     for test_id, count in seen.items():
         if count > 1:
             issues.append(
-                PreflightIssue("error", test_id, f"checklist가 {count}건 중복됩니다(고유해야 함).")
+                PreflightIssue("error", test_id, f"checklist が {count} 件重複しています（一意である必要があります）。")
             )
 
 
@@ -126,13 +126,13 @@ def _check_shell_program(d: ShellDefinition, config: Config, issues: list[Prefli
     program = _resolve_relative(d.shell_program, config)
     if not program.is_file():
         issues.append(
-            PreflightIssue("error", d.test_id, f"shell 실행파일이 없습니다: {program}")
+            PreflightIssue("error", d.test_id, f"shell 実行ファイルがありません: {program}")
         )
     if d.setup:
         setup = _resolve_relative(d.setup, config)
         if not setup.is_file():
             issues.append(
-                PreflightIssue("error", d.test_id, f"setup 파일이 없습니다: {setup}")
+                PreflightIssue("error", d.test_id, f"setup ファイルがありません: {setup}")
             )
 
 
@@ -141,18 +141,18 @@ def _check_inputs(d: ShellDefinition, config: Config, issues: list[PreflightIssu
     for spec in d.inputs:
         src = input_source_path(spec, config)
         if not src.is_file():
-            issues.append(PreflightIssue("error", d.test_id, f"입력 파일이 없습니다: {src}"))
+            issues.append(PreflightIssue("error", d.test_id, f"入力ファイルがありません: {src}"))
         elif not os.access(src, os.R_OK):
-            issues.append(PreflightIssue("error", d.test_id, f"입력 파일을 읽을 수 없습니다: {src}"))
+            issues.append(PreflightIssue("error", d.test_id, f"入力ファイルを読み取れません: {src}"))
         if spec.type == "file":
             try:
                 dest = input_dest_dir(spec, config)
             except ValueError as exc:
-                issues.append(PreflightIssue("error", d.test_id, f"입력 격납 디렉토리 미상: {exc}"))
+                issues.append(PreflightIssue("error", d.test_id, f"入力格納ディレクトリが不明です: {exc}"))
                 continue
             if not _writable(dest):
                 issues.append(
-                    PreflightIssue("error", d.test_id, f"입력 격납 디렉토리에 쓸 수 없습니다: {dest}")
+                    PreflightIssue("error", d.test_id, f"入力格納ディレクトリに書き込めません: {dest}")
                 )
 
 
@@ -163,7 +163,7 @@ def _check_outputs(d: ShellDefinition, config: Config, issues: list[PreflightIss
         _check_expected(out, config, coord, issues)
         if not _writable(output_tobe_dir(out, config)):
             issues.append(
-                PreflightIssue("error", coord, f"출력 디렉토리에 쓸 수 없습니다: {output_tobe_dir(out, config)}")
+                PreflightIssue("error", coord, f"出力ディレクトリに書き込めません: {output_tobe_dir(out, config)}")
             )
         _check_compare_options(out, coord, issues)
 
@@ -173,16 +173,16 @@ def _check_expected(
 ) -> None:
     """정답 파일(이미 변환된 As-Is 출력)이 존재·비0바이트·읽기 가능한지. 누락 = 비교 무의미."""
     if not out.expected:
-        issues.append(PreflightIssue("error", coord, "정답 파일명(expected)이 비어 있습니다."))
+        issues.append(PreflightIssue("error", coord, "正解ファイル名(expected)が空です。"))
         return
     path = output_asis_path(out, config)
     if not path.is_file():
-        issues.append(PreflightIssue("error", coord, f"정답 파일이 없습니다: {path}"))
+        issues.append(PreflightIssue("error", coord, f"正解ファイルがありません: {path}"))
         return
     if path.stat().st_size == 0:
-        issues.append(PreflightIssue("error", coord, f"정답 파일이 0바이트입니다: {path}"))
+        issues.append(PreflightIssue("error", coord, f"正解ファイルが0バイトです: {path}"))
     if not os.access(path, os.R_OK):
-        issues.append(PreflightIssue("error", coord, f"정답 파일을 읽을 수 없습니다: {path}"))
+        issues.append(PreflightIssue("error", coord, f"正解ファイルを読み取れません: {path}"))
 
 
 def _check_compare_options(out: OutputSpec, coord: str, issues: list[PreflightIssue]) -> None:
@@ -193,7 +193,7 @@ def _check_compare_options(out: OutputSpec, coord: str, issues: list[PreflightIs
     if not opts.key:
         issues.append(
             PreflightIssue(
-                "warning", coord, "record인데 key가 없습니다 → 행 순서 비결정으로 전건 NG 위험(정렬키 지정 권장)."
+                "warning", coord, "record モードですが key がありません → 行順序が非決定で全件NGの恐れ（ソートキー指定を推奨）。"
             )
         )
     if not opts.has_header:
@@ -203,7 +203,7 @@ def _check_compare_options(out: OutputSpec, coord: str, issues: list[PreflightIs
                 PreflightIssue(
                     "error",
                     coord,
-                    f"has_header=false인데 컬럼명 지정({', '.join(named)}) → 인덱스로 바꾸거나 has_header=true로.",
+                    f"has_header=false なのに列名指定({', '.join(named)}) → インデックスに変えるか has_header=true にしてください。",
                 )
             )
 
@@ -225,7 +225,7 @@ def _check_db(config: Config, issues: list[PreflightIssue], connect) -> None:
         conn = connector(config.database)
         conn.close()
     except Exception as exc:  # noqa: BLE001 — 어떤 접속 실패도 게이트 에러로 수렴
-        issues.append(PreflightIssue("error", "DB", f"DB 접속 실패: {exc}"))
+        issues.append(PreflightIssue("error", "DB", f"DB 接続に失敗: {exc}"))
 
 
 def _default_connect(db):

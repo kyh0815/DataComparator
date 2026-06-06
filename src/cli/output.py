@@ -172,7 +172,7 @@ def print_preflight(report, *, use_color: bool, stream=None) -> None:
         return f"{color}{text}{_RESET}" if use_color else text
 
     print(_SUMMARY_RULE, file=out)
-    print("  프리플라이트 점검 (C3 dry-run)", file=out)
+    print("  プリフライト点検 (C3 dry-run)", file=out)
     print(_SUMMARY_RULE, file=out)
 
     for issue in report.errors:
@@ -183,8 +183,8 @@ def print_preflight(report, *, use_color: bool, stream=None) -> None:
     print(_SUMMARY_RULE, file=out)
     n_err, n_warn = len(report.errors), len(report.warnings)
     if report.ok:
-        verdict = _c("통과 — 실행 가능", _GREEN) if n_warn == 0 else _c(f"통과(경고 {n_warn}건) — 실행 가능", _YELLOW)
+        verdict = _c("通過 — 実行可", _GREEN) if n_warn == 0 else _c(f"通過（警告 {n_warn}件） — 実行可", _YELLOW)
     else:
-        verdict = _c(f"거부 — 에러 {n_err}건(경고 {n_warn}건). 실행하지 않습니다", _RED)
-    print(f"  판정: {verdict}", file=out)
+        verdict = _c(f"拒否 — エラー {n_err}件（警告 {n_warn}件）。実行しません", _RED)
+    print(f"  判定: {verdict}", file=out)
     print(_SUMMARY_RULE, file=out)

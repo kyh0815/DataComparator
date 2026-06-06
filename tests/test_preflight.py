@@ -1,6 +1,6 @@
 """C3 프리플라이트(dry-run 게이트) 단위 테스트 (HANDOFF_V3 C3, DB 불요).
 
-점검: 정의 무결성(checklist 중복)·정답 파일(존재/0바이트/읽기)·입력 파일·shell 실행파일·
+점검: 정의 무결성(checklist 重複)·정답 파일(존재/0バイト/읽기)·입력 파일·shell 실행파일·
 출력 디렉토리 쓰기권한·record key 경고·이름+has_header=false 에러·DB 접속(주입)·문제 일괄 수집.
 """
 
@@ -88,14 +88,14 @@ def test_missing_expected_is_error(tmp_path):
     (tmp_path / "asis/out/exp.dat").unlink()  # 정답 삭제
     r = _run(tmp_path, [d])
     assert not r.ok
-    assert any("정답 파일이 없습니다" in i.message for i in r.errors)
+    assert any("正解ファイルがありません" in i.message for i in r.errors)
 
 
 def test_zero_byte_expected_is_error(tmp_path):
     d = _shell(tmp_path)
-    (tmp_path / "asis/out/exp.dat").write_text("", encoding="utf-8")  # 0바이트
+    (tmp_path / "asis/out/exp.dat").write_text("", encoding="utf-8")  # 0バイト
     r = _run(tmp_path, [d])
-    assert not r.ok and any("0바이트" in i.message for i in r.errors)
+    assert not r.ok and any("0バイト" in i.message for i in r.errors)
 
 
 # --- 입력 / shell --------------------------------------------------------------
@@ -105,14 +105,14 @@ def test_missing_input_file_is_error(tmp_path):
     d = _shell(tmp_path)
     (tmp_path / "asis/in/in.csv").unlink()
     r = _run(tmp_path, [d])
-    assert not r.ok and any("입력 파일이 없습니다" in i.message for i in r.errors)
+    assert not r.ok and any("入力ファイルがありません" in i.message for i in r.errors)
 
 
 def test_missing_shell_program_is_error(tmp_path):
     d = _shell(tmp_path)
     Path(d.shell_program).unlink()
     r = _run(tmp_path, [d])
-    assert not r.ok and any("shell 실행파일이 없습니다" in i.message for i in r.errors)
+    assert not r.ok and any("shell 実行ファイルがありません" in i.message for i in r.errors)
 
 
 # --- 정의 무결성 ----------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_duplicate_checklist_is_error(tmp_path):
     d1 = _shell(tmp_path)
     d2 = _shell(tmp_path)  # 같은 test_id "001"
     r = _run(tmp_path, [d1, d2])
-    assert not r.ok and any("중복" in i.message and i.coordinate == "001" for i in r.errors)
+    assert not r.ok and any("重複" in i.message and i.coordinate == "001" for i in r.errors)
 
 
 # --- record 비교 옵션 (key 경고 / 이름+무헤더 에러) ------------------------------
@@ -133,7 +133,7 @@ def test_record_without_key_is_warning_not_error(tmp_path):
     d = _shell(tmp_path, compare_mode="record")
     r = _run(tmp_path, [d])
     assert r.ok  # 경고뿐이라 통과
-    assert any("key가 없습니다" in i.message for i in r.warnings)
+    assert any("key がありません" in i.message for i in r.warnings)
 
 
 def test_named_column_without_header_is_error(tmp_path):
@@ -161,7 +161,7 @@ def test_unwritable_output_dir_is_error(tmp_path):
     try:
         d = _shell(tmp_path, tobe_dir=str(ro))
         r = _run(tmp_path, [d])
-        assert not r.ok and any("출력 디렉토리에 쓸 수 없습니다" in i.message for i in r.errors)
+        assert not r.ok and any("出力ディレクトリに書き込めません" in i.message for i in r.errors)
     finally:
         ro.chmod(0o755)  # 정리(tmp 삭제 가능하게)
 
@@ -189,7 +189,7 @@ def test_db_connect_failure_is_error(tmp_path):
         raise RuntimeError("connection refused")
 
     r = preflight(_config(tmp_path), [d], connect=boom)
-    assert not r.ok and any("DB 접속 실패" in i.message and i.coordinate == "DB" for i in r.errors)
+    assert not r.ok and any("DB 接続に失敗" in i.message and i.coordinate == "DB" for i in r.errors)
 
 
 def test_db_not_called_when_no_db(tmp_path):
@@ -210,8 +210,8 @@ def test_collects_all_problems_not_first(tmp_path):
     Path(d.shell_program).unlink()             # shell 없음
     r = _run(tmp_path, [d])
     msgs = " | ".join(i.message for i in r.errors)
-    assert "정답 파일이 없습니다" in msgs
-    assert "입력 파일이 없습니다" in msgs
-    assert "shell 실행파일이 없습니다" in msgs
+    assert "正解ファイルがありません" in msgs
+    assert "入力ファイルがありません" in msgs
+    assert "shell 実行ファイルがありません" in msgs
     assert "has_header=false" in msgs
     assert len(r.errors) >= 4  # 첫 에러에서 멈췄다면 1건뿐이었을 것

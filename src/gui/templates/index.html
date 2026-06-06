@@ -162,6 +162,8 @@
   .checks .c.pend { color:var(--muted); }
   /* preflight 결과 라인 */
   #preflight-out .bad, #preflight-out .warn, #preflight-out .ok { font-size:13px; padding:8px 11px; border-radius:var(--radius-sm); margin-bottom:6px; border:1px solid; font-weight:500; }
+  /* 判定 見出し — 항목 행보다 격상(크게·좌측 굵은 보더로 헤더 느낌) */
+  #preflight-out .pf-verdict { font-size:15px; padding:12px 14px; margin-bottom:12px; border-left-width:4px; }
   #preflight-out .bad { background:var(--ng-bg); color:var(--c-ng); border-color:var(--ng-bd); }
   #preflight-out .warn { background:var(--warn-bg); color:var(--c-error); border-color:var(--warn-bd); }
   #preflight-out .ok { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); }
@@ -564,10 +566,12 @@ async function applyDefinition(){
 function renderPreflight(d){
   const box=$("preflight-out"); box.style.display="block"; box.innerHTML="";
   const line=(cls,mk,i)=>`<div class="${cls}">${mk} [${escapeHtml(i.coordinate)}] ${escapeHtml(i.message)}</div>`;
+  const ne=(d.errors||[]).length, nw=(d.warnings||[]).length;
   let html="";
-  if (d.ok && !(d.warnings||[]).length) html=`<div class="ok">✓ 事前点検 通過 — 実行可</div>`;
-  else if (d.ok) html=`<div class="warn">▲ 警告 ${d.warnings.length}件 — 実行可（内容を確認）</div>`;
-  else html=`<div class="bad">✖ 拒否 — エラー ${d.errors.length}件。修正してください</div>`;
+  // 判定は見出しとして格上げ(項目行より大きく・目立つ)。
+  if (d.ok && nw===0) html=`<div class="pf-verdict ok">✓ 事前点検 通過 — 実行できます</div>`;
+  else if (d.ok) html=`<div class="pf-verdict warn">▲ 通過（警告 ${nw}件） — 実行できます（内容を確認）</div>`;
+  else html=`<div class="pf-verdict bad">✖ 拒否 — エラー ${ne}件。修正してください</div>`;
   for (const i of (d.errors||[])) html+=line("bad","✖",i);
   for (const i of (d.warnings||[])) html+=line("warn","▲",i);
   box.innerHTML=html;
