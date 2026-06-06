@@ -380,7 +380,7 @@
   </section>
 
   <!-- ===== ④ 結果・試験成績書 ===== -->
-  <section class="step collapsed" id="step-result">
+  <section class="step" id="step-result">
     <div class="step-head" data-step="result"><span class="num">4</span><h2>結果・試験成績書</h2><span class="sum">未実行</span><span class="chev">▶</span></div>
     <div class="step-body">
       <div id="banner" class="banner err"></div>
@@ -439,11 +439,11 @@ let preflightOK = false;            // ②点検通過(エラー0)で③解禁
 const DEF = {{ definition | tojson }};
 
 /* ───────── 段(アコーディオン)制御 ───────── */
-function expandStep(id){ $(id).classList.remove("collapsed"); }
 function setStepSummary(id, html){ const e=$(id).querySelector(".sum"); if(e) e.innerHTML=html; }
-function setStepDone(id, done){ const n=$(id).querySelector(".num"); if(n) n.classList.toggle("done", done); }  /* 번호 유지(상태는 접힘+텍스트) */
-function collapseDone(id, summaryHtml){ setStepSummary(id, summaryHtml); setStepDone(id, true); $(id).classList.add("collapsed"); }
-// 段ヘッダクリックで開閉(完了後の見直し用)。
+function setStepDone(id, done){ const n=$(id).querySelector(".num"); if(n) n.classList.toggle("done", done); }
+// 상태 요약만 갱신(접힘/펼침은 자동으로 건드리지 않음 — 사용자가 헤더 클릭으로만 토글).
+function markStepDone(id, summaryHtml){ setStepSummary(id, summaryHtml); setStepDone(id, true); }
+// 段ヘッダクリックで開閉(접고/펴는 건 사용자 조작 전용)。
 document.querySelectorAll(".step-head").forEach(h=>{
   const num=h.querySelector(".num"); if(num) num.dataset.num=num.textContent;
   h.addEventListener("click", ()=> h.parentElement.classList.toggle("collapsed"));
@@ -555,8 +555,7 @@ async function applyDefinition(){
     const chips=(gen.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
     res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div><div class="slist">${chips}</div>`;
     await refreshDefPreview();
-    collapseDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
-    expandStep("step-pre"); scrollToEl("step-pre","start");
+    markStepDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
   }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
   finally{ btn.disabled=false; btn.textContent=old; }
 }
@@ -587,8 +586,7 @@ $("preflight").addEventListener("click", async () => {
     setRunGate();
     const nw=(d.warnings||[]).length;
     if (preflightOK){
-      collapseDone("step-pre", nw ? `<span class="wn">▲ 通過（警告 ${nw}件）</span>` : `<span class="ok">✓ 通過</span>`);
-      expandStep("step-run"); scrollToEl("step-run","start");
+      markStepDone("step-pre", nw ? `<span class="wn">▲ 通過（警告 ${nw}件）</span>` : `<span class="ok">✓ 通過</span>`);
     } else {
       setStepSummary("step-pre", `<span class="ng">✖ エラー ${(d.errors||[]).length}件</span>`);
     }
@@ -813,10 +811,9 @@ function startRun(){
   if (running || !preflightOK) return;
   reset(); setRunning(true);
   verboseFlag=$("verbose").checked; lastConfig=$("config").value; saveLocal();
-  collapseDone("step-run", "▶ 実行しました（再実行は展開）");
-  expandStep("step-result"); setStepSummary("step-result", "実行中…"); setStepDone("step-result", false);
+  markStepDone("step-run", "▶ 実行しました"); setStepDone("step-run", false);  // 요약만, 접지 않음
+  setStepSummary("step-result", "実行中…"); setStepDone("step-result", false);
   $("results-wrap").classList.add("show"); $("live").classList.add("show");
-  scrollToEl("step-result", "start");
   const params=new URLSearchParams();
   params.set("config",$("config").value);
   if ($("shells").value.trim()) params.set("shells",$("shells").value.trim());
@@ -851,11 +848,9 @@ for (const c of document.querySelectorAll('.scard')) c.addEventListener("click",
   setFilter(f==="*" ? null : f);
 });
 setRunGate();
-// 進行型たたみ込みの初期状態: 定義が既にあれば①をたたみ②を開く。なければ①を開く。
+// 단계 접힘/펼침은 자동으로 건드리지 않음(사용자가 헤더 클릭으로만). 정의가 이미 있으면 요약만 표시.
 if (DEF && DEF.ok){
-  collapseDone("step-def", "✓ 定義読込済（変更するには開く）");
-} else {
-  expandStep("step-def"); $("step-pre").classList.add("collapsed");
+  markStepDone("step-def", "✓ 定義読込済");
 }
 </script>
 </body>
