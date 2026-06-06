@@ -1,0 +1,220 @@
+tests:
+- test_id: CK001
+  test_name: 顧客残高マスタ日次更新
+  input:
+    tables:
+    - csv: ck001_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck001_zandaka.csv
+    file: ck001_zandaka.csv
+    name: 顧客残高マスタ
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      mask: KOSHIN_NICHIJI
+      normalize: SHITEN_CD:zeropad:4;ZANDAKA:num:2;KISAN_YMD:date;BIKO:nullblank
+      has_header: true
+- test_id: CK002
+  test_name: 取引明細集計
+  input:
+    tables:
+    - csv: ck002_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck002_shukei.csv
+    file: ck002_shukei.csv
+    name: 集計結果
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: TX_ID
+      encoding: shift_jis
+      normalize: KINGAKU:num:0
+      has_header: true
+- test_id: CK003
+  test_name: 残高検証
+  input:
+    tables:
+    - csv: ck003_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck003_kensho.csv
+    file: ck003_kensho.csv
+    name: 残高検証
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: ZANDAKA:num:2
+      has_header: true
+- test_id: CK004
+  test_name: 帳票完全一致
+  input:
+    tables:
+    - csv: ck004_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck004_chohyo.txt
+    file: ck004_chohyo.txt
+    name: 帳票(byte一致)
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: byte
+- test_id: CK005
+  test_name: 請求書byte
+  input:
+    tables:
+    - csv: ck005_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck005_seikyu.txt
+    file: ck005_seikyu.txt
+    name: 請求書(byte)
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: byte
+- test_id: CK006
+  test_name: 口座一覧text
+  input:
+    tables:
+    - csv: ck006_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck006_kouza.txt
+    file: ck006_kouza.txt
+    name: 口座一覧(text)
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: text
+      encoding: shift_jis
+- test_id: CK007
+  test_name: 金利マスタ
+  input:
+    tables:
+    - csv: ck007_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck007_kinri.csv
+    file: ck007_kinri.csv
+    name: 金利マスタ
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: CODE
+      encoding: shift_jis
+      normalize: RATE:num:4
+      has_header: true
+- test_id: CK008
+  test_name: 手数料マスタ
+  input:
+    tables:
+    - csv: ck008_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck008_tesuryo.csv
+    file: ck008_tesuryo.csv
+    name: 手数料
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: TESU_CD:zeropad:5
+      has_header: true
+- test_id: CK009
+  test_name: 顧客属性
+  input:
+    tables:
+    - csv: ck009_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck009_zokusei.csv
+    file: ck009_zokusei.csv
+    name: 顧客属性
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: BIKO:nullblank
+      has_header: true
+- test_id: CK010
+  test_name: 支店マスタ
+  input:
+    tables:
+    - csv: ck010_in.csv
+      type: file
+      dest_dir: tobe/in
+      src_dir: asis/input
+  execution:
+    shell_program: batch/run_batch.py
+  outputs:
+  - type: file
+    expected: ck010_shiten.csv
+    file: ck010_shiten.csv
+    name: 支店マスタ
+    expected_dir: asis/output
+    tobe_dir: tobe/output
+    compare:
+      mode: record
+      key: SHITEN_CD
+      encoding: shift_jis
+      has_header: true

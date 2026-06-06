@@ -1,0 +1,4 @@
+# 런타임 생성물만 제외. 정본 = shell_mapping.csv·config.yaml·batch/·asis/·tobe_src/.
+tobe/
+reports/
+__pycache__/
