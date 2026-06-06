@@ -102,6 +102,8 @@
     font-size:13.5px; background:var(--field-bg); color:var(--ink); transition:border-color .14s, box-shadow .14s;
     font-variant-numeric:tabular-nums; font-family:inherit;
   }
+  .field select { width:100%; padding:9px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm); font-size:13.5px; background:var(--field-bg); color:var(--ink); font-family:inherit; cursor:pointer; }
+  .field select:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px var(--c-accent-soft); }
   .field input::placeholder { color:var(--c-text-faint); }
   .field input:focus, input[type=file]:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px var(--c-accent-soft); }
   .hint { font-size:11.5px; color:var(--muted-2); margin-top:6px; }
@@ -305,6 +307,15 @@
       接続設定 <span class="csum" id="conn-summary"></span><span class="chev">▶</span>
     </summary>
     <div class="panel-body">
+      <div class="field" style="margin-bottom:16px">
+        <label class="lab">環境（設定ファイル）</label>
+        <select id="config" class="envsel">
+          <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml）</option>
+          <option value="samples/realtest/config.yaml">サンプル realtest（10件・OK7/NG3）</option>
+          <option value="samples/rehearsal/config.yaml">サンプル rehearsal（CK001）</option>
+        </select>
+        <div class="hint">どの定義・データで点検／実行するか。サンプルを選ぶとアップロード不要でそのまま点検できます。</div>
+      </div>
       <div class="grid">
         <div class="field"><label class="lab">ホスト (host)</label><input type="text" id="c-host" value="{{ conn.host }}"></div>
         <div class="field"><label class="lab">ポート (port)</label><input type="number" id="c-port" value="{{ conn.port }}"></div>
@@ -324,9 +335,6 @@
       <div class="toast" id="c-toast"></div>
     </div>
   </details>
-
-  <!-- 設定ファイル経路は内部処理（顧客画面では非表示） -->
-  <input type="hidden" id="config" value="{{ default_config }}">
 
   <!-- ===== ① 定義ファイル ===== -->
   <section class="step" id="step-def">
@@ -845,20 +853,27 @@ $("evidence").addEventListener("click", () => {
   window.location="/evidence?config="+encodeURIComponent($("config").value);
 });
 
+/* 環境(설정파일) 전환 — 선택한 config의 定義을 다시 읽고 ②점검 게이트를 초기화한다(백엔드 ?config= 재사용). */
+async function syncEnv(){
+  preflightOK=false; setRunGate();
+  const pf=$("preflight-out"); pf.style.display="none"; pf.innerHTML="";
+  setStepSummary("step-pre", ""); setStepDone("step-pre", false);
+  await refreshDefPreview();
+  if (DEF.ok){ markStepDone("step-def", "✓ 定義読込済"); }
+  else { setStepSummary("step-def", ""); setStepDone("step-def", false); }
+}
+
 /* ───────── 初期化 ───────── */
 restoreLocal();
 updateConnSummary();
 for (const id of CONN_FIELDS) $(id).addEventListener("change", ()=>{ saveLocal(); updateConnSummary(); });
+$("config").addEventListener("change", syncEnv);   // 환경 바꾸면 定義·게이트 재동기화
 for (const c of document.querySelectorAll('.scard')) c.addEventListener("click", () => {
   if (c.classList.contains("disabled")) return;
   const f=c.getAttribute("data-f");
   setFilter(f==="*" ? null : f);
 });
-setRunGate();
-// 단계 접힘/펼침은 자동으로 건드리지 않음(사용자가 헤더 클릭으로만). 정의가 이미 있으면 요약만 표시.
-if (DEF && DEF.ok){
-  markStepDone("step-def", "✓ 定義読込済");
-}
+syncEnv();   // 초기: 선택(또는 복원)된 환경에 맞춰 定義/게이트 동기화
 </script>
 </body>
 </html>
