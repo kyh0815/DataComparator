@@ -42,6 +42,7 @@ compare_files를 모드 분기로. **비교기는 파일경로+옵션만. DB/배
 - byte  : 현재 로직 그대로(고정포맷·전바이트 의미). **미지정 기본.** 청크 비교로 OOM 방지(trivial).
 - text  : 행 단위, 줄끝(CRLF/LF)·우측공백 정규화 후 위치 비교.
 - record: 행→필드분할(layout/delimiter) → (key)정렬 → (mask)제외 → (정규화 최소) → 비교. diff 최대 50.
+- ※ **DB byte 1순위**(D-038): export 시 `ORDER BY key`로 순서 결정화 후 **byte 비교가 1순위**, record는 순서 결정화 불가 시 폴백. 위 line 21 "byte 통짜 못 쓴다"는 *정렬 없는* naive byte를 가리킨다.
 
 옵션(출력별):
 - **key** : record 정렬키(컬럼명/인덱스). **DB/머지 출력 필수** — 없으면 순서로 전건 NG. record인데 비면 경고.
