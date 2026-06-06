@@ -337,23 +337,13 @@
         <label class="lab">マッピング表（Long形式 CSV）</label>
         <div class="filepick">
           <input type="file" id="csv" accept=".csv,text/csv" style="display:none">
-          <button type="button" class="filebtn" id="csv-btn">ファイルを選択</button>
+          <button type="button" class="filebtn" id="csv-btn">ファイルを選択して適用</button>
           <span class="filename" id="csv-name">選択されていません</span>
         </div>
-        <div class="hint">checklist を1次キーに kind(input/output)・type(database/file)・compare_mode 等を行で記入（多重入力は行追加）。
-          <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
-      </div>
-      <div class="actions">
-        <button class="run" id="gen">定義を生成</button>
+        <div class="hint">ファイルを選ぶと自動で定義を生成・保存します（形式エラー時はメッセージを表示）。
+          checklist を1次キーに input/output 行で記入。 <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
       </div>
       <div id="result"></div>
-      <div id="after" style="display:none">
-        <div class="actions">
-          <button class="run" id="save">この定義を保存して次へ</button>
-          <button class="ghost" id="dl">YAML ダウンロード</button>
-        </div>
-        <div class="toast" id="save-toast"></div>
-      </div>
     </div>
   </section>
 
@@ -540,52 +530,36 @@ async function refreshDefPreview(){
   }catch(e){ /* 補助情報 */ }
 }
 
-/* ───────── ① 定義生成 / 保存（実 /definition/from-csv, /save） ───────── */
-let GEN_YAML="";
-/* 커스텀 파일 선택: 일반 버튼으로 숨긴 input을 열고 파일명을 표시 */
+/* ───────── ① 定義: ファイル選択で「生成→保存」を一括自動（プレビュー/保存ボタン廃止） ───────── */
 $("csv-btn").addEventListener("click", ()=> $("csv").click());
-$("csv").addEventListener("change", ()=>{
-  const f=$("csv").files[0], nm=$("csv-name");
-  if(f){ nm.textContent=f.name; nm.classList.add("has"); }
-  else { nm.textContent="選択されていません"; nm.classList.remove("has"); }
-});
-$("gen").addEventListener("click", async () => {
-  const f=$("csv").files[0];
-  const res=$("result"), after=$("after");
-  if(!f){ res.innerHTML='<div class="errbox">CSVファイルを選択してください。</div>'; after.style.display="none"; return; }
-  const fd=new FormData(); fd.append("csv", f);
-  const btn=$("gen"); btn.disabled=true; btn.textContent="生成中…";
+$("csv").addEventListener("change", applyDefinition);
+async function applyDefinition(){
+  const f=$("csv").files[0], nm=$("csv-name"), res=$("result");
+  if(!f){ nm.textContent="選択されていません"; nm.classList.remove("has"); return; }
+  nm.textContent=f.name; nm.classList.add("has");
+  const btn=$("csv-btn"); btn.disabled=true; const old=btn.textContent; btn.textContent="処理中…"; res.innerHTML="";
   try{
-    const r=await (await fetch("/definition/from-csv",{method:"POST",body:fd})).json();
-    if(r.ok){
-      GEN_YAML=r.yaml;
-      const chips=(r.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
-      res.innerHTML=`<div class="okline">✓ <span>${r.count} シェルの定義を生成しました</span></div><div class="slist">${chips}</div>`;
-      after.style.display="";
-    }else{
-      GEN_YAML=""; after.style.display="none";
-      const items=(r.errors||[]).map(e=>`<li>${escapeHtml(e)}</li>`).join("");
-      res.innerHTML=`<div class="errbox">生成できませんでした（1行でも不備があれば全体を拒否）：<ul>${items}</ul></div>`;
+    // 1) 生成(CSV→YAML)。形式エラーは行ごとメッセージで表示し、保存しない。
+    const gfd=new FormData(); gfd.append("csv", f);
+    const gen=await (await fetch("/definition/from-csv",{method:"POST",body:gfd})).json();
+    if(!gen.ok){
+      const items=(gen.errors||[]).map(e=>`<li>${escapeHtml(e)}</li>`).join("");
+      res.innerHTML=`<div class="errbox">定義を作成できませんでした（1行でも不備があれば全体を拒否します）：<ul>${items}</ul></div>`;
+      return;
     }
+    // 2) そのまま保存(config の definition_file へ書き込み)。
+    const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", $("config").value);
+    const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
+    if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
+    // 3) 成功 → 要約を出して①をたたみ、②へ。
+    const chips=(gen.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
+    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div><div class="slist">${chips}</div>`;
+    await refreshDefPreview();
+    collapseDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
+    expandStep("step-pre"); scrollToEl("step-pre","start");
   }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
-  finally{ btn.disabled=false; btn.textContent="定義を生成"; }
-});
-$("save").addEventListener("click", async () => {
-  const t=$("save-toast");
-  const fd=new FormData(); fd.append("yaml", GEN_YAML); fd.append("config", $("config").value);
-  const btn=$("save"); btn.disabled=true; btn.textContent="保存中…";
-  try{
-    const r=await (await fetch("/definition/save",{method:"POST",body:fd})).json();
-    t.className="toast "+(r.ok?"ok":"bad"); t.textContent=(r.ok?"✓ ":"")+(r.message||""); t.style.display="block";
-    if(r.ok){
-      await refreshDefPreview();
-      collapseDone("step-def", "✓ 定義を保存しました");
-      expandStep("step-pre"); scrollToEl("step-pre","start");
-    }
-  }catch(e){ t.className="toast bad"; t.textContent="通信エラー: "+e; t.style.display="block"; }
-  finally{ btn.disabled=false; btn.textContent="この定義を保存して次へ"; }
-});
-$("dl").addEventListener("click", ()=>{ if(GEN_YAML) download(GEN_YAML, "test_definition.yaml", false); });
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
 
 /* ───────── ② 事前点検 (実 /preflight) — 通過で③解禁 ───────── */
 function renderPreflight(d){
