@@ -99,8 +99,9 @@ runner._build_command의 stub CLI 규약 + L106 "transaction_log" 폴백을 conf
 DB는 **첫 프로젝트가 쓰는 1종만** 붙임(psycopg2를 끔찍하게 박지만 않으면 됨). 멀티DB 추상화는 보류(E3).
 
 ## C7. GUI 고객 동선 재구성 (화면만 — 로직/API 손대지 말 것)
-> ⚠️ **D-043으로 갱신**: "세로 한 페이지" 전제·DESIGN_TOKENS 먹네이비는 무효. 형제 제품 ModernizePro
-> 셸(사이드바+탭)·녹색 디자인을 따르며, 아래 세로 흐름은 **Execution 탭 내부 레이아웃**으로만 존속. UI 실작업 보류.
+> ⚠️ **D-043(+보정)으로 갱신**: "세로 한 페이지" 전제·DESIGN_TOKENS 먹네이비는 무효. 형제 제품 ModernizePro
+> 셸(사이드바+탭)을 따르되 **주색은 녹색 아닌 Compare 전용 색(미정)**. 아래 세로 흐름은 **Execution 탭
+> 내부 레이아웃**으로만 존속. UI 실작업 보류.
 기존 라우트/엔드포인트(preflight·검증실행·試験成績書·정의생성·접속설정) **재배치**. 백엔드 무수정.
 - **세로 한 페이지 + 진행형 접힘** (페이지 마법사 X — 근거는 SESSION_CONTEXT §11).
   [상단] 接続設定 = 한 줄 요약 접힘("✓ host:port/dbname·인코딩" + 変更). config.yaml 경로/파일명 고객 화면에서 제거(내부 처리).
