@@ -3,6 +3,16 @@
 > 현재 상태 있는-그대로 보고(읽기 전용). 작성 시점 기준 파일에 실제로 존재하는 것만 기록.
 > 코드 수정 없음. 불확실한 것은 "불확실"로 명시.
 
+> **2026-06-07 갱신(요지 — 아래 §0~§7은 과거 스냅샷, 이 줄이 현행)**
+> - 테스트 **269 passed / 10 skipped**.
+> - 샘플셋 **단일화**: 정본 데모셋 = **`samples/complete/`** (정의 정본 `complete_sample.csv`, 한 방 진입점 `run_demo.sh`).
+>   20 CK e2e 검증(출력단위 21: OK17/NG3/MISSING_TOBE1). 구 픽스처(`samples/asis`·`realtest`·`rehearsal`·`realistic`) 삭제.
+> - **`config.yaml` = 데모 아님, 실배포 환경설정의 자리**(GUI「本番」). 데모는 `samples/complete/`로 분리.
+>   커밋된 배포 템플릿 = **`config.yaml.example`**(+ `test_definition.template.yaml`); 루트 `config.yaml`은 **gitignore(로컬)**.
+> - DB CK(019/020) e2e **재현 정보**: dc-pg **포트 5433** · 자격(user/db/pw)은 **컨테이너 env·`password_env` 참조**(★레포에 평문 금지) ·
+>   기본 스위트는 **DB-free**, DB 검증은 **`RUN_DB_TESTS=1` 게이트** 뒤. 스키마 = `db/schema.sql`+`db/schema_realistic.sql`.
+> - 도구 보강: `mapping_to_definition`이 shell `;`(1:N) 거부 + 선두 `#` 주석 허용. shell_group 칼럼 + `batch.groups` lint(runner 미연결).
+
 ---
 
 ## 0. 기본 사실 (명령 출력)
@@ -18,8 +28,9 @@ db/{schema.sql,schema_realistic.sql}
 tests/ (19개 test_*.py)  docs/ (16개 md)
 test_definition.yaml  test_definition.realistic.yaml  test_definition.template.yaml
 config.yaml  config.realistic.yaml  config.yaml.example  .config.realistic.effective.yaml
-samples/asis/{input,output}/001~010.csv  samples/realistic/...  samples/shell_mapping.long.example.csv
-run.sh  run_gui.sh  run_realistic.sh  requirements.txt
+samples/complete/{complete_sample.csv,config.yaml,test_definition.yaml,make_complete_data.py,make_db_golden.py,run_demo.sh,README.md,mock_linux/...,asis/...,tobe_src/...}
+run.sh  run_gui.sh  requirements.txt
+(※ 위 트리는 과거 스냅샷. 현행: samples/asis·realistic·realtest·rehearsal·run_realistic.sh·config.realistic.yaml·test_definition.realistic.yaml 삭제, samples/complete 단일화 — 갱신줄 참조)
 ```
 
 ### 언어/프레임워크/진입점/의존성
@@ -44,7 +55,7 @@ src 합계 약 1900줄, tests 합계 2972줄
 
 ### 테스트 (읽기전용 실행)
 ```
-python3 -m pytest -q  →  180 passed, 10 skipped in 0.34s
+python3 -m pytest -q  →  269 passed, 10 skipped   (※ 과거 스냅샷엔 180 — 현행 269)
 ```
 (skip 10건은 DB 통합 테스트 — `RUN_DB_TESTS=1` 미설정 시 자동 skip)
 
@@ -54,7 +65,7 @@ python3 -m pytest -q  →  180 passed, 10 skipped in 0.34s
 
 **중요: 정의파일은 2종이 존재한다.**
 - (A) **YAML**(`test_definition.yaml`) — 오케스트레이터가 **실제로 읽는** 실행 정본. 로더 `src/config/definition.py:load_definitions`.
-- (B) **매핑 CSV**(`samples/shell_mapping.long.example.csv`) — 사람이 채워 (A)로 변환하는 입력. 변환 도구 `tools/mapping_to_definition.py`. 오케스트레이터는 CSV를 직접 읽지 않음.
+- (B) **매핑 CSV**(정본 = `samples/complete/complete_sample.csv`) — 사람이 채워 (A)로 변환하는 입력. 변환 도구 `tools/mapping_to_definition.py`. 오케스트레이터는 CSV를 직접 읽지 않음.
 
 ### 1-A. YAML 로더가 실제로 읽는 키 (코드 추출, definition.py)
 - 최상위: `tests`(리스트, 필수) — `load_definitions` L46-51
