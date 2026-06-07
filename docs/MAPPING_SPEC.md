@@ -1,6 +1,6 @@
 # MAPPING_SPEC — 매핑표(long 매핑 CSV) 설계 정본
 
-> 매핑표(long 매핑 CSV: `samples/shell_mapping.long.example.csv` / `tools/mapping_to_definition.py`)의 **설계 정본**.
+> 매핑표(long 매핑 CSV: `samples/complete/complete_sample.csv`(정본 데모셋) / `tools/mapping_to_definition.py`)의 **설계 정본**.
 > 스캐너·lint 등 실제 구현은 **고객 폴더 실제 규칙 + As-Is/SAM 데이터 1부 입수 후**(아래 §8). 추측 구현 금지.
 > 정본 연계: DEFINITION_SPEC.md(YAML 정본)·DECISIONS.md(D-038~D-042)·HANDOFF_5.md·CONTEXT.md·DESIGN_TOKENS.md.
 

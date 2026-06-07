@@ -1,16 +1,18 @@
-# 실행 설정 예시. 복사해서 config.yaml로 만들고 환경에 맞게 수정한다.
+# 실배포 환경설정 템플릿. 복사해서 config.yaml로 만들고 환경에 맞게 수정한다(환경당 1회).
 #   cp config.yaml.example config.yaml
-# DB 비밀번호는 여기 적지 않고 password_env가 가리키는 환경변수에서 읽는다.
+# ★데모를 돌리려면 이 파일이 아니라 samples/complete/ 를 쓴다: samples/complete/run_demo.sh
+#   (단일 정본 데모셋 — 20 CK 한 바퀴). 이 템플릿은 실고객 배포 설정의 자리다.
+# DB 비밀번호는 여기 적지 않고 password_env가 가리키는 환경변수에서 읽는다(평문 금지).
 
 encoding: Shift_JIS
 
 paths:
-  asis_input_dir: ./samples/asis/input
-  asis_output_dir: ./samples/asis/output
-  tobe_input_dir: ./out/tobe_input          # 파일 입력(야간 배치) raw 복사 대상 (D-021, T2-3부터 사용)
+  asis_input_dir:  ./data/asis/input        # 실배포: 코드변환 후 As-Is 입력 디렉토리로 교체
+  asis_output_dir: ./data/asis/output       # 실배포: As-Is 출력(정답) 디렉토리로 교체
+  tobe_input_dir:  ./out/tobe_input         # 파일 입력(야간 배치) raw 복사 대상 (D-021)
   tobe_output_dir: ./out/tobe_output
-  report_dir: ./out/reports
-  definition_file: ./test_definition.yaml   # 셸별 정의 파일 (D-021, T2-3부터 사용)
+  report_dir:      ./out/reports
+  definition_file: ./test_definition.yaml   # mapping_to_definition으로 매핑표(CSV)→생성
 
 database:
   host: localhost
@@ -39,6 +41,10 @@ batch:
   #   POSTGRES_PASSWORD: "{db_password}"
   # success_exit_code: 0            # 이 코드만 성공, 그 외 RunnerError
   # clean_flag: "--clean"           # 골든 생성(clean) 시 덧붙일 플래그(미지원 배치면 비움)
+  # ── 업무 그룹별 배치 환경(B, D-040) — shell_group 값이 키. ★현재 lint 태그 전용(runner 미소비) ──
+  # groups:
+  #   業務A: { base_dir: /opt/migsys/業務A }                          # base_dir만 그룹 필수
+  #   業務B: { base_dir: /opt/migsys/業務B, success_exit_code: 0, env: {} }  # 비우면 batch 전역 상속
 
 shells:
   range: [1, 10]    # 정의 파일(test_definition.yaml) 폴백. 정의 파일이 있으면 그쪽 셸 목록이 우선.

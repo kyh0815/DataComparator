@@ -199,10 +199,10 @@ def test_cli_reports_errors_and_exits_nonzero(tmp_path):
 
 
 def test_bundled_example_is_valid(tmp_path):
-    """동봉 예시(samples/shell_mapping.long.example.csv)가 그대로 변환·round-trip된다."""
-    example = Path(__file__).resolve().parents[1] / "samples" / "shell_mapping.long.example.csv"
+    """정본 데모셋(samples/complete/complete_sample.csv)이 그대로 변환·round-trip된다(20 CK)."""
+    example = Path(__file__).resolve().parents[1] / "samples" / "complete" / "complete_sample.csv"
     r = m.mapping_to_definition(m._decode(example.read_bytes()))
-    assert r["ok"] and r["count"] == 2
+    assert r["ok"] and r["count"] == 20
 
 
 # --- P0: compare 옵션 / setup / in_encoding 컬럼 운반 (HANDOFF §2·§3) -------------

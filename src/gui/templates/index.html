@@ -310,9 +310,8 @@
       <div class="field" style="margin-bottom:16px">
         <label class="lab">環境（設定ファイル）</label>
         <select id="config" class="envsel">
-          <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml）</option>
-          <option value="samples/realtest/config.yaml">サンプル realtest（10件・OK7/NG3）</option>
-          <option value="samples/rehearsal/config.yaml">サンプル rehearsal（CK001）</option>
+          <option value="samples/complete/config.yaml">サンプル demo（complete・20件 OK17/NG3/MISSING1）</option>
+          <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml — 実配備設定を作成）</option>
         </select>
         <div class="hint">どの定義・データで点検／実行するか。サンプルを選ぶとアップロード不要でそのまま点検できます。</div>
       </div>

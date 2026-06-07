@@ -1,6 +1,0 @@
-checklist,test_name,kind,type,shell,file,table,expected,name,src_dir,dest_dir,dest_name,expected_dir,tobe_dir,timeout
-001,A・B統合→C,input,database,/opt/batch/job001,A.csv,table_a,,,/data/asis/input,,,,,300
-001,,input,database,,B.csv,table_b,,,/data/asis/input,,,,,
-001,,output,database,,C.csv,table_c,正解C.csv,結果C,,,,/data/asis/output,/data/tobe/output,
-002,夜間ファイル取込,input,file,/opt/batch/job002,002.csv,,,,/data/asis/input,/data/tobe/input,002_staged.csv,,,
-002,,output,file,,出.csv,,正解.csv,,,,,/data/asis/output,/data/tobe/output,
