@@ -76,6 +76,8 @@ def _build_definition(entry: object, idx: int, path: Path) -> ShellDefinition:
         shell_program=str(_req(execution, "shell_program", idx, path)),
         timeout_seconds=int(execution.get("timeout", 60)),
         setup=_opt_str(execution, "setup"),  # P0: 입력 적재 전 준비 SQL/스크립트(선택)
+        shell_group=_opt_str(execution, "shell_group"),  # B: 업무 그룹 태그(선택, 전달만). 비면 None
+
         input_table=fi.table,
         input_dest_dir=fi.dest_dir,
         output_table=fo.table,

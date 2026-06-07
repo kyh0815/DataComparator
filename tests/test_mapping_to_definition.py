@@ -251,3 +251,47 @@ def test_p0_no_compare_columns_still_byte():
     assert r["ok"], r["errors"]
     doc = yaml.safe_load(r["yaml"])
     assert "compare" not in doc["tests"][0]["outputs"][0]
+
+
+# --- B: shell_group 칼럼(업무 그룹 태그) ------------------------------------------
+
+
+def test_shell_group_carried_into_execution(tmp_path):
+    """shell_group 열이 execution.shell_group으로 운반되고 로더가 읽는다(B)."""
+    csv = (
+        "checklist,kind,type,shell,shell_group,file,expected\n"
+        "001,input,file,mock/A/ck1.sh,業務A,in.csv,\n"
+        "001,output,file,,,out.dat,gold.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    assert yaml.safe_load(r["yaml"])["tests"][0]["execution"]["shell_group"] == "業務A"
+    p = tmp_path / "def.yaml"
+    p.write_text(r["yaml"], encoding="utf-8")
+    assert load_definitions(p)[0].shell_group == "業務A"
+
+
+def test_shell_group_differs_across_rows_is_error():
+    """한 체크리스트가 두 업무에 걸치면 에러(program 일관성과 동일 정책, B-Q3)."""
+    csv = (
+        "checklist,kind,type,shell_group,file,expected\n"
+        "001,input,file,業務A,in.csv,\n"
+        "001,output,file,業務B,out.dat,gold.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"] is False and any("shell_group" in e for e in r["errors"])
+
+
+def test_shell_group_absent_is_backward_compatible(tmp_path):
+    """shell_group 열이 없으면 execution에 키 없음·로더 None(하위호환)."""
+    csv = (
+        "checklist,kind,type,file,expected\n"
+        "001,input,file,in.csv,\n"
+        "001,output,file,out.dat,gold.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    assert "shell_group" not in r["yaml"]
+    p = tmp_path / "def.yaml"
+    p.write_text(r["yaml"], encoding="utf-8")
+    assert load_definitions(p)[0].shell_group is None

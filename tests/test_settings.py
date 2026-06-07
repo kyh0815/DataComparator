@@ -134,3 +134,38 @@ def test_range_inclusive_and_reversed_rejected(tmp_path):
 
     with pytest.raises(ConfigError, match="range"):
         load_config(_write(tmp_path, _FULL_YAML.replace("  range: [1, 10]", "  range: [9, 2]")))
+
+
+# --- B: batch.groups(업무별 배치 환경) -------------------------------------------
+
+_GROUPS_YAML = _FULL_YAML.replace(
+    "batch:\n  type: stub\n  stub_path: ./stub_batch/run_batch.py\n  timeout_seconds: 60\n",
+    "batch:\n  type: stub\n  success_exit_code: 0\n  env: { POSTGRES_PASSWORD: gpw }\n"
+    "  groups:\n"
+    "    業務A: { base_dir: ./mock/A }\n"
+    '    業務B: { base_dir: /abs/B, success_exit_code: 3, env: { X: "y" } }\n',
+)
+
+
+def test_batch_groups_parsed_with_inheritance(tmp_path):
+    """batch.groups: base_dir 그룹 필수, env/success_exit_code는 비면 batch 전역 상속(B-Q2)."""
+    g = load_config(_write(tmp_path, _GROUPS_YAML)).batch.groups
+    assert set(g) == {"業務A", "業務B"}
+    assert g["業務A"].success_exit_code == 0                       # 상속(전역 0)
+    assert g["業務A"].env == {"POSTGRES_PASSWORD": "gpw"}          # 상속(전역 env)
+    assert g["業務A"].base_dir == (tmp_path / "mock/A").resolve()  # 상대→config 기준 절대화
+    assert g["業務B"].success_exit_code == 3                       # override
+    assert g["業務B"].env == {"X": "y"}                            # override
+    assert g["業務B"].base_dir == Path("/abs/B")                   # 절대경로 그대로
+
+
+def test_batch_groups_absent_is_empty(tmp_path):
+    """groups 미지정이면 빈 dict(하위호환)."""
+    assert load_config(_write(tmp_path, _FULL_YAML)).batch.groups == {}
+
+
+def test_batch_group_missing_base_dir_errors(tmp_path):
+    """그룹에 base_dir 없으면 ConfigError(base_dir만 그룹 필수)."""
+    bad = _GROUPS_YAML.replace("業務A: { base_dir: ./mock/A }", "業務A: { env: {} }")
+    with pytest.raises(ConfigError, match="base_dir"):
+        load_config(_write(tmp_path, bad))

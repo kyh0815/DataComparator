@@ -82,6 +82,7 @@ def preflight(
     needs_db = False
     for d in definitions:
         _check_shell_program(d, config, issues)
+        _check_shell_group(d, config, issues)
         _check_inputs(d, config, issues)
         _check_outputs(d, config, issues)
         needs_db = needs_db or _needs_db(d)
@@ -134,6 +135,43 @@ def _check_shell_program(d: ShellDefinition, config: Config, issues: list[Prefli
             issues.append(
                 PreflightIssue("error", d.test_id, f"setup ファイルがありません: {setup}")
             )
+
+
+def _check_shell_group(d: ShellDefinition, config: Config, issues: list[PreflightIssue]) -> None:
+    """shell_group 점검(B). 멤버십·모호성은 config만 보는 순수 검사(환경 무관, B-Q1),
+    셸 위치 대조만 FS 의존. ★runner는 group을 아직 소비하지 않음(실연결 보류) — 여긴 lint 전용.
+    """
+    groups = config.batch.groups
+    if d.shell_group:
+        # ① 멤버십(config-only): 선언한 업무가 config.batch.groups에 정의됐는가.
+        if d.shell_group not in groups:
+            issues.append(
+                PreflightIssue(
+                    "error", d.test_id,
+                    f"shell_group '{d.shell_group}' が config.batch.groups に定義されていません。",
+                )
+            )
+            return
+        # ② 셸 위치(FS): shell 実行ファイルが宣言された業務グループのディレクトリ配下にあるか.
+        base = Path(groups[d.shell_group].base_dir).resolve()
+        program = _resolve_relative(d.shell_program, config).resolve()
+        try:
+            program.relative_to(base)
+        except ValueError:
+            issues.append(
+                PreflightIssue(
+                    "warning", d.test_id,
+                    f"shell が業務グループ '{d.shell_group}' のディレクトリ({base})配下にありません: {program}",
+                )
+            )
+    elif len(groups) > 1:
+        # ③ 모호성(config-only): 그룹이 여러 개인데 태그가 비면 어느 업무인지 불명.
+        issues.append(
+            PreflightIssue(
+                "warning", d.test_id,
+                "shell_group が空ですが、batch.groups が複数定義されています（業務が不明確）。",
+            )
+        )
 
 
 def _check_inputs(d: ShellDefinition, config: Config, issues: list[PreflightIssue]) -> None:

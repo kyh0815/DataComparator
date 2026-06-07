@@ -215,3 +215,77 @@ def test_collects_all_problems_not_first(tmp_path):
     assert "shell 実行ファイルがありません" in msgs
     assert "has_header=false" in msgs
     assert len(r.errors) >= 4  # 첫 에러에서 멈췄다면 1건뿐이었을 것
+
+
+# --- B: shell_group lint(멤버십·모호성=config-only / 셸 위치=FS) -------------------
+
+from src.core.models import BatchGroup  # noqa: E402
+from src.core.preflight import _check_shell_group  # noqa: E402
+
+
+def _cfg_groups(tmp_path, groups):
+    cfg = _config(tmp_path)
+    cfg.batch.groups = groups
+    return cfg
+
+
+def _def_group(test_id, shell_group, shell_program):
+    return ShellDefinition(
+        test_id=test_id, test_name="t",
+        input_type="file", input_csv="in.csv",
+        output_type="file", expected_output_csv="exp.dat",
+        shell_program=shell_program, shell_group=shell_group,
+        inputs=[InputSpec(csv="in.csv", type="file")],
+        outputs=[OutputSpec(type="file", expected="exp.dat", file="out.dat")],
+    )
+
+
+def test_shell_group_undefined_is_error(tmp_path):
+    """선언한 shell_group이 batch.groups에 없으면 error(멤버십, config-only)."""
+    cfg = _cfg_groups(tmp_path, {"業務A": BatchGroup(base_dir=tmp_path / "A")})
+    issues = []
+    _check_shell_group(_def_group("001", "業務X", str(tmp_path / "A/ck.sh")), cfg, issues)
+    assert len(issues) == 1 and issues[0].level == "error"
+    assert "定義されていません" in issues[0].message
+
+
+def test_shell_group_empty_with_multiple_groups_warns(tmp_path):
+    """그룹이 여러 개인데 태그가 비면 모호 경고(config-only)."""
+    cfg = _cfg_groups(tmp_path, {
+        "業務A": BatchGroup(base_dir=tmp_path / "A"),
+        "業務B": BatchGroup(base_dir=tmp_path / "B"),
+    })
+    issues = []
+    _check_shell_group(_def_group("001", None, str(tmp_path / "x.sh")), cfg, issues)
+    assert len(issues) == 1 and issues[0].level == "warning"
+
+
+def test_shell_group_valid_under_group_dir_ok(tmp_path):
+    """유효 그룹 + 셸이 그 디렉토리 配下 → 이슈 없음."""
+    (tmp_path / "A").mkdir()
+    shell = tmp_path / "A/ck.sh"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    cfg = _cfg_groups(tmp_path, {"業務A": BatchGroup(base_dir=tmp_path / "A")})
+    issues = []
+    _check_shell_group(_def_group("001", "業務A", str(shell)), cfg, issues)
+    assert issues == []
+
+
+def test_shell_group_shell_outside_group_dir_warns(tmp_path):
+    """유효 그룹이지만 셸이 그 디렉토리 밖 → 위치 경고(FS)."""
+    (tmp_path / "A").mkdir()
+    shell = tmp_path / "elsewhere.sh"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    cfg = _cfg_groups(tmp_path, {"業務A": BatchGroup(base_dir=tmp_path / "A")})
+    issues = []
+    _check_shell_group(_def_group("001", "業務A", str(shell)), cfg, issues)
+    assert len(issues) == 1 and issues[0].level == "warning"
+    assert "配下にありません" in issues[0].message
+
+
+def test_shell_group_none_single_group_no_issue(tmp_path):
+    """그룹 1개 + 태그 없음 → 모호하지 않음(현행 동작, 하위호환)."""
+    cfg = _cfg_groups(tmp_path, {"業務A": BatchGroup(base_dir=tmp_path / "A")})
+    issues = []
+    _check_shell_group(_def_group("001", None, str(tmp_path / "x.sh")), cfg, issues)
+    assert issues == []

@@ -278,3 +278,21 @@ def test_invalid_compare_mode_raises(tmp_path):
     text = _P0.replace("mode: record", "mode: bogus")
     with pytest.raises(DefinitionError, match="compare.mode"):
         load_definitions(_write(tmp_path, text))
+
+
+# --- B: execution.shell_group(업무 그룹 태그, 선택) -------------------------------
+
+_WITH_GROUP = """
+tests:
+  - test_id: "001"
+    input:   { type: file, csv: 001.csv }
+    execution: { shell_program: stub_batch/run_batch_file.py, shell_group: 業務A }
+    output:  { type: file, file: 001.csv }
+    expected_output_csv: 001.csv
+"""
+
+
+def test_shell_group_parsed_optional(tmp_path):
+    """execution.shell_group을 ShellDefinition.shell_group으로 읽는다(B). 없으면 None(하위호환)."""
+    assert load_definitions(_write(tmp_path, _WITH_GROUP))[0].shell_group == "業務A"
+    assert load_definitions(_write(tmp_path, _VALID))[0].shell_group is None  # 미기재 → None

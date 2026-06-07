@@ -19,6 +19,8 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용):
   type       [필수] database | file  (입력/출력 데이터가 파일인지 DB인지)
   shell      [선택] 이 체크리스트에서 실행되는 배치(잡) 경로. 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
              (구형 호환: program)
+  shell_group[선택] 업무 그룹 태그(예: 업무A). **디렉토리 아님** — 경로·env는 config batch.groups가 듦(D-040).
+             체크리스트당 1값(행마다 다르면 에러). 비면 미사용(하위호환). ★lint(멤버십)는 preflight가 함.
   table      [입력/출력=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명(어디에 업로드/적재).
   file       [선택] 파일명. 비우면 자동 생성(아래 규칙). input=입력CSV / output(db)=export CSV / output(file)=산출 파일.
   expected   [선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.
@@ -125,13 +127,16 @@ def mapping_to_definition(csv_text: str) -> dict:
 
         sh = shells.get(sid)
         if sh is None:
-            sh = {"inputs": [], "outputs": [], "programs": set(),
+            sh = {"inputs": [], "outputs": [], "programs": set(), "groups": set(),
                   "test_name": "", "timeout": "", "setup": ""}
             shells[sid] = sh
             order.append(sid)
         prog = row.get("shell") or row.get("program")  # shell(실행 배치) 우선, 구형 program 호환
         if prog:
             sh["programs"].add(prog)
+        grp = row.get("shell_group")  # 업무 그룹 태그(체크리스트당 1값)
+        if grp:
+            sh["groups"].add(grp)
         if row.get("test_name") and not sh["test_name"]:
             sh["test_name"] = row["test_name"]
         if row.get("timeout") and not sh["timeout"]:
@@ -186,6 +191,8 @@ def mapping_to_definition(csv_text: str) -> dict:
             errors.append(f"[{sid}]: 出力（kind=output）が1件もありません。")
         if len(sh["programs"]) > 1:
             errors.append(f"[{sid}]: program が行ごとに異なります: {sorted(sh['programs'])}")
+        if len(sh["groups"]) > 1:
+            errors.append(f"[{sid}]: shell_group が行ごとに異なります: {sorted(sh['groups'])}")
         if sh["inputs"] and sh["outputs"]:
             _autofill_names(sid, sh)
 
@@ -271,6 +278,9 @@ def _emit_shell(sid: str, sh: dict) -> dict:
         execution["timeout"] = int(sh["timeout"])
     if sh.get("setup"):
         execution["setup"] = sh["setup"]
+    grp = next(iter(sh["groups"]), "")  # 업무 그룹 태그(있으면 운반; 일관성은 위에서 검증)
+    if grp:
+        execution["shell_group"] = grp
     entry["execution"] = execution
     entry["outputs"] = sh["outputs"]
     return entry

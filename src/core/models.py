@@ -132,6 +132,21 @@ DEFAULT_BATCH_ENV: dict[str, str] = {"POSTGRES_PASSWORD": "{db_password}"}
 
 
 @dataclass
+class BatchGroup:
+    """업무 그룹 1건의 배치 환경 (C6 batch_groups 확장, D-040). shell_group 값이 이 키로 풀린다.
+
+    매핑표는 '어느 업무'(shell_group 태그)만 들고, 디렉토리·env·종료코드는 여기(config)가 든다(2층 분리).
+    ★보류(runner 실연결): 이번 단계에선 **lint(그룹 멤버십·셸 위치 점검)만** 이 값을 읽고,
+    runner는 base_dir로 셸 경로를 해석하지 않는다(데모는 execution.shell_program 경로를 직접 실행).
+    실제 경로 해석/배치 실행 연결은 고객 폴더 실구조 확정 후 별도 Task(HANDOFF §8·MAPPING §8).
+    """
+
+    base_dir: Path  # 업무 디렉토리(그룹 필수). env/success_exit_code는 비면 batch 전역값 상속.
+    env: dict[str, str] = field(default_factory=dict)
+    success_exit_code: int = 0
+
+
+@dataclass
 class BatchConfig:
     """배치 실행 설정. 호출 계약(argv·env·종료코드)을 config로 외부화한다(C6).
 
@@ -147,6 +162,8 @@ class BatchConfig:
     env: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_BATCH_ENV))  # 추가 env(토큰값)
     success_exit_code: int = 0  # 이 코드만 성공. 그 외는 RunnerError(종료코드 의미 외부화)
     clean_flag: str | None = "--clean"  # 골든 생성(clean=True) 시 덧붙일 플래그. 미지원이면 None
+    # 업무별 배치 환경(키=shell_group 값). ★보류: lint만 사용, runner 미소비(BatchGroup 참조).
+    groups: dict[str, BatchGroup] = field(default_factory=dict)
 
 
 @dataclass
@@ -331,6 +348,7 @@ class ShellDefinition:
     shell_program: str  # 기동할 stub(=shell) 경로
     timeout_seconds: int = 60
     setup: str | None = None  # 입력 적재 전 1회 실행할 준비 SQL(.sql)/스크립트 경로(선택). P0 신규
+    shell_group: str | None = None  # 업무 그룹 태그(선택, B). config.batch.groups의 키. 비면 None(하위호환)
     input_table: str | None = None  # 하위호환: inputs[0].table
     input_dest_dir: str | None = None  # 하위호환: inputs[0].dest_dir
     output_table: str | None = None  # output_type == database (결과 테이블)
