@@ -1,0 +1,387 @@
+tests:
+- test_id: CK001
+  test_name: 顧客残高マスタ日次更新
+  input:
+    tables:
+    - csv: ck001_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck001.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck001_zandaka.csv
+    file: ck001_zandaka.csv
+    name: 顧客残高
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      mask: KOSHIN_NICHIJI
+      normalize: SHITEN_CD:zeropad:4;ZANDAKA:num:2;KISAN_YMD:date;BIKO:nullblank
+      has_header: true
+- test_id: CK002
+  test_name: 取引明細集計(多重入力)
+  input:
+    tables:
+    - csv: ck002_in1.csv
+      type: file
+    - csv: ck002_in2.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck002.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck002_shukei.csv
+    file: ck002_shukei.csv
+    name: 集計
+    compare:
+      mode: record
+      key: TX_ID
+      encoding: shift_jis
+      normalize: KINGAKU:num:0
+      has_header: true
+- test_id: CK003
+  test_name: 残高検証
+  input:
+    tables:
+    - csv: ck003_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck003.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck003_kensho.csv
+    file: ck003_kensho.csv
+    name: 残高検証
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: ZANDAKA:num:2
+      has_header: true
+- test_id: CK004
+  test_name: 帳票完全一致
+  input:
+    tables:
+    - csv: ck004_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck004.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck004_chohyo.txt
+    file: ck004_chohyo.txt
+    name: 帳票
+    compare:
+      mode: byte
+- test_id: CK005
+  test_name: 請求書byte
+  input:
+    tables:
+    - csv: ck005_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck005.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck005_seikyu.txt
+    file: ck005_seikyu.txt
+    name: 請求書
+    compare:
+      mode: byte
+- test_id: CK006
+  test_name: 口座一覧text
+  input:
+    tables:
+    - csv: ck006_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck006.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck006_kouza.txt
+    file: ck006_kouza.txt
+    name: 口座一覧
+    compare:
+      mode: text
+      encoding: shift_jis
+- test_id: CK007
+  test_name: 金利マスタ
+  input:
+    tables:
+    - csv: ck007_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck007.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck007_kinri.csv
+    file: ck007_kinri.csv
+    name: 金利
+    compare:
+      mode: record
+      key: CODE
+      encoding: shift_jis
+      normalize: RATE:num:4
+      has_header: true
+- test_id: CK008
+  test_name: 手数料マスタ
+  input:
+    tables:
+    - csv: ck008_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck008.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck008_tesuryo.csv
+    file: ck008_tesuryo.csv
+    name: 手数料
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: TESU_CD:zeropad:5
+      has_header: true
+- test_id: CK009
+  test_name: 顧客属性
+  input:
+    tables:
+    - csv: ck009_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck009.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck009_zokusei.csv
+    file: ck009_zokusei.csv
+    name: 属性
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: BIKO:nullblank
+      has_header: true
+- test_id: CK010
+  test_name: 支店マスタ
+  input:
+    tables:
+    - csv: ck010_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck010.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck010_shiten.csv
+    file: ck010_shiten.csv
+    name: 支店
+    compare:
+      mode: record
+      key: SHITEN_CD
+      encoding: shift_jis
+      has_header: true
+- test_id: CK011
+  test_name: 残高SAM(固定長)
+  input:
+    tables:
+    - csv: ck011_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck011.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck011_zandaka.dat
+    file: ck011_zandaka.dat
+    name: 残高SAM
+    compare:
+      mode: byte
+      layout: 0:6;6:22;22:30
+- test_id: CK012
+  test_name: 金利SAM(固定長)
+  input:
+    tables:
+    - csv: ck012_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck012.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck012_kinri.dat
+    file: ck012_kinri.dat
+    name: 金利SAM
+    compare:
+      mode: byte
+      layout: 0:2;2:8
+- test_id: CK013
+  test_name: 売上(MISSING_TOBE)
+  input:
+    tables:
+    - csv: ck013_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck013.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck013_uriage.csv
+    file: ck013_uriage.csv
+    name: 売上
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+- test_id: CK014
+  test_name: 実行ログtext
+  input:
+    tables:
+    - csv: ck014_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck014.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck014_log.txt
+    file: ck014_log.txt
+    name: ログ
+    compare:
+      mode: text
+      encoding: shift_jis
+- test_id: CK015
+  test_name: 共有셸A
+  input:
+    tables:
+    - csv: ck015_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck015_a.csv
+    file: ck015_a.csv
+    name: 共有A
+    compare:
+      mode: record
+      key: ID
+      encoding: shift_jis
+      has_header: true
+- test_id: CK016
+  test_name: 共有셸B
+  input:
+    tables:
+    - csv: ck016_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck016_b.txt
+    file: ck016_b.txt
+    name: 共有B
+    compare:
+      mode: byte
+- test_id: CK017
+  test_name: 手数料zeropad
+  input:
+    tables:
+    - csv: ck017_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck017.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck017_tesu.csv
+    file: ck017_tesu.csv
+    name: 手数料
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: TESU_CD:zeropad:4
+      has_header: true
+- test_id: CK018
+  test_name: 月次レポートbyte
+  input:
+    tables:
+    - csv: ck018_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck018.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck018_rep.txt
+    file: ck018_rep.txt
+    name: レポート
+    compare:
+      mode: byte
+- test_id: CK019
+  test_name: 日次取引明細(DB単一出力)
+  input:
+    tables:
+    - csv: ck019_in.csv
+      type: database
+      table: transaction_log
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck019_db.sh
+    shell_group: 業務C
+  outputs:
+  - type: database
+    expected: ck019_meisai.csv
+    table: tobe_result
+    export_as: ck019_meisai.csv
+    name: 取引明細
+    compare:
+      mode: record
+      key: tx_id
+      encoding: shift_jis
+      has_header: true
+- test_id: CK020
+  test_name: 日次決済(多重入力→ファイル+DB)
+  input:
+    tables:
+    - csv: ck020_tx.csv
+      type: database
+      table: rt_transaction
+    - csv: ck020_cust.csv
+      type: database
+      table: rt_customer
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck020_db.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck020_meisai.csv
+    file: ck020_meisai.csv
+    name: 明細
+    compare:
+      mode: record
+      key: tx_id
+      encoding: shift_jis
+      has_header: true
+  - type: database
+    expected: ck020_shukei.csv
+    table: rt_summary
+    export_as: ck020_shukei.csv
+    name: 集計
+    compare:
+      mode: record
+      key: customer_id
+      encoding: shift_jis
+      has_header: true

@@ -1,0 +1,3 @@
+customer_id,name,kana,birth_date,branch_code,account_type,balance,opened_date
+C0001,田中太郎,タナカタロウ,1980-04-15,101,普通,1500000,2015-06-01
+C0002,鈴木花子,スズキハナコ,1985-08-20,101,普通,800000,2016-03-01

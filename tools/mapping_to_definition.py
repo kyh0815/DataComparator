@@ -96,6 +96,7 @@ def mapping_to_definition(csv_text: str) -> dict:
     shells는 [{test_id, input_count, output_count}]. errors는 사람용 메시지(행 번호 포함) 목록.
     빈 파일명은 _autofill_names가 규칙으로 채운다(내용은 수기, 파일명은 규칙 — D-035).
     """
+    csv_text = _strip_leading_comments(csv_text)  # 선두 #주석/공백 줄 허용(SAMPLE 경고 헤더 등)
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:
         return _fail(["CSVが空です（ヘッダー行が必要）。"])
@@ -132,6 +133,12 @@ def mapping_to_definition(csv_text: str) -> dict:
             shells[sid] = sh
             order.append(sid)
         prog = row.get("shell") or row.get("program")  # shell(실행 배치) 우선, 구형 program 호환
+        if prog and ";" in prog:  # 1:N 셸 시퀀스(실행 보류) — 형식만 거부, CSV 좌표로(Q1=a)
+            errors.append(
+                f"{n}行目[{sid}]: shell に ';'(シーケンス)が含まれます — 1:N順次実行は未対応"
+                f"(実連携後に対応予定)。単一シェルで記入してください。"
+            )
+            continue
         if prog:
             sh["programs"].add(prog)
         grp = row.get("shell_group")  # 업무 그룹 태그(체크리스트당 1값)
@@ -304,6 +311,18 @@ def _pad(value: str) -> str:
     """test_id 3자리 zero-pad(로더와 동일 규칙). 비숫자는 그대로."""
     t = str(value).strip()
     return t.zfill(3) if t.isdigit() else t
+
+
+def _strip_leading_comments(text: str) -> str:
+    """선두의 빈 줄·'#' 주석 줄을 제거한다(헤더 행 앞 SAMPLE 경고 등 허용).
+
+    데이터 행은 '#'로 시작하지 않으므로(checklist 값) 선두만 본다 — 본문 영향 없음(하위호환).
+    """
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    return "\n".join(lines[i:])
 
 
 def _fail(errors: list[str]) -> dict:

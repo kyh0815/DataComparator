@@ -295,3 +295,32 @@ def test_shell_group_absent_is_backward_compatible(tmp_path):
     p = tmp_path / "def.yaml"
     p.write_text(r["yaml"], encoding="utf-8")
     assert load_definitions(p)[0].shell_group is None
+
+
+# --- A: 1:N 셸 시퀀스(`;`) 거부 lint + #주석 헤더 허용 ------------------------------
+
+
+def test_shell_semicolon_sequence_rejected():
+    """shell 칸에 ';'(1:N 시퀀스)면 CSV 좌표 에러로 거부(실연결 보류, Q1=a). 실행 아님."""
+    csv = (
+        "checklist,kind,type,shell,file,expected\n"
+        "010,input,file,a.sh;b.sh,in.csv,\n"
+        "010,output,file,,out.dat,gold.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert not r["ok"]
+    assert any("行目" in e and "シーケンス" in e and "未対応" in e for e in r["errors"])
+
+
+def test_leading_comment_lines_skipped():
+    """선두 '#' 주석 줄(SAMPLE 경고 헤더)은 건너뛰고 그 다음을 헤더로 파싱."""
+    csv = (
+        "# SAMPLE — 실데이터 아님. normalize/mask는 형식 예시일 뿐.\n"
+        "#\n"
+        "checklist,kind,type,file,expected\n"
+        "001,input,file,in.csv,\n"
+        "001,output,file,out.dat,gold.dat\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    assert r["count"] == 1
