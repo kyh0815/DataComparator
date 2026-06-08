@@ -85,9 +85,6 @@
     color:var(--ink); cursor:pointer; user-select:none; margin-bottom:2px; }
   .proj-item:hover { background:var(--c-surface-2); }
   .proj-item.active { background:var(--c-selected); font-weight:600; }
-  .proj-item .proj-ic { width:18px; height:18px; flex-shrink:0; border-radius:5px; background:var(--c-surface-2);
-    border:1px solid var(--c-border-strong); display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted); }
-  .proj-item.active .proj-ic { background:var(--c-primary); border-color:var(--c-primary); color:#fff; }
   .proj-item .proj-nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* 하단 프로필 */
   .side-foot { padding:12px 14px; border-top:1px solid var(--line); }
@@ -626,7 +623,7 @@ function renderProjects(){
     it.className="proj-item"+(o.value===sel.value?" active":"");
     it.title=o.textContent;
     const nm=o.textContent.split("（")[0].split("(")[0].trim();
-    it.innerHTML=`<span class="proj-ic">▣</span><span class="proj-nm">${escapeHtml(nm)}</span>`;
+    it.innerHTML=`<span class="proj-nm">${escapeHtml(nm)}</span>`;
     it.addEventListener("click", ()=>{ if(sel.value!==o.value){ sel.value=o.value; renderProjects(); sel.dispatchEvent(new Event('change')); } });
     c.appendChild(it);
   });
