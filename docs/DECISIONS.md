@@ -750,3 +750,25 @@ Log viewer / Project Settings)]** 구조와 **녹색(틸/그린) 디자인**을 
 
 **이유**: 같은 제품라인이되 Compare가 색으로 구분되는 형제 관계. 색은 스크린샷·정식 가이드 확보 후
 정해야 추측 토큰 매몰을 피한다. 지금은 "녹색 아님 + Compare 한정"만 확정, 구체 값은 보류.
+
+## D-044. UI 셸 재구성 착수 — ModernizePro Compare(그래파이트 + 형제 셸)
+
+**배경**: 형제 제품 ModernizePro 스크린샷 확보(`ui_screenshot/` 5장) → D-043 보류 조건("스크린샷 확보 후") 충족.
+형제는 **틸/그린**, 2계층(사이트=프로젝트목록 사이드바+탭 / 프로젝트=Dashboard·Mapping·Versions·Execution·
+Artifacts·Log viewer·Project Settings).
+
+**결정**(사용자): GUI를 형제 셸(상단 앱바 + 좌측 사이드바 + 상단 탭)로 재구성. 주색 = **그래파이트(딥 그레이)** —
+형제와 **색으로 구분**, 비활성처럼 안 보이게 **솔리드 딥**(검정 버튼처럼), **추후 변경 가능**(임시 확정).
+`DESIGN_TOKENS.md` 재작성 완료(그래파이트 토큰·셸 레이아웃·컴포넌트·커스텀 드롭다운).
+- **범위**: 현재 기능을 새 탭으로 **이식** + **디렉토리(paths) 편집·저장 신규**만(그 외 신기능 X).
+- **드롭다운**: 시스템 `<select>` → **커스텀(프로그램다운) UI**로 교체.
+- 탭 매핑: Mapping(정의/매핑표)·Execution(실행+모니터)·Artifacts(試験成績書/리포트)·Quarantine(NG/MISSING 상세)·
+  Project Settings(DB접속+디렉토리). 멀티프로젝트·Versions/Log/Scheduler/Approvals는 **후순위/보류**.
+- **불변**: 화면만(코어·comparator·스키마 무수정), **270 녹색 유지**, task 단위·각 task 끝 커밋.
+- **D-043(보류)·D-043 보정(주색 미정) supersede**: 스크린샷 확보 + 주색=그래파이트로 확정.
+
+**Task 분할**: G1 토큰(✅완료) → G2 셸 골격 → G3 Execution → G4 Mapping → G5 Artifacts+Quarantine →
+G6 Project Settings(paths/DB) → G7 시각 디테일. G8(멀티프로젝트 등) 보류.
+
+**이유**: 스크린샷 확보로 추측 매몰 위험 소멸(D-043 조건). 그래파이트는 형제 팔레트(주황·연초록·파랑·보라·틸)와
+충돌 0 + 무채 셸이라 상태색(OK/NG/MISSING)이 또렷이 튐 = 검증툴에 적합.
