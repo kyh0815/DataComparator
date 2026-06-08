@@ -600,6 +600,9 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+/* 활성 config(=선택된 프로젝트)를 읽는 단일 accessor. 서버 _active_config()와 짝.
+   config을 읽는 모든 곳이 여기로 모인다 — 멀티프로젝트 확장 시 이 함수만 바꾼다(B 확장 지점). */
+const activeConfig = () => activeConfig();
 function scrollToEl(id, block){ const el=$(id); if(el) el.scrollIntoView({behavior:"smooth", block:block||"start"}); }
 const STEP_ORDER = ["load","run","compare"];
 let verboseFlag = false;
@@ -688,7 +691,7 @@ function connForm(){
   fd.append("user",$("c-user").value);
   fd.append("password_env",$("c-pwenv").value);
   fd.append("encoding",$("c-encoding").value);
-  fd.append("config",$("config").value);
+  fd.append("config",activeConfig());
   return fd;
 }
 function escapeHtml(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -766,7 +769,7 @@ $("c-save").addEventListener("click", async (ev) => {
 
 async function refreshDefPreview(){
   try{
-    const r=await (await fetch("/definition/preview?config="+encodeURIComponent($("config").value))).json();
+    const r=await (await fetch("/definition/preview?config="+encodeURIComponent(activeConfig()))).json();
     DEF.ok=r.ok; DEF.message=r.message;
     const pv=$("def-preview"); if(!pv) return;
     if (r.ok){ pv.style.display="none"; }
@@ -776,10 +779,10 @@ async function refreshDefPreview(){
 
 /* ───────── ディレクトリ設定（paths 編集・保存 / 신규 G6） ───────── */
 const PATH_FIELDS={ "p-asis-in":"asis_input_dir","p-asis-out":"asis_output_dir","p-tobe-in":"tobe_input_dir","p-tobe-out":"tobe_output_dir","p-report":"report_dir","p-def":"definition_file" };
-function pathsForm(){ const fd=new FormData(); fd.append("config",$("config").value); for(const id in PATH_FIELDS) fd.append(PATH_FIELDS[id],$(id).value); return fd; }
+function pathsForm(){ const fd=new FormData(); fd.append("config",activeConfig()); for(const id in PATH_FIELDS) fd.append(PATH_FIELDS[id],$(id).value); return fd; }
 async function refreshPaths(){
   try{
-    const r=await (await fetch("/paths?config="+encodeURIComponent($("config").value))).json();
+    const r=await (await fetch("/paths?config="+encodeURIComponent(activeConfig()))).json();
     for(const id in PATH_FIELDS){ const v=r[PATH_FIELDS[id]]; if(v!==undefined) $(id).value=v; }
   }catch(e){ /* 補助情報 */ }
 }
@@ -814,13 +817,13 @@ function collectGroups(){
   });
 }
 async function refreshGroups(){
-  try{ renderGroups(await (await fetch("/groups?config="+encodeURIComponent($("config").value))).json()); }catch(e){}
+  try{ renderGroups(await (await fetch("/groups?config="+encodeURIComponent(activeConfig()))).json()); }catch(e){}
 }
 $("g-add").addEventListener("click", ()=> $("groups-list").appendChild(groupCard()));
 $("g-save").addEventListener("click", async (ev)=>{
   ev.preventDefault(); const b=$("g-save"); b.disabled=true; const old=b.textContent; b.textContent="保存中…";
   try{
-    const fd=new FormData(); fd.append("config",$("config").value); fd.append("groups", JSON.stringify(collectGroups()));
+    const fd=new FormData(); fd.append("config",activeConfig()); fd.append("groups", JSON.stringify(collectGroups()));
     const r=await (await fetch("/groups/save",{method:"POST",body:fd})).json();
     toast("g-toast", r.message, !!r.ok); if(r.ok) refreshDefPreview();
   }catch(e){ toast("g-toast","通信エラー: "+e,false); }
@@ -844,7 +847,7 @@ async function applyDefinition(){
       res.innerHTML=`<div class="errbox">定義を作成できませんでした（1行でも不備があれば全体を拒否します）：<ul>${items}</ul></div>`;
       return;
     }
-    const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", $("config").value);
+    const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", activeConfig());
     const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
     if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
     const chips=(gen.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
@@ -876,7 +879,7 @@ function setRunGate(){
 $("preflight").addEventListener("click", async () => {
   const btn=$("preflight"); btn.disabled=true; const old=btn.textContent; btn.textContent="点検中…";
   try {
-    const d=await (await fetch("/preflight?config="+encodeURIComponent($("config").value))).json();
+    const d=await (await fetch("/preflight?config="+encodeURIComponent(activeConfig()))).json();
     renderPreflight(d);
     preflightOK = !!d.ok;
     setRunGate();
@@ -1127,12 +1130,12 @@ function finishRun(){ if(es){ es.close(); es=null; } $("live").classList.remove(
 function startRun(){
   if (running || !preflightOK) return;
   reset(); setRunning(true);
-  verboseFlag=$("verbose").checked; lastConfig=$("config").value; saveLocal();
+  verboseFlag=$("verbose").checked; lastConfig=activeConfig(); saveLocal();
   markStepDone("step-run", "▶ 実行しました"); setStepDone("step-run", false);
   setStepSummary("step-result", "実行中…"); setStepDone("step-result", false);
   $("results-wrap").classList.add("show"); $("live").classList.add("show");
   const params=new URLSearchParams();
-  params.set("config",$("config").value);
+  params.set("config",activeConfig());
   if ($("shells").value.trim()) params.set("shells",$("shells").value.trim());
   es=new EventSource("/run?"+params.toString());
   es.onmessage=(e)=>{ const m=JSON.parse(e.data); if(m.type==="done") finishRun(); else handleMsg(m); };
@@ -1150,7 +1153,7 @@ $("rerun-ng").addEventListener("click", () => {
 });
 
 $("evidence").addEventListener("click", () => {
-  window.location="/evidence?config="+encodeURIComponent($("config").value);
+  window.location="/evidence?config="+encodeURIComponent(activeConfig());
 });
 
 /* 環境(설정파일) 전환 — 選択 config の定義を読み直し、②ゲートを初期化。 */

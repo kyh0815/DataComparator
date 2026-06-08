@@ -52,6 +52,16 @@ app = Flask(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXAMPLE_CONFIG = str(_REPO_ROOT / "config.yaml.example")
+_DEFAULT_CONFIG = "./config.yaml"
+
+
+def _active_config() -> str:
+    """현재 활성 config 경로를 고르는 단일 진입점(GET args·POST form 모두 수용).
+
+    config 선택이 여기 한 곳에 모인다 — 멀티프로젝트(여러 config 스캔·전환)로 확장할 땐
+    이 함수만 바꾼다(B 확장 지점). 지금은 단일 config만 본다.
+    """
+    return request.values.get("config") or _DEFAULT_CONFIG
 
 # 동시 실행 1건 제한. 해제는 스트림 제너레이터의 finally에서.
 _run_lock = threading.Lock()
@@ -60,7 +70,7 @@ _run_lock = threading.Lock()
 @app.route("/")
 def index():
     """단일 페이지. 접속 초기값(비번 제외) + config 정의 파일 미리보기(N셸·셸별 I/O)를 폼에 내린다."""
-    config_path = "./config.yaml"
+    config_path = _DEFAULT_CONFIG
     conn = _connection_defaults(config_path)
     definition = _definition_preview(config_path)
     # 설정 영역은 정의 미리보기에 실패(config·정의 미비)했을 때만 펼쳐 보여준다(초기 준비 유도).
@@ -97,7 +107,7 @@ def connection_test():
 def connection_save():
     """DB 접속·인코딩만 config.yaml에 원자적 저장(+.bak). 비밀번호는 저장하지 않는다(모델 A)."""
     f = request.form
-    config_path = f.get("config") or "./config.yaml"
+    config_path = _active_config()
     try:
         path = connection.save_connection(
             config_path,
@@ -119,14 +129,14 @@ def connection_save():
 @app.route("/paths")
 def paths_get():
     """선택 config의 paths(디렉토리·정의파일)를 폼 갱신용으로 돌려준다(읽기전용)."""
-    return jsonify(_paths_defaults(request.args.get("config") or "./config.yaml"))
+    return jsonify(_paths_defaults(_active_config()))
 
 
 @app.route("/paths/save", methods=["POST"])
 def paths_save():
     """paths(디렉토리·정의파일 경로)만 config.yaml에 원자적 저장(+.bak). 폴더 존재 검증은 事前点検."""
     f = request.form
-    config_path = f.get("config") or "./config.yaml"
+    config_path = _active_config()
     try:
         path = connection.save_paths(
             config_path,
@@ -145,14 +155,14 @@ def paths_save():
 @app.route("/groups")
 def groups_get():
     """선택 config의 batch.groups(업무별 디렉토리)를 폼 갱신용 리스트로 돌려준다(읽기전용, D-045)."""
-    return jsonify(_groups_defaults(request.args.get("config") or "./config.yaml"))
+    return jsonify(_groups_defaults(_active_config()))
 
 
 @app.route("/groups/save", methods=["POST"])
 def groups_save():
     """batch.groups(업무별 디렉토리)만 config.yaml에 원자적 저장(+.bak, D-045). 폴더 존재 검증은 事前点検."""
     f = request.form
-    config_path = f.get("config") or "./config.yaml"
+    config_path = _active_config()
     try:
         groups = json.loads(f.get("groups") or "[]")
     except (ValueError, TypeError):
@@ -167,7 +177,7 @@ def groups_save():
 @app.route("/definition/preview")
 def definition_preview():
     """현재 config가 가리키는 정의 파일을 다시 요약해 돌려준다(저장/변경 후 갱신용, 읽기전용)."""
-    config_path = request.args.get("config") or "./config.yaml"
+    config_path = _active_config()
     return jsonify(_definition_preview(config_path))
 
 
@@ -180,7 +190,7 @@ def run():
 
     쿼리: config(설정 경로), shells(범위/ID, 선택).
     """
-    config_path = request.args.get("config") or "./config.yaml"
+    config_path = _active_config()
     shells = request.args.get("shells") or None
 
     def stream():
@@ -226,7 +236,7 @@ def preflight_check():
 
     쿼리: config(설정 경로). ok=false면 화면이 실행을 막는다(에러가 있으면).
     """
-    config_path = request.args.get("config") or "./config.yaml"
+    config_path = _active_config()
     try:
         report = preflight(load_config(config_path))
     except Exception as exc:  # noqa: BLE001 — 설정 로드 실패도 화면 메시지로
@@ -242,7 +252,7 @@ def preflight_check():
 @app.route("/evidence")
 def evidence():
     """C4 試験成績書(Excel) 다운로드 — 체크포인트 머지 최신 상태 + 정의(계획) 기준."""
-    config_path = request.args.get("config") or "./config.yaml"
+    config_path = _active_config()
     try:
         config = load_config(config_path)
         if config.definition_file is None:
@@ -262,7 +272,7 @@ def evidence():
 @app.route("/define")
 def define():
     """별도 화면: 매핑표(CSV) → 정의 yaml 생성 + 체크리스트 → 기입 템플릿(설치 준비)."""
-    return render_template("define.html", default_config="./config.yaml")
+    return render_template("define.html", default_config=_DEFAULT_CONFIG)
 
 
 @app.route("/definition/from-csv", methods=["POST"])
@@ -293,7 +303,7 @@ def definition_sample_csv():
 def definition_save():
     """생성된 정의 yaml을 config의 definition_file 경로에 저장한다(다음 단계: 그대로 検証実行)."""
     yaml_text = request.form.get("yaml", "")
-    config_path = request.form.get("config") or "./config.yaml"
+    config_path = _active_config()
     if not yaml_text.strip():
         return jsonify({"ok": False, "message": "保存する定義がありません（先に生成してください）。"})
     try:
@@ -312,7 +322,7 @@ def definition_save():
 @app.route("/report/<name>")
 def report(name: str):
     """리포트 CSV 다운로드. secure_filename + report_dir 하위 제한으로 traversal 차단."""
-    config = load_config(request.args.get("config") or "./config.yaml")
+    config = load_config(_active_config())
     base = config.report_dir.resolve()
     target = (base / secure_filename(name)).resolve()
     # 정규화 후에도 report_dir 하위인지 재확인(이중 가드).
