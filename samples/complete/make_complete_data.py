@@ -30,7 +30,8 @@ _HERE = Path(__file__).resolve().parent
 RECORD = "record"  # CSV(헤더 有) — record/byte 비교
 RAW = "raw"        # 원문 그대로 — byte/text 비교
 SAM = "sam"        # 고정길이(헤더 無) 순차 — byte 통짜(layout은 시연 표기, D-039/D-047)
-VSAM = "vsam"      # 고정길이(헤더 無) 키순저장 — record+layout+key 정렬·정합(D-047). 골든=키순, To-Be=물리 셔플
+VSAM = "vsam"      # 고정길이(헤더 無) KSDS 키순저장 가정 — record+layout+key 정렬·정합(D-047). 골든=키순, To-Be=물리 셔플
+                   # ★ESDS(입력순)는 byte로 충분·RRDS는 번호순 — 3종 분기는 실데이터 후(record+key는 ESDS에도 틀리지 않음)
 MISSING = "missing"  # tobe_src 없음 + 무출력 셸 → MISSING_TOBE
 
 

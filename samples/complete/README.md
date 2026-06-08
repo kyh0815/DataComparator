@@ -63,9 +63,12 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 | 022 | B | **VSAM** record+key | type=vsam → 셔플+金額 실차이를 key로 짝지어 **NG** 검출 |
 
 > **★VSAM(CK021/022)은 "가정 모양" 데모다.** 코드변환은 형식 보존이라 VSAM은 VSAM(고정길이)으로 온다.
-> VSAM은 insert 시 **키순 정렬 저장** → 물리 행순서가 As-Is와 달라 순서/byte 비교는 false-NG → **key 정렬·정합 필수**.
+> **현재 VSAM→record+layout+key는 KSDS(키순 저장) 가정**이다 — KSDS는 키순 저장이라 물리 행순서가 As-Is/To-Be 간
+> 어긋날 수 있어(특히 To-Be가 RDB면 ORDER BY 없이는 순서 비보장) byte/순서 비교는 false-NG → **key 정렬·정합 필수**.
+> VSAM 다른 종류: **ESDS(입력순)는 byte로 충분, RRDS는 번호순**. 실무 업무배치는 대부분 KSDS라 record+key가 안전한
+> 기본값이고, record+key는 ESDS에도 틀리지 않는다(불필요 정렬일 뿐) → **지금 3종 분기 구현 안 함**(실데이터에 ESDS/RRDS 실재 시 type 분기, D-047 deferred).
 > 데모 stub은 "SAM과 동일 고정길이 + 키순"이라는 가정으로 layout(0:6;6:14)·key(ID 인덱스0)를 둔 것이며,
-> **실제 고객 VSAM의 layout 바이트위치·key 컬럼은 실 SAM/VSAM 1건 입수 후 검증**한다(D-047). 021=순서흡수 OK, 022=값차 NG로 양방향(정렬이 가리지 않음) 증명.
+> **실제 고객 VSAM의 layout 바이트위치·key 컬럼·key 유일성은 실 SAM/VSAM 1건 입수 후 검증**한다(D-047). 021=순서흡수 OK, 022=값차 NG로 양방향(정렬이 가리지 않음) 증명.
 
 > **1:N(shell `;`)**: 미지원(실연결 보류) → mapping_to_definition이 거부(테스트 `test_shell_semicolon_sequence_rejected`).
 > 데모셋에 실행 CK로 넣지 않는다(green run 보존).
