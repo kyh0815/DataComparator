@@ -12,7 +12,8 @@
 <style>
   :root {
     /* ===== DESIGN_TOKENS.md 정본(D-044 그래파이트) — 전 화면이 이 변수만 참조. 주색 변경은 여기 한 곳 ===== */
-    --c-topbar:#0F172A; --c-topbar-fg:#E2E8F0;
+    --c-topbar:#0F172A; --c-topbar-fg:#E2E8F0; --c-topbar-mut:#94A3B8; --c-topbar-line:#334155;
+    --c-selected:#F1F5F9;
     --c-primary:#1E293B; --c-primary-fg:#FFFFFF; --c-accent:#334155;
     --c-text:#0F172A; --c-text-mut:#64748B; --c-text-faint:#94A3B8;
     --c-surface:#FFFFFF; --c-surface-2:#F1F5F9;
@@ -53,8 +54,8 @@
     display:flex; align-items:center; gap:12px; padding:0 16px; z-index:30; }
   .topbar .brand { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; letter-spacing:.2px; color:#fff; }
   .topbar .brand .glyph { width:18px; height:18px; border-radius:5px; background:linear-gradient(135deg,#475569,#94A3B8); display:inline-block; }
-  .topbar .ctx { font-size:12.5px; color:#94A3B8; display:flex; align-items:center; gap:8px; }
-  .topbar .ctx::before { content:""; width:1px; height:16px; background:#334155; display:inline-block; margin-right:4px; }
+  .topbar .ctx { font-size:12.5px; color:var(--c-topbar-mut); display:flex; align-items:center; gap:8px; }
+  .topbar .ctx::before { content:""; width:1px; height:16px; background:var(--c-topbar-line); display:inline-block; margin-right:4px; }
   .topbar .spacer { margin-left:auto; }
 
   .body { flex:1; display:flex; min-height:0; }
