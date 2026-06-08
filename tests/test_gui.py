@@ -361,6 +361,44 @@ def test_paths_get_returns_current_paths(client, tmp_path):
     assert r["asis_input_dir"] == "./aa" and r["definition_file"] == "./dd.yaml"
 
 
+def test_groups_save_writes_batch_groups(client, tmp_path):
+    """業務別ディレクトリ 저장(D-045): batch.groups만 갱신, name·base_dir 필수, 기존 키·다른 블록 보존."""
+    import json
+    import yaml
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "paths: { asis_input_dir: ./a, asis_output_dir: ./b, tobe_output_dir: ./c, report_dir: ./r, definition_file: ./d.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u }\n"
+        "batch: { type: stub, groups: { 業務A: { base_dir: /old/A, success_exit_code: 3 } } }\n",
+        encoding="utf-8",
+    )
+    groups = [
+        {"name": "業務A", "base_dir": "/new/A", "asis_input_dir": "/data/A/in"},
+        {"name": "", "base_dir": "x"},        # name 없음 → 스킵
+        {"name": "業務B", "base_dir": ""},      # base_dir 없음 → 스킵
+    ]
+    r = client.post("/groups/save", data={"config": str(cfgp), "groups": json.dumps(groups)}).get_json()
+    assert r["ok"]
+    saved = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    assert set(saved["batch"]["groups"]) == {"業務A"}                # name·base_dir 없으면 스킵
+    assert saved["batch"]["groups"]["業務A"]["base_dir"] == "/new/A"  # 갱신
+    assert saved["batch"]["groups"]["業務A"]["asis_input_dir"] == "/data/A/in"
+    assert saved["batch"]["groups"]["業務A"]["success_exit_code"] == 3  # 기존 키 보존
+    assert saved["batch"]["type"] == "stub" and "database" in saved     # 다른 블록 보존
+
+
+def test_groups_get_returns_list(client, tmp_path):
+    """/groups는 batch.groups를 폼용 리스트로 돌려준다(D-045)."""
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "database: { host: h, port: 1, dbname: d, user: u }\n"
+        "batch: { type: stub, groups: { 業務A: { base_dir: /A, asis_input_dir: /A/in } } }\n",
+        encoding="utf-8",
+    )
+    r = client.get("/groups?config=" + str(cfgp)).get_json()
+    assert r[0]["name"] == "業務A" and r[0]["asis_input_dir"] == "/A/in"
+
+
 # --- C3/C4: /preflight · /evidence 엔드포인트 -----------------------------------
 
 

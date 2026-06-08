@@ -70,6 +70,7 @@ def index():
         default_config=config_path,
         conn=conn,
         paths=_paths_defaults(config_path),
+        groups=_groups_defaults(config_path),
         definition=definition,
         settings_open=settings_open,
     )
@@ -139,6 +140,28 @@ def paths_save():
     except Exception as exc:  # noqa: BLE001
         return jsonify(ok=False, message=f"保存に失敗しました: {exc}"), 400
     return jsonify(ok=True, message=f"ディレクトリ設定を保存しました: {path.name}")
+
+
+@app.route("/groups")
+def groups_get():
+    """선택 config의 batch.groups(업무별 디렉토리)를 폼 갱신용 리스트로 돌려준다(읽기전용, D-045)."""
+    return jsonify(_groups_defaults(request.args.get("config") or "./config.yaml"))
+
+
+@app.route("/groups/save", methods=["POST"])
+def groups_save():
+    """batch.groups(업무별 디렉토리)만 config.yaml에 원자적 저장(+.bak, D-045). 폴더 존재 검증은 事前点検."""
+    f = request.form
+    config_path = f.get("config") or "./config.yaml"
+    try:
+        groups = json.loads(f.get("groups") or "[]")
+    except (ValueError, TypeError):
+        return jsonify(ok=False, message="業務リストの形式が不正です。"), 400
+    try:
+        path = connection.save_groups(config_path, groups)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify(ok=False, message=f"保存に失敗しました: {exc}"), 400
+    return jsonify(ok=True, message=f"業務別ディレクトリを保存しました: {path.name}")
 
 
 @app.route("/definition/preview")
@@ -347,6 +370,28 @@ def _paths_defaults(config_path: str) -> dict:
         if isinstance(pa, dict) and pa:
             return {k: str(pa.get(k, "") or "") for k in _PATHS_KEYS}
     return {k: "" for k in _PATHS_KEYS}
+
+
+def _groups_defaults(config_path: str) -> list:
+    """폼용 batch.groups(업무별 디렉토리) 리스트. 현 config→example 순 best-effort(raw yaml). D-045."""
+    dirs = ("asis_input_dir", "asis_output_dir", "tobe_input_dir", "tobe_output_dir")
+    for p in (config_path, str(_EXAMPLE_CONFIG)):
+        try:
+            raw = yaml.safe_load(Path(p).read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        batch = raw.get("batch") if isinstance(raw, dict) else None
+        groups = batch.get("groups") if isinstance(batch, dict) else None
+        if isinstance(groups, dict) and groups:
+            out = []
+            for name, g in groups.items():
+                if not isinstance(g, dict):
+                    continue
+                row = {"name": str(name), "base_dir": str(g.get("base_dir", "") or "")}
+                row.update({k: str(g.get(k, "") or "") for k in dirs})
+                out.append(row)
+            return out
+    return []
 
 
 def _sse(payload: dict) -> str:

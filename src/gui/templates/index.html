@@ -320,6 +320,13 @@
   .empty { text-align:center; padding:34px 20px; color:var(--muted-2); font-size:13px; }
   .placeholder { text-align:center; padding:60px 20px; color:var(--muted); }
   .placeholder .big { font-size:15px; font-weight:600; color:var(--ink-2); margin-bottom:6px; }
+
+  /* 업무별 디렉토리 카드(D-045) */
+  .gcard { border:1px solid var(--c-border); border-radius:var(--radius-sm); padding:14px; margin-bottom:10px; background:var(--c-surface-2); }
+  .gcard .ghead { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .gcard .ghead input { flex:1; padding:8px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm); font-size:13.5px; font-weight:600; background:var(--c-surface); color:var(--ink); font-family:inherit; }
+  .gcard .g-del { color:var(--c-ng); border-color:var(--c-border-strong); padding:6px 11px; font-size:12px; flex-shrink:0; }
+  .gcard .g-del:hover { border-color:var(--c-ng); background:var(--c-ng-soft); }
 </style>
 </head>
 <body>
@@ -541,6 +548,22 @@
                 <div class="toast" id="p-toast"></div>
               </div>
             </div>
+
+            <div class="panel">
+              <div class="panel-head"><h2>業務別ディレクトリ（任意）</h2><span class="sub">業務ごとに場所が違う場合</span></div>
+              <div class="panel-body">
+                <div class="callout info">
+                  <div>業務（shell_group）ごとに As-Is/To-Be ディレクトリが違う場合に指定します。経路解決:
+                    <b>項目 override（定義 <code>*_dir</code>）＞ 業務ディレクトリ ＞ 全体 paths</b>。空欄は全体 paths にフォールバック。</div>
+                </div>
+                <div id="groups-list"></div>
+                <div class="actions">
+                  <button class="ghost" id="g-add" type="button">＋ 業務を追加</button>
+                  <button class="ghost" id="g-save">業務別ディレクトリを保存</button>
+                </div>
+                <div class="toast" id="g-toast"></div>
+              </div>
+            </div>
           </section>
 
         </div>
@@ -708,6 +731,41 @@ $("p-save").addEventListener("click", async (ev)=>{
   }catch(e){ toast("p-toast","通信エラー: "+e,false); }
   finally{ b.disabled=false; b.textContent=old; }
 });
+
+/* ───────── 業務別ディレクトリ（編集・保存 / D-045） ───────── */
+const GROUPS_DATA = {{ groups | tojson }};
+const G_DIRS = ["asis_input_dir","asis_output_dir","tobe_input_dir","tobe_output_dir"];
+const G_LABELS = { base_dir:"バッチシェル (base_dir) ※必須", asis_input_dir:"As-Is 入力", asis_output_dir:"As-Is 正解出力", tobe_input_dir:"To-Be 入力", tobe_output_dir:"To-Be 出力" };
+function groupCard(g){
+  g = g || {};
+  const div=document.createElement("div"); div.className="gcard";
+  const field=(k,ph)=>`<div class="field"><label class="lab">${G_LABELS[k]}</label><input type="text" data-k="${k}" value="${escapeHtml(g[k]||"")}" placeholder="${ph||""}"></div>`;
+  div.innerHTML =
+    `<div class="ghead"><input type="text" data-k="name" value="${escapeHtml(g.name||"")}" placeholder="業務名（例: 業務A）"><button class="ghost g-del" type="button">削除</button></div>`+
+    `<div class="grid">${field("base_dir","/opt/migsys/業務A")}${G_DIRS.map(k=>field(k,"空欄=全体paths")).join("")}</div>`;
+  div.querySelector(".g-del").addEventListener("click", ()=> div.remove());
+  return div;
+}
+function renderGroups(list){ const c=$("groups-list"); c.innerHTML=""; (list||[]).forEach(g=> c.appendChild(groupCard(g))); }
+function collectGroups(){
+  return [...document.querySelectorAll("#groups-list .gcard")].map(card=>{
+    const o={}; card.querySelectorAll("input[data-k]").forEach(i=> o[i.dataset.k]=i.value.trim()); return o;
+  });
+}
+async function refreshGroups(){
+  try{ renderGroups(await (await fetch("/groups?config="+encodeURIComponent($("config").value))).json()); }catch(e){}
+}
+$("g-add").addEventListener("click", ()=> $("groups-list").appendChild(groupCard()));
+$("g-save").addEventListener("click", async (ev)=>{
+  ev.preventDefault(); const b=$("g-save"); b.disabled=true; const old=b.textContent; b.textContent="保存中…";
+  try{
+    const fd=new FormData(); fd.append("config",$("config").value); fd.append("groups", JSON.stringify(collectGroups()));
+    const r=await (await fetch("/groups/save",{method:"POST",body:fd})).json();
+    toast("g-toast", r.message, !!r.ok); if(r.ok) refreshDefPreview();
+  }catch(e){ toast("g-toast","通信エラー: "+e,false); }
+  finally{ b.disabled=false; b.textContent=old; }
+});
+renderGroups(GROUPS_DATA);
 
 /* ───────── ① 定義: ファイル選択で「生成→保存」を一括自動 ───────── */
 $("csv-btn").addEventListener("click", ()=> $("csv").click());
@@ -1041,7 +1099,8 @@ async function syncEnv(){
   setStepSummary("step-pre", ""); setStepDone("step-pre", false);
   const ce=$("ctx-env"); if(ce){ const o=$("config").selectedOptions[0]; ce.textContent=(o?o.textContent:"").split("（")[0].trim()||"環境"; }
   await refreshDefPreview();
-  refreshPaths();   // 환경 전환 시 디렉토리 폼도 그 config 기준으로 갱신
+  refreshPaths();    // 환경 전환 시 디렉토리 폼도 그 config 기준으로 갱신
+  refreshGroups();   // 업무별 디렉토리도 갱신
   if (DEF.ok){ markStepDone("step-def", "✓ 定義読込済"); }
   else { setStepSummary("step-def", ""); setStepDone("step-def", false); }
 }

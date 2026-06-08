@@ -176,3 +176,57 @@ def save_paths(config_path: str, **path_values: object) -> Path:
     tmp.write_text(new_text, encoding="utf-8")
     os.replace(tmp, cp)
     return cp
+
+
+_GROUP_DATA_DIRS = ("asis_input_dir", "asis_output_dir", "tobe_input_dir", "tobe_output_dir")
+
+
+def save_groups(config_path: str, groups: list) -> Path:
+    """batch.groups(업무별 디렉토리)만 원자적 저장(+.bak). 다른 블록 보존(D-045).
+
+    groups = [{name, base_dir, asis_input_dir, ...}]. name·base_dir 필수(없으면 그 업무 스킵).
+    데이터 dir은 비면 미기록(전역 폴백). 기존 그룹의 env/success_exit_code 등은 보존, 제출 안 된 업무는 제거.
+    """
+    cp = Path(config_path)
+    template = cp if cp.is_file() else _EXAMPLE_CONFIG
+    if not template.is_file():
+        raise ConnectionError_(f"テンプレート設定が見つかりません: {template}")
+    raw = yaml.safe_load(template.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ConnectionError_(f"設定ファイルの最上位がマッピングではありません: {template}")
+
+    batch = raw.get("batch")
+    if not isinstance(batch, dict):
+        batch = {}
+    old = batch.get("groups") if isinstance(batch.get("groups"), dict) else {}
+    out: dict = {}
+    for g in groups or []:
+        if not isinstance(g, dict):
+            continue
+        name = str(g.get("name", "") or "").strip()
+        base = str(g.get("base_dir", "") or "").strip()
+        if not name or not base:
+            continue  # name·base_dir 필수(없으면 스킵)
+        prev = old.get(name) if isinstance(old.get(name), dict) else {}
+        entry = dict(prev)  # env/success_exit_code 등 기존값 보존
+        entry["base_dir"] = base
+        for k in _GROUP_DATA_DIRS:
+            v = str(g.get(k, "") or "").strip()
+            if v:
+                entry[k] = v
+            else:
+                entry.pop(k, None)  # 비우면 제거(전역 폴백)
+        out[name] = entry
+    if out:
+        batch["groups"] = out
+    else:
+        batch.pop("groups", None)
+    raw["batch"] = batch
+
+    new_text = yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
+    if cp.is_file():
+        shutil.copyfile(cp, cp.with_name(cp.name + ".bak"))
+    tmp = cp.with_name(cp.name + ".tmp")
+    tmp.write_text(new_text, encoding="utf-8")
+    os.replace(tmp, cp)
+    return cp
