@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config.definition import load_definitions
 from src.config.settings import load_config
 from src.core.loader import copy_input_file, load_input_csv
-from src.core.paths import input_dest_dir, input_source_path, output_asis_path
+from src.core.paths import apply_group_dirs, input_dest_dir, input_source_path, output_asis_path
 from src.core.runner import run_batch
 
 
@@ -59,6 +59,7 @@ def _make_one(definition, config, conn) -> list[Path]:
     각 출력의 To-Be를 그 출력의 정답 경로(output_asis_path)로 복사한다. 골든·To-Be가 같은
     직렬화·경로 규칙을 타 false-NG를 구조적으로 차단한다(D-027).
     """
+    apply_group_dirs(definition, config)  # 업무별 디렉토리(D-044) — 골든도 실행과 동일 경로
     for spec in definition.inputs:
         src = input_source_path(spec, config)
         if spec.type == "database":

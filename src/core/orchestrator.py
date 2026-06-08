@@ -35,7 +35,7 @@ from .models import (
     RunSummary,
     ShellDefinition,
 )
-from .paths import input_dest_dir, input_source_path, output_asis_path
+from .paths import apply_group_dirs, input_dest_dir, input_source_path, output_asis_path
 from .reporter import generate_report
 from .runner import run_batch, run_setup
 from . import store
@@ -134,6 +134,7 @@ def _process_shell(
     """
     step = "load"
     try:
+        apply_group_dirs(definition, config)  # 업무별 디렉토리(D-044): 항목 override 빈칸을 그룹 dir로
         _load_step(definition, config, conn)
         _emit_step(on_progress, definition, index, total, "load", "OK")
 

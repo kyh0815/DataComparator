@@ -772,3 +772,21 @@ G6 Project Settings(paths/DB) → G7 시각 디테일. G8(멀티프로젝트 등
 
 **이유**: 스크린샷 확보로 추측 매몰 위험 소멸(D-043 조건). 그래파이트는 형제 팔레트(주황·연초록·파랑·보라·틸)와
 충돌 0 + 무채 셸이라 상태색(OK/NG/MISSING)이 또렷이 튐 = 검증툴에 적합.
+
+## D-045. 업무별 데이터 디렉토리 — 3단계 경로 폴백 (구조 열기)
+
+**배경**(사장님 확인): As-Is/To-Be 데이터 디렉토리가 **업무마다 다를 수 있음**. 기존엔 전역 config.paths(공통)
++ 정의 CSV 항목별 `*_dir` override(체크리스트 행마다)뿐이라, 업무별로 다르면 행마다 반복해야 했다(GUI는 전역만).
+
+**결정**: config `batch.groups[업무]`(shell_group 키)에 **업무별 데이터 디렉토리**(`asis_input_dir`·
+`asis_output_dir`·`tobe_input_dir`·`tobe_output_dir`, 전부 선택)를 추가. 경로 해석을 **3단계 폴백**으로:
+**항목 override(정의 *_dir) > 업무 그룹 dir(shell_group) > 전역 config.paths**.
+- 구현: `paths.apply_group_dirs(definition, config)` — 항목 override **빈 칸에만** 그룹 dir을 채움(idempotent),
+  기존 `_dir(override>전역)` 해석을 그대로 사용(**paths 시그니처 무변경**). orchestrator·runner·preflight·
+  make_golden 진입점에서 호출 → 실행·골든·프리플라이트가 **동일 경로**(false-NG 구조적 차단, D-027 정신).
+- 하위호환: 그룹 dir 미설정이면 no-op → 전역 폴백(기존 동작). **273 passed 유지**(+그룹 dir 파싱·3단계 우선순위 테스트).
+- config.yaml.example에 업무별 dir 문서화. **GUI 업무별 디렉토리 편집 UI는 다음 단계**(현 Project Settings는 전역만).
+
+**이유**: 업무별 폴더가 실재(사장님 확인)하므로 "구조를 열어둔다"(나중에 실데이터 와도 재작업 없게). 단
+**업무별이냐 체크리스트별이냐의 최종 폴더 규약은 여전히 보류**(Input DB/Output DB 폴더 구조 확정 후) — 이번 건은
+"업무별일 때 대응 가능한 폴백을 마련"한 것이지 폴더 규약을 확정한 게 아니다.

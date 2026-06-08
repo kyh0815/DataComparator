@@ -169,3 +169,44 @@ def test_batch_group_missing_base_dir_errors(tmp_path):
     bad = _GROUPS_YAML.replace("業務A: { base_dir: ./mock/A }", "業務A: { env: {} }")
     with pytest.raises(ConfigError, match="base_dir"):
         load_config(_write(tmp_path, bad))
+
+
+def test_batch_group_data_dirs_parsed(tmp_path):
+    """batch.groups[업무]의 업무별 데이터 디렉토리 파싱·절대화(D-044, 3단계 폴백 중간층)."""
+    y = _GROUPS_YAML.replace(
+        "業務A: { base_dir: ./mock/A }",
+        "業務A: { base_dir: ./mock/A, asis_input_dir: ./A/asis/in, tobe_output_dir: /abs/A/tobe }",
+    )
+    g = load_config(_write(tmp_path, y)).batch.groups["業務A"]
+    assert g.asis_input_dir == (tmp_path / "A/asis/in").resolve()   # 상대 → config 기준 절대화
+    assert g.tobe_output_dir == Path("/abs/A/tobe")                  # 절대 그대로
+    assert g.asis_output_dir is None                                 # 미지정 → None(전역 폴백)
+
+
+def test_apply_group_dirs_three_level_priority():
+    """경로 폴백: 항목 override > 업무 그룹 dir > 전역(미설정). 항목 override는 불변(D-044)."""
+    from src.core.models import (BatchConfig, BatchGroup, Config, DatabaseConfig,
+                                  InputSpec, OutputConfig, OutputSpec, ShellDefinition)
+    from src.core.paths import apply_group_dirs
+
+    group = BatchGroup(base_dir=Path("/g"), asis_input_dir=Path("/g/asis/in"),
+                       asis_output_dir=Path("/g/asis/out"), tobe_output_dir=Path("/g/tobe/out"))
+    cfg = Config(
+        encoding="shift_jis", asis_input_dir=Path("/G/in"), asis_output_dir=Path("/G/out"),
+        tobe_output_dir=Path("/G/tobe"), report_dir=Path("/r"),
+        database=DatabaseConfig(host="h", port=1, dbname="d", user="u"),
+        batch=BatchConfig(groups={"業務A": group}), shell_ids=["001"], output=OutputConfig(),
+    )
+    d = ShellDefinition(
+        test_id="001", test_name="t", input_type="file", input_csv="in.csv",
+        output_type="file", expected_output_csv="exp.dat", shell_program="x.sh", shell_group="業務A",
+        inputs=[InputSpec(csv="a.csv", type="file"),                       # override 없음 → 그룹
+                InputSpec(csv="b.csv", type="file", src_dir="/item/in")],  # 항목 override 우선
+        outputs=[OutputSpec(type="file", expected="exp.dat", file="out.dat")],
+    )
+    apply_group_dirs(d, cfg)
+    assert d.inputs[0].src_dir == "/g/asis/in"        # 빈칸 → 그룹
+    assert d.inputs[1].src_dir == "/item/in"          # 항목 override 우선(불변)
+    assert d.outputs[0].expected_dir == "/g/asis/out" # 빈칸 → 그룹
+    assert d.outputs[0].tobe_dir == "/g/tobe/out"
+    assert d.inputs[0].dest_dir is None               # 그룹에 tobe_input_dir 없음 → None(전역 폴백)

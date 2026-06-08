@@ -190,8 +190,21 @@ def _build_batch_groups(
                 else dict(default_env)  # 비면 batch 전역 env 상속
             ),
             success_exit_code=int(g_exit) if g_exit is not None else default_exit,  # 비면 전역 상속
+            # 업무별 데이터 디렉토리(선택, D-044). 비면 None → 경로 해석이 전역 config로 폴백.
+            asis_input_dir=_opt_group_dir(spec.get("asis_input_dir"), base_dir),
+            asis_output_dir=_opt_group_dir(spec.get("asis_output_dir"), base_dir),
+            tobe_input_dir=_opt_group_dir(spec.get("tobe_input_dir"), base_dir),
+            tobe_output_dir=_opt_group_dir(spec.get("tobe_output_dir"), base_dir),
         )
     return groups
+
+
+def _opt_group_dir(value: object | None, base_dir: Path) -> Path | None:
+    """업무 그룹의 선택 데이터 디렉토리. 없으면 None, 상대경로는 config 디렉토리 기준 절대화."""
+    if value is None:
+        return None
+    candidate = Path(str(value))
+    return candidate if candidate.is_absolute() else (base_dir / candidate).resolve()
 
 
 def _abs_path(value: object | None, base_dir: Path, default: Path) -> Path:

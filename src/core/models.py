@@ -144,6 +144,12 @@ class BatchGroup:
     base_dir: Path  # 업무 디렉토리(그룹 필수). env/success_exit_code는 비면 batch 전역값 상속.
     env: dict[str, str] = field(default_factory=dict)
     success_exit_code: int = 0
+    # 업무별 데이터 디렉토리(선택, D-044) — 경로 3단계 폴백의 중간층: 항목 override > 업무 그룹 > 전역 config.
+    # 비면 전역 config.paths를 쓴다. settings가 config 디렉토리 기준으로 절대화.
+    asis_input_dir: Path | None = None
+    asis_output_dir: Path | None = None
+    tobe_input_dir: Path | None = None
+    tobe_output_dir: Path | None = None
 
 
 @dataclass

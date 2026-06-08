@@ -21,6 +21,7 @@ from src.config.definition import DefinitionError, load_definitions
 
 from .models import Config, OutputSpec, ShellDefinition
 from .paths import (
+    apply_group_dirs,
     input_dest_dir,
     input_source_path,
     output_asis_path,
@@ -81,6 +82,7 @@ def preflight(
 
     needs_db = False
     for d in definitions:
+        apply_group_dirs(d, config)  # 업무별 디렉토리(D-044) 반영 후 점검(실행과 동일 경로)
         _check_shell_program(d, config, issues)
         _check_shell_group(d, config, issues)
         _check_inputs(d, config, issues)

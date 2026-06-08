@@ -41,10 +41,17 @@ batch:
   #   POSTGRES_PASSWORD: "{db_password}"
   # success_exit_code: 0            # 이 코드만 성공, 그 외 RunnerError
   # clean_flag: "--clean"           # 골든 생성(clean) 시 덧붙일 플래그(미지원 배치면 비움)
-  # ── 업무 그룹별 배치 환경(B, D-040) — shell_group 값이 키. ★현재 lint 태그 전용(runner 미소비) ──
+  # ── 업무 그룹별 환경(shell_group 값이 키) — base_dir=배치셸 디렉토리(D-040, 현재 lint용) ──
+  # ★업무별 데이터 디렉토리(D-044): 디렉토리가 업무마다 다르면 그룹에 적는다(선택). 경로 해석은
+  #   3단계 폴백 = 항목 override(정의 *_dir) > 업무 그룹 dir > 전역 paths. 비우면 전역 paths로 폴백.
   # groups:
-  #   業務A: { base_dir: /opt/migsys/業務A }                          # base_dir만 그룹 필수
-  #   業務B: { base_dir: /opt/migsys/業務B, success_exit_code: 0, env: {} }  # 비우면 batch 전역 상속
+  #   業務A:
+  #     base_dir: /opt/migsys/業務A          # 배치셸 디렉토리(필수)
+  #     asis_input_dir:  /data/業務A/asis/in    # ↓ 업무별 데이터 경로(선택). 비우면 전역 paths.
+  #     asis_output_dir: /data/業務A/asis/out
+  #     tobe_input_dir:  /data/業務A/tobe/in
+  #     tobe_output_dir: /data/業務A/tobe/out
+  #   業務B: { base_dir: /opt/migsys/業務B, success_exit_code: 0 }  # env/exit는 비우면 batch 전역 상속
 
 shells:
   range: [1, 10]    # 정의 파일(test_definition.yaml) 폴백. 정의 파일이 있으면 그쪽 셸 목록이 우선.

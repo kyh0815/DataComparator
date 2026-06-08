@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .exporter import export_table_to_csv
 from .models import Config, OutputSpec, ShellDefinition
-from .paths import input_dest_path, output_tobe_path
+from .paths import apply_group_dirs, input_dest_path, output_tobe_path
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")  # 배치 호출 토큰의 {name} 치환자(C6)
 
@@ -82,6 +82,7 @@ def run_batch(
     반환 [(OutputSpec, tobe_path), ...]. conn은 database 출력이 하나라도 있을 때 필요.
     clean=True면 NG 주입을 끈 정상 출력(골든 생성).
     """
+    apply_group_dirs(definition, config)  # 업무별 디렉토리(D-044) — idempotent
     argv, env, timeout = _build_command(definition, config, clean)
 
     try:

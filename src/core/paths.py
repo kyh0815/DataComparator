@@ -14,7 +14,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import Config, InputSpec, OutputSpec
+from .models import Config, InputSpec, OutputSpec, ShellDefinition
+
+
+def apply_group_dirs(definition: ShellDefinition, config: Config) -> None:
+    """업무(shell_group) 그룹 디렉토리를 항목 override가 **빈 칸일 때만** 채운다(D-044, 3단계 폴백 중간층).
+
+    경로 해석은 '항목 override > 업무 그룹 dir > 전역 config'. 그룹 dir을 항목 override 자리(빈 칸만)에
+    미리 채워, 기존 _dir(override>전역) 해석을 그대로 쓴다. 항목·그룹 둘 다 없으면 전역(_dir fallback).
+    **idempotent**(이미 채워졌으면 무동작) — orchestrator/runner/preflight/make_golden 어디서 호출해도 안전.
+    골든·To-Be가 같은 그룹 dir을 받으므로 false-NG가 구조적으로 안 생긴다(D-027 정신).
+    """
+    g = config.batch.groups.get(definition.shell_group) if definition.shell_group else None
+    if g is None:
+        return
+    for sp in definition.inputs:
+        if not sp.src_dir and g.asis_input_dir:
+            sp.src_dir = str(g.asis_input_dir)
+        if not sp.dest_dir and g.tobe_input_dir:
+            sp.dest_dir = str(g.tobe_input_dir)
+    for out in definition.outputs:
+        if not out.expected_dir and g.asis_output_dir:
+            out.expected_dir = str(g.asis_output_dir)
+        if not out.tobe_dir and g.tobe_output_dir:
+            out.tobe_dir = str(g.tobe_output_dir)
 
 
 def _dir(override: str | None, fallback: Path, config: Config) -> Path:
