@@ -6,7 +6,8 @@
 #
 #  [필수]  checklist   체크리스트 번호(=검증 단위·1차키)
 #          io          input | output  (이 행이 입력인지 출력인지)
-#          type        database | file (데이터가 DB에 있나 파일인가)  (구: db_or_file)
+#          type        database | file | sam | vsam (저장 형식)  (구: db_or_file)
+#                       sam/vsam=고정길이(file로 컴파일). sam=byte 기본, vsam=record+layout+key 필수(D-047)
 #  [입력행] table      type=database면 필수 — 적재 대상 DB 테이블
 #          file        입력 파일명(빈칸이면 규칙 자동채움)
 #  [출력행] file        To-Be 출력/Export 파일명     expected_output  As-Is 정답 파일명(↔ file 과 비교)

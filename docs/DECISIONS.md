@@ -809,3 +809,29 @@ file의 하위 형식이라 2분법에 안 맞음).
 - 하위호환 가드 테스트 추가(`db_or_file` 별칭 여전히 동작).
 
 **이유**: 이름이 값 집합을 정확히 반영해야 한다(sam/vsam 도입 시 db_or_file은 오해 유발). 별칭 유지로 역행 비용 0.
+
+## D-047. SAM/VSAM 대응 — type에 sam/vsam 값 추가, 매핑도구가 컴파일(코어 무수정)
+
+**배경**(사장님 확인): 코드변환은 문자코드만 바꾸고 **형식 보존** → SAM은 SAM, VSAM은 VSAM(둘 다 고정길이)으로
+온다. 실무에 존재하므로 대응 필요. ★VSAM은 insert 시 **키순 정렬 저장** → 물리 행순서가 As-Is와 달라
+순서 의존 비교(byte/위치)는 false-NG. **key 정렬·정합 필수.**
+
+**결정**: 매핑 CSV `type` 열에 `sam`·`vsam`을 추가(총 4값). **Option A — 매핑도구가 기존 record/layout/key로
+컴파일**(definition.py 스키마·orchestrator·comparator **무수정**, 코어 무수정 규칙 준수). 비교 엔진은 이미
+record 모드에서 layout(고정길이 슬라이스)·key(정렬+머지조인)를 지원하므로 **새 비교로직 0**.
+- **storage**: sam/vsam → YAML `type: file`(고정길이 파일이라 적재/추출은 file과 동일, 동봉 stub=run_batch_file).
+- **compare 도출**(`_apply_format_compare`):
+  - **sam** = 기본 **byte 통짜**(순차파일·순서 의미, D-039). `record` 명시 또는 `ignore_columns`/`normalize_rules`가
+    있으면 **record+layout 필드비교**(그땐 layout 필수). byte일 때 layout은 운반 안 함(死데이터 방지).
+  - **vsam** = **record+layout+key 필수**, `has_header: false`(고정길이=무헤더, 필드는 layout·인덱스).
+- **lint(비치명 warnings)**: Option A에선 YAML로 컴파일되면 sam/vsam 정체가 사라져 preflight가 못 보므로
+  **매핑도구 단계에서** 경고한다. 결과 dict에 `warnings` 추가 → CLI(stderr)·GUI(定義作成 화면 警告박스) 노출.
+  - vsam인데 key_columns 빔 → 경고(키순 저장, 정렬키 없으면 false-NG).
+  - sam(필드비교)/vsam인데 fixed_layout 빔 → 경고(고정길이 분할 기준 없음).
+- ★**실데이터 분리**: 비교 로직·라우팅·lint는 지금. **실제 layout 바이트위치·key 컬럼 값은 데모 stub의
+  '가정 모양'**(VSAM=SAM동일 고정길이+키순 가정)이며, 실 SAM/VSAM 1건 입수 후 검증한다(README·데모 주석 명시).
+
+**범위/규칙**: 매핑도구(비코어)+template/samples+GUI 표시계층+데모 데이터만. **코어 무수정.** D-046(리네임)과
+별도 커밋. 데모셋에 sam(CK011/012 라벨 정정)+vsam(키로 순서흡수 OK 1 + 진짜 값차 NG 1) 정비, e2e 통과.
+
+**deferred**: 실 SAM/VSAM 실데이터 QA(layout 수치·key 확정), 1:N 시퀀스, 정교 비교(D-022).

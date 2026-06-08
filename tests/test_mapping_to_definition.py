@@ -144,6 +144,90 @@ def test_db_or_file_alias_still_accepted(tmp_path):
     assert out["type"] == "file"
 
 
+# --- sam/vsam (고정길이 파일 하위형식, D-047) --------------------------------------
+
+
+def _out0(csv: str):
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    return yaml.safe_load(r["yaml"])["tests"][0], r["warnings"]
+
+
+def test_sam_default_is_byte():
+    """sam은 기본 byte 통짜(순차파일·순서 의미). storage=file로 컴파일, layout은 byte라 운반 안 함(D-039)."""
+    t, w = _out0(
+        "checklist,io,type,file,expected_output,fixed_layout\n"
+        "C1,input,sam,in.dat,,\n"
+        "C1,output,sam,out.dat,gold.dat,0:6;6:22\n"
+    )
+    out = t["outputs"][0]
+    assert out["type"] == "file"               # sam → 저장은 file
+    assert out["compare"]["mode"] == "byte"
+    assert "layout" not in out["compare"]      # byte는 layout 미사용 → 死데이터 방지
+    assert w == []
+
+
+def test_sam_with_mask_becomes_record_with_layout():
+    """sam에 ignore_columns(mask)가 있으면 record+layout 필드비교로 승격, has_header=false."""
+    t, w = _out0(
+        "checklist,io,type,file,expected_output,ignore_columns,fixed_layout\n"
+        "C1,input,sam,in.dat,,,\n"
+        "C1,output,sam,out.dat,gold.dat,2,0:6;6:22\n"
+    )
+    cmp = t["outputs"][0]["compare"]
+    assert cmp["mode"] == "record" and cmp["layout"] == "0:6;6:22"
+    assert cmp["mask"] == "2" and cmp["has_header"] is False
+    assert w == []
+
+
+def test_vsam_record_layout_key_headerless():
+    """vsam은 record+layout+key 필수(키순 저장). storage=file, has_header=false."""
+    t, w = _out0(
+        "checklist,io,type,file,expected_output,key_columns,fixed_layout\n"
+        "C1,input,vsam,in.dat,,,\n"
+        "C1,output,vsam,out.dat,gold.dat,0,0:6;6:22\n"
+    )
+    out = t["outputs"][0]
+    assert out["type"] == "file"
+    cmp = out["compare"]
+    assert cmp["mode"] == "record" and cmp["key"] == "0" and cmp["layout"] == "0:6;6:22"
+    assert cmp["has_header"] is False
+    assert w == []
+
+
+def test_vsam_without_key_warns():
+    """vsam인데 key_columns 비면 경고(생성은 됨) — 키순 저장이라 정렬키 없으면 false-NG."""
+    r = m.mapping_to_definition(
+        "checklist,io,type,file,expected_output,fixed_layout\n"
+        "C1,input,vsam,in.dat,,\n"
+        "C1,output,vsam,out.dat,gold.dat,0:6\n"
+    )
+    assert r["ok"]
+    assert any("vsam" in w and "key_columns" in w for w in r["warnings"])
+
+
+def test_vsam_without_layout_warns():
+    """vsam/sam(필드비교)인데 fixed_layout 비면 경고(분할 기준 없음)."""
+    r = m.mapping_to_definition(
+        "checklist,io,type,file,expected_output,key_columns\n"
+        "C1,input,vsam,in.dat,,\n"
+        "C1,output,vsam,out.dat,gold.dat,0\n"
+    )
+    assert r["ok"]
+    assert any("vsam" in w and "fixed_layout" in w for w in r["warnings"])
+
+
+def test_sam_vsam_input_storage_is_file():
+    """sam/vsam 입력 행도 저장은 file로 컴파일 → 동봉 stub(run_batch_file) 라우팅과 정합."""
+    t, _ = _out0(
+        "checklist,io,type,file,expected_output\n"
+        "C1,input,sam,in.dat,\n"
+        "C1,output,sam,out.dat,gold.dat\n"
+    )
+    assert t["input"]["tables"][0]["type"] == "file"
+    assert t["execution"]["shell_program"] == "stub_batch/run_batch_file.py"
+
+
 def test_blank_filenames_autofilled_single_io():
     """1입력·1출력에서 file/expected를 비우면 {shell_id}.csv로 자동 채워진다(내용은 수기, 파일명은 규칙)."""
     csv = (

@@ -54,6 +54,8 @@
   .schip .io { color:var(--muted); margin-left:6px; }
   .errbox { background:var(--ng-bg); border:1px solid var(--ng-bd); border-radius:var(--radius-sm); padding:11px 13px; margin-top:12px; font-size:13px; color:#7d2730; }
   .errbox ul { margin:6px 0 0; padding-left:18px; }
+  .warnbox { background:#fff7e6; border:1px solid #f0c36d; border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; font-size:13px; color:#8a5a00; }
+  .warnbox ul { margin:6px 0 0; padding-left:18px; }
   .okline { color:var(--ok); font-weight:700; margin-top:12px; display:flex; align-items:center; gap:8px; }
   .callout { background:#f6f8fa; border:1px solid var(--line); border-left:3px solid var(--accent-2); border-radius:var(--radius-sm); padding:11px 13px; font-size:12.5px; color:var(--ink-2); margin-top:14px; }
   .toast { font-size:13px; font-weight:600; margin-top:12px; min-height:18px; }
@@ -129,7 +131,9 @@ $("gen").onclick=async()=>{
     if(r.ok){
       GEN_YAML=r.yaml;
       const chips=(r.shells||[]).map(s=>`<span class="schip"><span class="sid">${esc(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
-      res.innerHTML=`<div class="okline">✓ <span>${r.count} シェルの定義を生成しました</span> <span class="badge">${r.count}</span></div><div class="slist">${chips}</div>`;
+      const warns=(r.warnings||[]);
+      const warnBox=warns.length ? `<div class="warnbox">⚠ 警告（生成はされましたが確認してください）：<ul>${warns.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : "";
+      res.innerHTML=`<div class="okline">✓ <span>${r.count} シェルの定義を生成しました</span> <span class="badge">${r.count}</span></div><div class="slist">${chips}</div>${warnBox}`;
       after.style.display="";
     }else{
       GEN_YAML=""; after.style.display="none";
