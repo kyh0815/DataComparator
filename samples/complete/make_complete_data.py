@@ -7,9 +7,10 @@
   tobe_src/     To-Be 원본(플랫폼차·결함 심음). mock 셸이 이걸 출력으로 복사.
   mock_linux/opt/migsys/<業務>/sh/<shell>.sh  실행되는 mock 셸(파일흐름=복사 / MISSING=무출력 / DB=래퍼)
 
-파일흐름 18건(CK001~018) + DB 2건(CK019~020, 래퍼 셸이 repo stub_batch/ 호출)을 시연한다.
-의도된 결과: OK / NG 3건(003·005·009) / MISSING_TOBE 1건(013). 모드 byte/text/record·정규화·mask·
-셔플+key·SAM(고정길이 byte)·다중입력(002)·N:1 공유셸(015·016)을 한 셋으로 덮는다(realtest+rehearsal+realistic 흡수).
+파일흐름 20건(CK001~018 + VSAM CK021~022) + DB 2건(CK019~020, 래퍼 셸이 repo stub_batch/ 호출)을 시연한다.
+의도된 결과: OK / NG 4건(003·005·009·022) / MISSING_TOBE 1건(013). 모드 byte/text/record·정규화·mask·
+셔플+key·SAM(고정길이 byte)·VSAM(고정길이 키순 record+key: 021 셔플OK / 022 값차NG)·다중입력(002)·
+N:1 공유셸(015·016)을 한 셋으로 덮는다(realtest+rehearsal+realistic 흡수).
 
 ★SAMPLE — 실데이터 아님. normalize/mask 값은 형식 예시일 뿐 실제 마이그레이션 판단이 아니다.
 이 값들을 검증된 기본값으로 신뢰하지 말 것(과한 mask/normalize = false-PASS 경로).
@@ -28,7 +29,8 @@ _HERE = Path(__file__).resolve().parent
 
 RECORD = "record"  # CSV(헤더 有) — record/byte 비교
 RAW = "raw"        # 원문 그대로 — byte/text 비교
-SAM = "sam"        # 고정길이(헤더 無) — byte 통짜(layout은 시연 표기일 뿐, D-039)
+SAM = "sam"        # 고정길이(헤더 無) 순차 — byte 통짜(layout은 시연 표기, D-039/D-047)
+VSAM = "vsam"      # 고정길이(헤더 無) 키순저장 — record+layout+key 정렬·정합(D-047). 골든=키순, To-Be=물리 셔플
 MISSING = "missing"  # tobe_src 없음 + 무출력 셸 → MISSING_TOBE
 
 
@@ -142,6 +144,18 @@ CHECKS = [
     {"id": "CK018", "group": "業務C", "shell": "ck018.sh", "out": "ck018_rep.txt", "kind": RAW,
      "asis": "月次レポート\n合計 999\n",
      "tobe": "月次レポート\n合計 999\n"},  # byte OK
+
+    # ── VSAM(키순 저장 가정 모양) CK021~022 — ★실 고객 VSAM은 실데이터로 검증 예정(D-047 §14) ──
+    # 고정길이 ID(6)+AMOUNT(8), layout 0:6;6:14, key=ID(인덱스0). 골든=키순, To-Be=물리 셔플.
+    {"id": "CK021", "group": "業務B", "shell": "ck021.sh", "out": "ck021_zandaka.dat", "kind": VSAM,
+     # OK: 동일값을 물리 셔플만 — key 정렬이 순서차를 흡수(byte/순서 비교였다면 false-NG였을 것).
+     "vsam_golden": ["00000100150000", "00000200089000", "00000300250000"],
+     "vsam_tobe":   ["00000300250000", "00000100150000", "00000200089000"]},
+
+    {"id": "CK022", "group": "業務B", "shell": "ck022.sh", "out": "ck022_kinri.dat", "kind": VSAM,
+     # NG: 셔플 + 000001 금액 실차이(...50000→...50001) — key로 짝지어 진짜 값차를 검출(정렬이 가려주지 않음).
+     "vsam_golden": ["00000100150000", "00000200089000"],
+     "vsam_tobe":   ["00000200089000", "00000100150001"]},
 ]
 
 # mock 복사 셸(파일흐름): --output-path를 받아 tobe_src/<출력명>을 복사한다(realtest 패턴).
@@ -195,6 +209,10 @@ def main() -> int:
             body = ("\n".join(c["sam"]) + "\n").encode("ascii")  # 고정길이(ASCII)
             _write(f"asis/output/{c['out']}", body)
             _write(f"tobe_src/{c['out']}", body)  # byte 완전일치 → OK
+        elif kind == VSAM:
+            # 골든=키순(정답), To-Be=물리 셔플(+CK022는 값차). record+layout+key가 키로 정합.
+            _write(f"asis/output/{c['out']}", ("\n".join(c["vsam_golden"]) + "\n").encode("ascii"))
+            _write(f"tobe_src/{c['out']}", ("\n".join(c["vsam_tobe"]) + "\n").encode("ascii"))
         elif kind == MISSING:
             _write(f"asis/output/{c['out']}", _csv(c["header"], c["asis"]))  # 정답만, tobe_src 없음
         else:  # RAW(byte/text)

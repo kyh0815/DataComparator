@@ -8,7 +8,7 @@
 
 ## 구성
 ```
-complete_sample.csv      정의(사람이 채우는 Long CSV) — 정본 20 체크리스트. shell_group·전 칼럼 시연.
+complete_sample.csv      정의(사람이 채우는 Long CSV) — 정본 22 체크리스트. shell_group·전 칼럼·SAM/VSAM 시연.
 config.yaml              실행 설정(파일흐름 18 + DB 2). batch.groups=業務A/B/C(lint 태그).
 test_definition.yaml     complete_sample.csv → mapping_to_definition 변환물(비노출 중간물).
 make_complete_data.py    asis/input·asis/output(파일 골든)·tobe_src·mock_linux 셸 생성기(결정론).
@@ -29,11 +29,11 @@ POSTGRES_PASSWORD=devpw python3 -m src.cli.main           --config samples/compl
 POSTGRES_PASSWORD=devpw python3 -m src.cli.main --evidence --config samples/complete/config.yaml
 ```
 DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부**(C3 게이트가 DB 유무로 올바르게 갈라줌).
-파일흐름 16건만 보려면 DB를 띄우지 않고 프리플라이트 거부를 확인하거나, DB를 띄워 20건 완주한다.
+파일흐름 18건만 보려면 DB를 띄우지 않고 프리플라이트 거부를 확인하거나, DB를 띄워 22건 완주한다.
 
-## 의도된 결과 (출력단위 21건 = 20 CK, CK020 다중출력 2)
-- **OK 17 / NG 3 / MISSING_TOBE 1 / ERROR 0**
-- NG 3: CK003(残高 값변경) · CK005(承認 済→未) · CK009(区分 B→C) — 진짜 결함.
+## 의도된 결과 (출력단위 23건 = 22 CK, CK020 다중출력 2)
+- **OK 18 / NG 4 / MISSING_TOBE 1 / ERROR 0**
+- NG 4: CK003(残高 값변경) · CK005(承認 済→未) · CK009(区分 B→C) · CK022(VSAM 金額 값차) — 진짜 결함.
 - MISSING_TOBE 1: CK013(정답 有·To-Be 미생성). MISSING_ASIS는 프리플라이트가 사전 차단(증적 미표기가 정상).
 
 ## 체크리스트 맵
@@ -49,8 +49,8 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 | 008 | A | record | zeropad:5 (OK) |
 | 009 | B | record | **NG**(区分 B→C) |
 | 010 | B | record | 셔플+key (OK) |
-| 011 | B | **SAM** byte | 고정길이·layout 칼럼 표기(byte 통짜, D-039) (OK) |
-| 012 | B | **SAM** byte | 고정길이 (OK) |
+| 011 | B | **SAM** byte | type=sam → 고정길이 순차·byte 통짜(D-039/D-047) (OK) |
+| 012 | B | **SAM** byte | type=sam (OK) |
 | 013 | B | record | **MISSING_TOBE**(무출력 셸) |
 | 014 | B | text(.txt) | (OK) |
 | 015 | C | record | **N:1**(ck_shared.sh 공유) (OK) |
@@ -59,6 +59,13 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 | 018 | C | byte(.txt) | (OK) |
 | 019 | C | **DB-export 단일** | type=database+table+**key**(tx_id)·record·SJIS·헤더 (OK) |
 | 020 | C | **DB-export 다중출력** | 한 배치→파일 明細 + DB 集計(rt_summary export) (OK×2) |
+| 021 | B | **VSAM** record+key | type=vsam → 고정길이 키순·물리 셔플을 key 정렬이 흡수 (OK) |
+| 022 | B | **VSAM** record+key | type=vsam → 셔플+金額 실차이를 key로 짝지어 **NG** 검출 |
+
+> **★VSAM(CK021/022)은 "가정 모양" 데모다.** 코드변환은 형식 보존이라 VSAM은 VSAM(고정길이)으로 온다.
+> VSAM은 insert 시 **키순 정렬 저장** → 물리 행순서가 As-Is와 달라 순서/byte 비교는 false-NG → **key 정렬·정합 필수**.
+> 데모 stub은 "SAM과 동일 고정길이 + 키순"이라는 가정으로 layout(0:6;6:14)·key(ID 인덱스0)를 둔 것이며,
+> **실제 고객 VSAM의 layout 바이트위치·key 컬럼은 실 SAM/VSAM 1건 입수 후 검증**한다(D-047). 021=순서흡수 OK, 022=값차 NG로 양방향(정렬이 가리지 않음) 증명.
 
 > **1:N(shell `;`)**: 미지원(실연결 보류) → mapping_to_definition이 거부(테스트 `test_shell_semicolon_sequence_rejected`).
 > 데모셋에 실행 CK로 넣지 않는다(green run 보존).

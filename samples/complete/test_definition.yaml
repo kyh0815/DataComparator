@@ -184,7 +184,6 @@ tests:
     file: ck011_zandaka.dat
     compare:
       mode: byte
-      layout: 0:6;6:22;22:30
 - test_id: CK012
   input:
     tables:
@@ -199,7 +198,6 @@ tests:
     file: ck012_kinri.dat
     compare:
       mode: byte
-      layout: 0:2;2:8
 - test_id: CK013
   input:
     tables:
@@ -344,3 +342,37 @@ tests:
       key: customer_id
       encoding: shift_jis
       has_header: true
+- test_id: CK021
+  input:
+    tables:
+    - csv: ck021_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck021.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck021_zandaka.dat
+    file: ck021_zandaka.dat
+    compare:
+      key: '0'
+      layout: 0:6;6:14
+      mode: record
+      has_header: false
+- test_id: CK022
+  input:
+    tables:
+    - csv: ck022_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck022.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck022_kinri.dat
+    file: ck022_kinri.dat
+    compare:
+      key: '0'
+      layout: 0:6;6:14
+      mode: record
+      has_header: false
