@@ -1,6 +1,5 @@
 tests:
 - test_id: CK001
-  test_name: 顧客残高マスタ日次更新
   input:
     tables:
     - csv: ck001_in.csv
@@ -21,7 +20,6 @@ tests:
       normalize: SHITEN_CD:zeropad:4;ZANDAKA:num:2;KISAN_YMD:date;BIKO:nullblank
       has_header: true
 - test_id: CK002
-  test_name: 取引明細集計(多重入力)
   input:
     tables:
     - csv: ck002_in1.csv
@@ -43,7 +41,6 @@ tests:
       normalize: KINGAKU:num:0
       has_header: true
 - test_id: CK003
-  test_name: 残高検証
   input:
     tables:
     - csv: ck003_in.csv
@@ -63,7 +60,6 @@ tests:
       normalize: ZANDAKA:num:2
       has_header: true
 - test_id: CK004
-  test_name: 帳票完全一致
   input:
     tables:
     - csv: ck004_in.csv
@@ -79,7 +75,6 @@ tests:
     compare:
       mode: byte
 - test_id: CK005
-  test_name: 請求書byte
   input:
     tables:
     - csv: ck005_in.csv
@@ -95,7 +90,6 @@ tests:
     compare:
       mode: byte
 - test_id: CK006
-  test_name: 口座一覧text
   input:
     tables:
     - csv: ck006_in.csv
@@ -112,7 +106,6 @@ tests:
       mode: text
       encoding: shift_jis
 - test_id: CK007
-  test_name: 金利マスタ
   input:
     tables:
     - csv: ck007_in.csv
@@ -132,7 +125,6 @@ tests:
       normalize: RATE:num:4
       has_header: true
 - test_id: CK008
-  test_name: 手数料マスタ
   input:
     tables:
     - csv: ck008_in.csv
@@ -152,7 +144,6 @@ tests:
       normalize: TESU_CD:zeropad:5
       has_header: true
 - test_id: CK009
-  test_name: 顧客属性
   input:
     tables:
     - csv: ck009_in.csv
@@ -172,7 +163,6 @@ tests:
       normalize: BIKO:nullblank
       has_header: true
 - test_id: CK010
-  test_name: 支店マスタ
   input:
     tables:
     - csv: ck010_in.csv
@@ -191,7 +181,6 @@ tests:
       encoding: shift_jis
       has_header: true
 - test_id: CK011
-  test_name: 残高SAM(固定長)
   input:
     tables:
     - csv: ck011_in.csv
@@ -208,7 +197,6 @@ tests:
       mode: byte
       layout: 0:6;6:22;22:30
 - test_id: CK012
-  test_name: 金利SAM(固定長)
   input:
     tables:
     - csv: ck012_in.csv
@@ -225,7 +213,6 @@ tests:
       mode: byte
       layout: 0:2;2:8
 - test_id: CK013
-  test_name: 売上(MISSING_TOBE)
   input:
     tables:
     - csv: ck013_in.csv
@@ -244,7 +231,6 @@ tests:
       encoding: shift_jis
       has_header: true
 - test_id: CK014
-  test_name: 実行ログtext
   input:
     tables:
     - csv: ck014_in.csv
@@ -261,7 +247,6 @@ tests:
       mode: text
       encoding: shift_jis
 - test_id: CK015
-  test_name: 共有셸A
   input:
     tables:
     - csv: ck015_in.csv
@@ -280,7 +265,6 @@ tests:
       encoding: shift_jis
       has_header: true
 - test_id: CK016
-  test_name: 共有셸B
   input:
     tables:
     - csv: ck016_in.csv
@@ -296,7 +280,6 @@ tests:
     compare:
       mode: byte
 - test_id: CK017
-  test_name: 手数料zeropad
   input:
     tables:
     - csv: ck017_in.csv
@@ -316,7 +299,6 @@ tests:
       normalize: TESU_CD:zeropad:4
       has_header: true
 - test_id: CK018
-  test_name: 月次レポートbyte
   input:
     tables:
     - csv: ck018_in.csv
@@ -332,7 +314,6 @@ tests:
     compare:
       mode: byte
 - test_id: CK019
-  test_name: 日次取引明細(DB単一出力)
   input:
     tables:
     - csv: ck019_in.csv
@@ -353,7 +334,6 @@ tests:
       encoding: shift_jis
       has_header: true
 - test_id: CK020
-  test_name: 日次決済(多重入力→ファイル+DB)
   input:
     tables:
     - csv: ck020_tx.csv

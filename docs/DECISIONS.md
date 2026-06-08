@@ -679,6 +679,15 @@ SAM 내부 특정 필드만 마스킹/정규화할 때(바이트위치를 알아
 
 **이유**: 반복되는 고정값을 전부 전역으로 모아 사람 손작업·드리프트를 줄임("비우면 기본, 적으면 override").
 
+### D-041 보정. `test_name` 칼럼 정본 CSV에서 제거 (다이어트 ① 일부 실현)
+
+**결정**(사용자): 정본 데모셋 `samples/complete/complete_sample.csv`를 직접 채워보니 `test_name` 기입이
+수고로움이 드러남 → **정본 CSV에서 `test_name` 칼럼 제거**. test_name은 선택값(없으면 checklist 번호가
+라벨)이라 **무손실**. 도구(`mapping_to_definition`)는 **하위호환으로 계속 읽음**(구 정의·기존 YAML 보호) —
+정본 템플릿에서만 뺀 것. e2e 21건 OK17/NG3/MISSING1 무변, 269 green.
+- `name`(출력 라벨)은 **유지**: 다중출력(CK020 明細/集計) 구분에 실효 — 단 D-041 원안엔 삭제 대상이라
+  추후 동일 판단 시 제거 가능(현재는 보존). encoding/has_header/delimiter 전역화는 여전히 보류(데이터 입수 후).
+
 ## D-042. 폴더 스캐너 = 개념 프로토타입만 검증, 실구현 보류
 
 **결정**: `checklist-folders-sample/folder_scan_prototype.py`는 **레포 자산이 아니라 전략 세션의 개념
