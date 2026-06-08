@@ -11,7 +11,6 @@ tests:
   - type: file
     expected: ck001_zandaka.csv
     file: ck001_zandaka.csv
-    name: 顧客残高
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -33,7 +32,6 @@ tests:
   - type: file
     expected: ck002_shukei.csv
     file: ck002_shukei.csv
-    name: 集計
     compare:
       mode: record
       key: TX_ID
@@ -52,7 +50,6 @@ tests:
   - type: file
     expected: ck003_kensho.csv
     file: ck003_kensho.csv
-    name: 残高検証
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -71,7 +68,6 @@ tests:
   - type: file
     expected: ck004_chohyo.txt
     file: ck004_chohyo.txt
-    name: 帳票
     compare:
       mode: byte
 - test_id: CK005
@@ -86,7 +82,6 @@ tests:
   - type: file
     expected: ck005_seikyu.txt
     file: ck005_seikyu.txt
-    name: 請求書
     compare:
       mode: byte
 - test_id: CK006
@@ -101,7 +96,6 @@ tests:
   - type: file
     expected: ck006_kouza.txt
     file: ck006_kouza.txt
-    name: 口座一覧
     compare:
       mode: text
       encoding: shift_jis
@@ -117,7 +111,6 @@ tests:
   - type: file
     expected: ck007_kinri.csv
     file: ck007_kinri.csv
-    name: 金利
     compare:
       mode: record
       key: CODE
@@ -136,7 +129,6 @@ tests:
   - type: file
     expected: ck008_tesuryo.csv
     file: ck008_tesuryo.csv
-    name: 手数料
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -155,7 +147,6 @@ tests:
   - type: file
     expected: ck009_zokusei.csv
     file: ck009_zokusei.csv
-    name: 属性
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -174,7 +165,6 @@ tests:
   - type: file
     expected: ck010_shiten.csv
     file: ck010_shiten.csv
-    name: 支店
     compare:
       mode: record
       key: SHITEN_CD
@@ -192,7 +182,6 @@ tests:
   - type: file
     expected: ck011_zandaka.dat
     file: ck011_zandaka.dat
-    name: 残高SAM
     compare:
       mode: byte
       layout: 0:6;6:22;22:30
@@ -208,7 +197,6 @@ tests:
   - type: file
     expected: ck012_kinri.dat
     file: ck012_kinri.dat
-    name: 金利SAM
     compare:
       mode: byte
       layout: 0:2;2:8
@@ -224,7 +212,6 @@ tests:
   - type: file
     expected: ck013_uriage.csv
     file: ck013_uriage.csv
-    name: 売上
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -242,7 +229,6 @@ tests:
   - type: file
     expected: ck014_log.txt
     file: ck014_log.txt
-    name: ログ
     compare:
       mode: text
       encoding: shift_jis
@@ -258,7 +244,6 @@ tests:
   - type: file
     expected: ck015_a.csv
     file: ck015_a.csv
-    name: 共有A
     compare:
       mode: record
       key: ID
@@ -276,7 +261,6 @@ tests:
   - type: file
     expected: ck016_b.txt
     file: ck016_b.txt
-    name: 共有B
     compare:
       mode: byte
 - test_id: CK017
@@ -291,7 +275,6 @@ tests:
   - type: file
     expected: ck017_tesu.csv
     file: ck017_tesu.csv
-    name: 手数料
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -310,7 +293,6 @@ tests:
   - type: file
     expected: ck018_rep.txt
     file: ck018_rep.txt
-    name: レポート
     compare:
       mode: byte
 - test_id: CK019
@@ -327,7 +309,6 @@ tests:
     expected: ck019_meisai.csv
     table: tobe_result
     export_as: ck019_meisai.csv
-    name: 取引明細
     compare:
       mode: record
       key: tx_id
@@ -349,7 +330,6 @@ tests:
   - type: file
     expected: ck020_meisai.csv
     file: ck020_meisai.csv
-    name: 明細
     compare:
       mode: record
       key: tx_id
@@ -359,7 +339,6 @@ tests:
     expected: ck020_shukei.csv
     table: rt_summary
     export_as: ck020_shukei.csv
-    name: 集計
     compare:
       mode: record
       key: customer_id

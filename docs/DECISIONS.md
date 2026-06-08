@@ -688,6 +688,20 @@ SAM 내부 특정 필드만 마스킹/정규화할 때(바이트위치를 알아
 - `name`(출력 라벨)은 **유지**: 다중출력(CK020 明細/集計) 구분에 실효 — 단 D-041 원안엔 삭제 대상이라
   추후 동일 판단 시 제거 가능(현재는 보존). encoding/has_header/delimiter 전역화는 여전히 보류(데이터 입수 후).
 
+### D-041 보정2. 매핑 CSV 컬럼명 직관화 + `name` 삭제 (사용자)
+
+**결정**(사용자): 정본 CSV를 처음 보는 사람이 바로 이해하도록 컬럼명을 직관화. 구 이름은 **별칭으로 계속
+수용**(`mapping_to_definition._get` — 신 이름 우선·구 이름 호환 → 깨짐 0). `name`(출력 라벨)도 삭제 —
+출력은 table/file명으로 **항상 식별**되므로(같은 체크리스트 내 충돌 방지됨) name은 미관 라벨일 뿐, 없으면 file명 표시.
+- 이름: kind→**io** · type→**db_or_file** · expected→**expected_output** · key→**key_columns** ·
+  mask→**ignore_columns** · normalize→**normalize_rules** · layout→**fixed_layout**.
+- 유지: checklist·shell·shell_group·table·file·compare_mode·encoding·has_header·timeout.
+- 삭제: name(+ D-041 보정의 test_name). **compare 블록 YAML 키(key/mask/normalize/layout)는 불변**
+  (로더 내부 계약) — CSV 신 이름 → 같은 YAML 키로 운반.
+- complete_sample 헤더 갱신 + 칸 설명 `#` 주석. e2e 21건 무변, **270 passed**.
+- ⏳보류: `tools/checklist_to_template.py`는 핵심 기능이 test_name(항목명 선반영)이라 이번 rename에서 제외 —
+  test_name 폐지와 함께 재설계할지 별도 결정(현재 구 이름·별칭으로 정상 동작).
+
 ## D-042. 폴더 스캐너 = 개념 프로토타입만 검증, 실구현 보류
 
 **결정**: `checklist-folders-sample/folder_scan_prototype.py`는 **레포 자산이 아니라 전략 세션의 개념

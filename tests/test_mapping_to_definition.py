@@ -104,11 +104,31 @@ def test_missing_required_column_rejected():
 
 
 def test_bad_kind_and_type_rejected():
+    # 구 이름(kind/type) 입력도 별칭으로 읽되, 에러 문구는 신 이름(io/db_or_file)으로 안내.
     r = m.mapping_to_definition(
         "shell_id,kind,type,file\n001,sideways,file,a.csv\n001,input,ftp,a.csv\n"
     )
     assert r["ok"] is False
-    assert any("kind" in e for e in r["errors"]) and any("type" in e for e in r["errors"])
+    assert any("io" in e for e in r["errors"]) and any("db_or_file" in e for e in r["errors"])
+
+
+def test_new_column_names_map_to_yaml(tmp_path):
+    """신 컬럼명(io/db_or_file/expected_output/key_columns/ignore_columns/normalize_rules/fixed_layout)이
+    구 이름과 동일 동작하고 compare 블록 YAML 키(key/mask/normalize/layout)로 매핑된다."""
+    csv = (
+        "checklist,shell,shell_group,io,db_or_file,table,file,expected_output,"
+        "compare_mode,key_columns,encoding,ignore_columns,normalize_rules,has_header,fixed_layout\n"
+        "CK1,b.sh,業務A,input,file,,in.csv,,,,,,,,\n"
+        "CK1,,,output,file,,out.csv,gold.csv,record,KEY,shift_jis,UPD,COL:zeropad:4,true,0:6\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    cmp = yaml.safe_load(r["yaml"])["tests"][0]["outputs"][0]["compare"]
+    assert cmp["mode"] == "record"
+    assert cmp["key"] == "KEY"                  # key_columns → key
+    assert cmp["mask"] == "UPD"                 # ignore_columns → mask
+    assert cmp["normalize"] == "COL:zeropad:4"  # normalize_rules → normalize
+    assert cmp["layout"] == "0:6"               # fixed_layout → layout
 
 
 def test_blank_filenames_autofilled_single_io():

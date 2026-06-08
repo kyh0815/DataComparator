@@ -14,6 +14,9 @@
 
 ## 2. 컬럼 다이어트 (사람 손작업 최소화)
 > 대상 = **long 매핑 CSV**(YAML 정의 필드와 별개). encoding/has_header/delimiter 전역화는 **config에 `has_header`·`delimiter` 키 신설**을 포함한다(D-041, **설계 확정·구현은 데이터 입수 후**).
+> ✅ **실현(D-041 보정·보정2)**: `test_name`·`name` **삭제 완료**. 컬럼명 **직관화**(kind→`io`, type→`db_or_file`,
+> expected→`expected_output`, key→`key_columns`, mask→`ignore_columns`, normalize→`normalize_rules`, layout→`fixed_layout`).
+> 구 이름은 별칭으로 계속 수용(깨짐 0). 정본 헤더·칸 설명은 `samples/complete/complete_sample.csv` + 도구 docstring.
 - **삭제**: `test_name`, `name`. (폴더가 못 줌=손작업인데 비교에 불필요. 이름은 번호로 원본 체크리스트에서 찾음)
 - **전역 기본값으로 이동**(행별 칸에서 제거, config 1곳): `encoding`(=shift_jis), `has_header`(=true), `delimiter`(=,).
   → 예외만 해당 행에서 override.

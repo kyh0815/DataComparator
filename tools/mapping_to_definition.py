@@ -12,31 +12,31 @@ CSV 채움 → 변환 1회 → yaml → config의 `definition_file`이 가리킴
 한 체크리스트가 입력 여러 개(예: A DB + B DB)를 읽어 출력(예: 병합된 C DB)을 내는 구조라,
 **checklist를 1차 키로 묶는 Long 형식**(입출력 항목당 1행, checklist로 그룹화)을 쓴다.
 
-CSV 열(대소문자·순서 무관, 빈 칸 허용):
-  checklist  [필수] 체크리스트 번호(=검증 단위). 같은 값 행들이 한 체크리스트로 묶임(입력 N·출력 M).
-             (구형 호환: shell_id 도 1차 키로 받음.)
-  kind       [필수] input | output
-  type       [필수] database | file  (입력/출력 데이터가 파일인지 DB인지)
-  shell      [선택] 이 체크리스트에서 실행되는 배치(잡) 경로. 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
-             (구형 호환: program)
-  shell_group[선택] 업무 그룹 태그(예: 업무A). **디렉토리 아님** — 경로·env는 config batch.groups가 듦(D-040).
-             체크리스트당 1값(행마다 다르면 에러). 비면 미사용(하위호환). ★lint(멤버십)는 preflight가 함.
-  table      [입력/출력=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명(어디에 업로드/적재).
-  file       [선택] 파일명. 비우면 자동 생성(아래 규칙). input=입력CSV / output(db)=export CSV / output(file)=산출 파일.
-  expected   [선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.
-  name       [선택] 출력 라벨(리포트/화면).
-  test_name  [선택] 셸 이름(체크리스트 항목명).   timeout [선택] 초(기본 60).
-  setup      [선택] 입력 적재 전 1회 실행할 준비 SQL(.sql)/스크립트 경로(체크리스트당 1회). 마스터·시퀀스 리셋용.
-  in_encoding[입력/선택] 입력 적재 인코딩(미지정 시 config 전역).
+CSV 열(대소문자·순서 무관, 빈 칸 허용 / 괄호=구 이름 호환):
+  checklist      [필수] 체크리스트 번호(=검증 단위). 같은 값 행들이 한 체크리스트로 묶임(입력 N·출력 M).
+                 (구 이름: shell_id 도 1차 키로 받음.)
+  io             [필수] input | output  — 이 행이 입력인지 출력인지.  (구: kind)
+  db_or_file     [필수] database | file — 데이터가 DB에 있나 파일인가.  (구: type)
+  shell          [선택] 이 체크리스트에서 실행되는 배치(잡) 경로. 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
+                 (구 이름: program)
+  shell_group    [선택] 업무 그룹 태그(예: 業務A). **디렉토리 아님** — 경로·env는 config batch.groups가 듦(D-040).
+                 체크리스트당 1값(행마다 다르면 에러). 비면 미사용(하위호환). ★lint(멤버십)는 preflight가 함.
+  table          [db_or_file=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명.
+  file           [선택] 파일명. 비우면 자동 생성(아래 규칙). 입력=입력CSV / 출력(db)=export CSV / 출력(file)=산출 파일.
+  expected_output[선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.  (구: expected)
+  timeout        [선택] 초(기본 60).
+  setup          [선택] 입력 적재 전 1회 실행할 준비 SQL(.sql)/스크립트 경로(체크리스트당 1회). 마스터·시퀀스 리셋용.
+  in_encoding    [입력/선택] 입력 적재 인코딩(미지정 시 config 전역).
+  (구 선택열 name·test_name 은 더 이상 정본에 없음 — 적혀 있으면 호환으로 읽기만 함, D-041.)
 
-  ── 출력별 비교 옵션(선택, V3 C1·C2 / 출력 행에서 읽어 compare 블록으로 운반) ──
-  비우면 byte(바이트 완전 일치) 기본. 셀 내부 다중값(mask·layout·normalize)은 `;` 구분(CSV `,` 충돌 방지).
-  compare_mode  byte | text | record (미지정=byte).
-  key           record 정렬·정합 키(컬럼명 또는 인덱스). DB/머지 출력은 사실상 필수(없으면 행 순서 false-NG).
-  encoding      출력 판정 인코딩(없으면 config 전역).   delimiter 필드 구분자(기본 ,).   has_header true/false.
-  mask          무시할 컬럼(실행일자·시퀀스ID 등; `;` 구분).   tolerance 수치 허용오차.
-  layout        고정길이 "start:end;start:end;..".   normalize 컬럼별 정규화 "COL:rule[:arg];.."
-                (rule: date/num:N/nullblank/zeropad:N/trim).
+  ── 출력별 비교 옵션(선택 / 출력 행에서 읽어 compare 블록으로 운반) ──
+  비우면 byte(바이트 완전 일치) 기본. 셀 내부 다중값(ignore_columns·fixed_layout·normalize_rules)은 `;` 구분(CSV `,` 충돌 방지).
+  compare_mode   byte | text | record (미지정=byte).
+  key_columns    record 정렬·정합 키(컬럼명 또는 인덱스). DB 출력은 사실상 필수(없으면 행 순서 false-NG).  (구: key)
+  encoding       출력 판정 인코딩(없으면 config 전역).   delimiter 필드 구분자(기본 ,).   has_header true/false.
+  ignore_columns 무시할 컬럼(실행일자·시퀀스ID 등; `;` 구분).   tolerance 수치 허용오차.  (구: mask)
+  fixed_layout   고정길이(SAM) "start:end;start:end;..".  (구: layout)
+  normalize_rules 컬럼별 정규화 "COL:rule[:arg];.." (rule: date/num:N/nullblank/zeropad:N/trim).  (구: normalize)
 
   ── 항목별 격납 패스(선택, 사장님 규격 #4·#7·#7-3·#7-4·#11 / D-036) ──
   비우면 config.yaml 공통 디렉토리를 쓴다(권장). 셸별로 위치가 다를 때만 적는다.
@@ -80,14 +80,32 @@ from src.config.definition import DefinitionError, load_definitions  # noqa: E40
 # 구형 호환: shell_id도 1차 키로 받음. 실행 배치는 shell(구형: program) 열.
 # file·expected는 빈 칸이면 규칙으로 자동 채우므로 필수 아님(table은 DB의 사실이라 필수).
 _KEY_COLS = ("checklist", "shell_id")  # 둘 중 하나는 있어야(checklist 우선)
-_REQUIRED_COLS = ("kind", "type")
+# 필수 논리열(별칭쌍: 신 이름 우선, 구 이름 호환). io=입출력 구분, db_or_file=DB냐 파일이냐.
+_REQUIRED_ANY = (("io", "kind"), ("db_or_file", "type"))
 _VALID_KIND = ("input", "output")
 _VALID_TYPE = ("database", "file")
 _VALID_MODE = ("byte", "text", "record")
-# 출력 행에서 읽어 compare 블록으로 운반하는 비교 옵션 열(V3 C1·C2). 빈 칸은 운반 안 함.
-_COMPARE_COLS = ("key", "encoding", "mask", "tolerance", "layout", "delimiter", "normalize")
+# 출력 행 → compare 블록 운반. {YAML 키: (신 이름, 구 이름…)}. 신 이름 우선·구 이름 호환. 빈 칸은 운반 안 함.
+_COMPARE_ALIASES = {
+    "key": ("key_columns", "key"),
+    "encoding": ("encoding",),
+    "mask": ("ignore_columns", "mask"),
+    "tolerance": ("tolerance",),
+    "layout": ("fixed_layout", "layout"),
+    "delimiter": ("delimiter",),
+    "normalize": ("normalize_rules", "normalize"),
+}
 # 배치 경로 미지정 시 쓰는 동봉 stub(데모 기본 — 실 운영은 program 열에 실 배치 경로).
 _STUB = {"database": "stub_batch/run_batch_db.py", "file": "stub_batch/run_batch_file.py"}
+
+
+def _get(row: dict, *names: str) -> str:
+    """별칭 중 첫 비지 않은 값(신 이름 우선, 구 이름 호환). 없으면 ''."""
+    for n in names:
+        v = row.get(n)
+        if v:
+            return v
+    return ""
 
 
 def mapping_to_definition(csv_text: str) -> dict:
@@ -101,7 +119,7 @@ def mapping_to_definition(csv_text: str) -> dict:
     if reader.fieldnames is None:
         return _fail(["CSVが空です（ヘッダー行が必要）。"])
     cols = {(c or "").strip().lower() for c in reader.fieldnames}
-    missing = [c for c in _REQUIRED_COLS if c not in cols]
+    missing = [group[0] for group in _REQUIRED_ANY if not any(c in cols for c in group)]
     if missing:
         return _fail([f"必須列がありません: {', '.join(missing)}"])
     if not any(k in cols for k in _KEY_COLS):
@@ -114,16 +132,16 @@ def mapping_to_definition(csv_text: str) -> dict:
     for n, raw in enumerate(reader, start=2):  # 2 = 헤더 다음 첫 데이터 행(사람 기준 행 번호)
         row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         sid = row.get("checklist") or row.get("shell_id") or ""  # checklist(1차 키) 우선, 구형 shell_id 호환
-        kind = row.get("kind", "").lower()
-        itype = row.get("type", "").lower()
+        kind = _get(row, "io", "kind").lower()        # io(구: kind) = input | output
+        itype = _get(row, "db_or_file", "type").lower()  # db_or_file(구: type) = database | file
         if not sid:
             errors.append(f"{n}行目: checklist が空です。")
             continue
         if kind not in _VALID_KIND:
-            errors.append(f"{n}行目[{sid}]: kind は {_VALID_KIND} のいずれか（受領: '{kind}'）。")
+            errors.append(f"{n}行目[{sid}]: io は {_VALID_KIND} のいずれか（受領: '{kind}'）。")
             continue
         if itype not in _VALID_TYPE:
-            errors.append(f"{n}行目[{sid}]: type は {_VALID_TYPE} のいずれか（受領: '{itype}'）。")
+            errors.append(f"{n}行目[{sid}]: db_or_file は {_VALID_TYPE} のいずれか（受領: '{itype}'）。")
             continue
 
         sh = shells.get(sid)
@@ -173,7 +191,7 @@ def mapping_to_definition(csv_text: str) -> dict:
             if mode and mode not in _VALID_MODE:
                 errors.append(f"{n}行目[{sid}]: compare_mode は {_VALID_MODE} のいずれか（受領: '{mode}'）。")
                 continue
-            spec = {"type": itype, "expected": row.get("expected", "")}
+            spec = {"type": itype, "expected": _get(row, "expected_output", "expected")}
             if itype == "database":
                 spec["table"] = table
                 spec["export_as"] = fname      # 비면 자동
@@ -232,9 +250,10 @@ def _compare_block(row: dict, mode: str) -> dict:
     block: dict = {}
     if mode:
         block["mode"] = mode
-    for col in _COMPARE_COLS:
-        if row.get(col):
-            block[col] = row[col]
+    for yaml_key, names in _COMPARE_ALIASES.items():
+        v = _get(row, *names)
+        if v:
+            block[yaml_key] = v
     hh = row.get("has_header", "").lower()
     if hh in ("true", "1", "yes", "y"):
         block["has_header"] = True
