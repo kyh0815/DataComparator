@@ -65,9 +65,18 @@
     display:flex; flex-direction:column; min-height:0; }
   .side-conn-box { padding:12px 14px; border-bottom:1px solid var(--line); }
   .side-conn-box .side-lab { margin:0 0 6px; }
-  .side-conn { font-size:11.5px; color:var(--ink); line-height:1.55; word-break:break-all; }
-  .side-conn .okmark { color:var(--c-ok); font-weight:700; }
-  .side-conn .muted { color:var(--muted); }
+  /* 접속 환경 카드(구조화) */
+  .conn-card { background:var(--c-surface-2); border:1px solid var(--c-border); border-radius:var(--radius-sm); padding:9px 10px; }
+  .conn-card.empty { color:var(--muted); font-size:11.5px; }
+  .conn-row { display:flex; align-items:center; gap:7px; }
+  .conn-dot { width:7px; height:7px; border-radius:50%; background:var(--c-ok); flex-shrink:0; box-shadow:0 0 0 3px var(--c-ok-soft); }
+  .conn-host { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn-meta { display:flex; align-items:center; gap:6px; margin-top:7px; }
+  .conn-db { display:inline-flex; align-items:center; gap:4px; min-width:0; font-size:11px; color:var(--muted); overflow:hidden; }
+  .conn-db svg { flex-shrink:0; color:var(--muted-2); }
+  .conn-db .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn-enc { margin-left:auto; flex-shrink:0; font-size:10px; font-weight:600; color:var(--c-accent); background:var(--c-surface);
+    border:1px solid var(--c-border-strong); border-radius:4px; padding:1px 6px; letter-spacing:.2px; }
   .side-head { padding:12px 14px 6px; }
   .side-lab { font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin:0; }
   /* 사이드바 = 프로젝트(=환경) 목록 (선택 표시는 배경+굵기, 좌측 무늬 없음). */
@@ -645,8 +654,13 @@ function restoreLocal(){
 function updateConnSummary(){
   const h=$("c-host").value, p=$("c-port").value, d=$("c-dbname").value, e=$("c-encoding").value;
   const el=$("conn-summary");
-  if(h){ el.innerHTML = `<span class="okmark">✓</span> ${escapeHtml(h)}:${escapeHtml(p)} / ${escapeHtml(d)} · ${escapeHtml(e)}`; }
-  else { el.textContent = "未設定 — Project Settings で入力"; }
+  if(!h){ el.innerHTML = `<div class="conn-card empty">未設定 — Project Settings で入力</div>`; return; }
+  const dbIcon = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><ellipse cx="8" cy="3.2" rx="6" ry="2.2"/><path d="M2 3.2v9.6c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V3.2c0 1.2-2.7 2.2-6 2.2S2 4.4 2 3.2Z" opacity=".5"/></svg>`;
+  el.innerHTML =
+    `<div class="conn-card">
+       <div class="conn-row"><span class="conn-dot"></span><span class="conn-host">${escapeHtml(h)}:${escapeHtml(p)}</span></div>
+       <div class="conn-meta"><span class="conn-db">${dbIcon}<span class="nm">${escapeHtml(d)}</span></span><span class="conn-enc">${escapeHtml(e)}</span></div>
+     </div>`;
 }
 function toast(id,msg,ok){ const t=$(id); t.textContent=msg; t.className="toast "+(ok?"ok":"bad"); t.style.display="block"; }
 function connForm(){
