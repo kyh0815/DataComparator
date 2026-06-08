@@ -114,6 +114,7 @@ def mapping_to_definition(csv_text: str) -> dict:
     shells는 [{test_id, input_count, output_count}]. errors는 사람용 메시지(행 번호 포함) 목록.
     빈 파일명은 _autofill_names가 규칙으로 채운다(내용은 수기, 파일명은 규칙 — D-035).
     """
+    csv_text = csv_text.lstrip("﻿")          # BOM 제거(utf-8-sig 아닌 디코드 대비)
     csv_text = _strip_leading_comments(csv_text)  # 선두 #주석/공백 줄 허용(SAMPLE 경고 헤더 등)
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:

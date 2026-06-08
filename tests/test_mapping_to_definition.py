@@ -332,6 +332,13 @@ def test_shell_semicolon_sequence_rejected():
     assert any("行目" in e and "シーケンス" in e and "未対応" in e for e in r["errors"])
 
 
+def test_bom_prefixed_csv_parses():
+    """UTF-8 BOM(엑셀 저장본) 붙은 CSV도 헤더로 인식한다(BOM 제거)."""
+    csv = "﻿checklist,io,db_or_file,file,expected_output\n001,input,file,in.csv,\n001,output,file,out.csv,gold.csv\n"
+    r = m.mapping_to_definition(csv)
+    assert r["ok"] and r["count"] == 1
+
+
 def test_leading_comment_lines_skipped():
     """선두 '#' 주석 줄(SAMPLE 경고 헤더)은 건너뛰고 그 다음을 헤더로 파싱."""
     csv = (
