@@ -77,8 +77,9 @@
   .conn-db .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .conn-enc { margin-left:auto; flex-shrink:0; font-size:10px; font-weight:600; color:var(--c-accent); background:var(--c-surface);
     border:1px solid var(--c-border-strong); border-radius:4px; padding:1px 6px; letter-spacing:.2px; }
-  .side-head { padding:12px 14px 6px; }
+  .side-head { padding:12px 14px 6px; display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
   .side-lab { font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin:0; }
+  .side-hint { font-size:10px; color:var(--muted-2); flex-shrink:0; }
   /* 사이드바 = 프로젝트(=환경) 목록 (선택 표시는 배경+굵기, 좌측 무늬 없음). */
   .proj-list { padding:4px 8px; flex:1; overflow:auto; }
   .proj-item { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:var(--radius-sm); font-size:13px;
@@ -86,6 +87,8 @@
   .proj-item:hover { background:var(--c-surface-2); }
   .proj-item.active { background:var(--c-selected); font-weight:600; }
   .proj-item .proj-nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .proj-item .proj-edit { width:100%; padding:3px 7px; border:1px solid var(--c-primary); border-radius:5px; font-size:13px;
+    font-family:inherit; font-weight:600; background:var(--c-surface); color:var(--ink); outline:none; box-shadow:0 0 0 3px var(--c-accent-soft); }
   /* 하단 프로필 */
   .side-foot { padding:12px 14px; border-top:1px solid var(--line); }
   .profile { display:flex; align-items:center; gap:10px; min-width:0; }
@@ -367,6 +370,7 @@
       </div>
       <div class="side-head">
         <p class="side-lab">プロジェクト</p>
+        <span class="side-hint">ダブルクリックで改名</span>
       </div>
       <!-- 사이드바 = 프로젝트(=환경) 목록. 클릭=그 config로 전환. B(멀티프로젝트) 확장 지점. -->
       <div class="proj-list" id="proj-list"></div>
@@ -614,19 +618,35 @@ function showTab(name){
 }
 document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=> showTab(t.dataset.tab)));
 
-/* ───────── 사이드바 = 프로젝트(=환경) 목록. 클릭=config 전환. B(멀티프로젝트) 확장 지점 ───────── */
+/* ───────── 사이드바 = 프로젝트(=환경) 목록. 클릭=전환 / 더블클릭=改名(localStorage). B 확장 지점 ───────── */
+let projNames = {};
+try { projNames = JSON.parse(localStorage.getItem("dc_projnames")||"{}"); } catch(e){ projNames={}; }
+function saveProjNames(){ try { localStorage.setItem("dc_projnames", JSON.stringify(projNames)); } catch(e){} }
+function projLabel(o){ return projNames[o.value] || o.textContent.split("（")[0].split("(")[0].trim(); }
 function renderProjects(){
   const sel=$("config"), c=$("proj-list"); if(!sel||!c) return;
   c.innerHTML="";
   [...sel.options].forEach(o=>{
     const it=document.createElement("div");
     it.className="proj-item"+(o.value===sel.value?" active":"");
-    it.title=o.textContent;
-    const nm=o.textContent.split("（")[0].split("(")[0].trim();
-    it.innerHTML=`<span class="proj-nm">${escapeHtml(nm)}</span>`;
+    it.title=o.textContent+"（クリックで切替 / ダブルクリックで改名）";
+    const nm=document.createElement("span"); nm.className="proj-nm"; nm.textContent=projLabel(o);
+    it.appendChild(nm);
     it.addEventListener("click", ()=>{ if(sel.value!==o.value){ sel.value=o.value; renderProjects(); sel.dispatchEvent(new Event('change')); } });
+    it.addEventListener("dblclick", (e)=>{ e.stopPropagation(); editProjName(it, o); });
     c.appendChild(it);
   });
+}
+function editProjName(item, o){
+  const inp=document.createElement("input"); inp.className="proj-edit"; inp.value=projLabel(o);
+  item.innerHTML=""; item.appendChild(inp); inp.focus(); inp.select();
+  let closed=false;
+  const done=(save)=>{ if(closed) return; closed=true;
+    if(save){ const v=inp.value.trim(); if(v) projNames[o.value]=v; else delete projNames[o.value]; saveProjNames(); }
+    renderProjects();
+  };
+  inp.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); done(true); } else if(e.key==="Escape") done(false); });
+  inp.addEventListener("blur", ()=> done(true));
 }
 
 /* ───────── 段(アコーディオン)制御 ───────── */
@@ -1138,7 +1158,7 @@ async function syncEnv(){
   preflightOK=false; setRunGate();
   const pf=$("preflight-out"); pf.style.display="none"; pf.innerHTML="";
   setStepSummary("step-pre", ""); setStepDone("step-pre", false);
-  const ce=$("ctx-env"); if(ce){ const o=$("config").selectedOptions[0]; ce.textContent=(o?o.textContent:"").split("（")[0].trim()||"環境"; }
+  const ce=$("ctx-env"); if(ce){ const o=$("config").selectedOptions[0]; ce.textContent= o ? projLabel(o) : "環境"; }
   await refreshDefPreview();
   refreshPaths();    // 환경 전환 시 디렉토리 폼도 그 config 기준으로 갱신
   refreshGroups();   // 업무별 디렉토리도 갱신
