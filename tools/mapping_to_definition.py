@@ -16,12 +16,12 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용 / 괄호=구 이름 호환):
   checklist      [필수] 체크리스트 번호(=검증 단위). 같은 값 행들이 한 체크리스트로 묶임(입력 N·출력 M).
                  (구 이름: shell_id 도 1차 키로 받음.)
   io             [필수] input | output  — 이 행이 입력인지 출력인지.  (구: kind)
-  db_or_file     [필수] database | file — 데이터가 DB에 있나 파일인가.  (구: type)
+  type           [필수] database | file — 데이터가 DB에 있나 파일인가.  (구: db_or_file)
   shell          [선택] 이 체크리스트에서 실행되는 배치(잡) 경로. 한 번만 적어도 됨(빈 칸=동봉 stub, 데모).
                  (구 이름: program)
   shell_group    [선택] 업무 그룹 태그(예: 業務A). **디렉토리 아님** — 경로·env는 config batch.groups가 듦(D-040).
                  체크리스트당 1값(행마다 다르면 에러). 비면 미사용(하위호환). ★lint(멤버십)는 preflight가 함.
-  table          [db_or_file=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명.
+  table          [type=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명.
   file           [선택] 파일명. 비우면 자동 생성(아래 규칙). 입력=입력CSV / 출력(db)=export CSV / 출력(file)=산출 파일.
   expected_output[선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.  (구: expected)
   timeout        [선택] 초(기본 60).
@@ -80,8 +80,9 @@ from src.config.definition import DefinitionError, load_definitions  # noqa: E40
 # 구형 호환: shell_id도 1차 키로 받음. 실행 배치는 shell(구형: program) 열.
 # file·expected는 빈 칸이면 규칙으로 자동 채우므로 필수 아님(table은 DB의 사실이라 필수).
 _KEY_COLS = ("checklist", "shell_id")  # 둘 중 하나는 있어야(checklist 우선)
-# 필수 논리열(별칭쌍: 신 이름 우선, 구 이름 호환). io=입출력 구분, db_or_file=DB냐 파일이냐.
-_REQUIRED_ANY = (("io", "kind"), ("db_or_file", "type"))
+# 필수 논리열(별칭쌍: 신 이름 우선, 구 이름 호환). io=입출력 구분, type=DB냐 파일이냐.
+# ★type은 D-046에서 db_or_file을 supersede(sam/vsam 값 도입으로 'db냐 file이냐'가 부정확). db_or_file=구 별칭.
+_REQUIRED_ANY = (("io", "kind"), ("type", "db_or_file"))
 _VALID_KIND = ("input", "output")
 _VALID_TYPE = ("database", "file")
 _VALID_MODE = ("byte", "text", "record")
@@ -134,7 +135,7 @@ def mapping_to_definition(csv_text: str) -> dict:
         row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
         sid = row.get("checklist") or row.get("shell_id") or ""  # checklist(1차 키) 우선, 구형 shell_id 호환
         kind = _get(row, "io", "kind").lower()        # io(구: kind) = input | output
-        itype = _get(row, "db_or_file", "type").lower()  # db_or_file(구: type) = database | file
+        itype = _get(row, "type", "db_or_file").lower()  # type(구: db_or_file) = database | file
         if not sid:
             errors.append(f"{n}行目: checklist が空です。")
             continue
@@ -142,7 +143,7 @@ def mapping_to_definition(csv_text: str) -> dict:
             errors.append(f"{n}行目[{sid}]: io は {_VALID_KIND} のいずれか（受領: '{kind}'）。")
             continue
         if itype not in _VALID_TYPE:
-            errors.append(f"{n}行目[{sid}]: db_or_file は {_VALID_TYPE} のいずれか（受領: '{itype}'）。")
+            errors.append(f"{n}行目[{sid}]: type は {_VALID_TYPE} のいずれか（受領: '{itype}'）。")
             continue
 
         sh = shells.get(sid)

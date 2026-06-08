@@ -790,3 +790,22 @@ G6 Project Settings(paths/DB) → G7 시각 디테일. G8(멀티프로젝트 등
 **이유**: 업무별 폴더가 실재(사장님 확인)하므로 "구조를 열어둔다"(나중에 실데이터 와도 재작업 없게). 단
 **업무별이냐 체크리스트별이냐의 최종 폴더 규약은 여전히 보류**(Input DB/Output DB 폴더 구조 확정 후) — 이번 건은
 "업무별일 때 대응 가능한 폴백을 마련"한 것이지 폴더 규약을 확정한 게 아니다.
+
+## D-046. 매핑 CSV 열 `db_or_file` → `type` 재명명 (D-041 이 열 결정 supersede)
+
+**배경**(사장님 확인): 코드변환은 문자코드만 바꾸고 형식은 보존 → 실무에 **SAM/VSAM**(고정길이) 파일이 그대로 온다.
+이를 매핑 CSV에서 표현하려고 이 열에 `sam`·`vsam` 값을 추가한다(D-047). 그러면 값이 {database, file, sam, vsam}
+4종이 되어, D-041에서 "직관화"를 이유로 붙인 이름 **`db_or_file`("DB냐 파일이냐")가 부정확**해진다(sam/vsam은
+file의 하위 형식이라 2분법에 안 맞음).
+
+**결정**: 이 열의 정본 이름을 **`type`** 으로 되돌린다. `db_or_file`은 **구 별칭으로 계속 수용**(기존
+`complete_sample.csv`·`definition_template.csv`·고객 작성본 깨짐 0). 즉 이 열의 이름 흐름:
+`type`(원래) → `db_or_file`(D-041, 직관화) → **`type`(D-046, sam/vsam 도입으로 2분법 깨짐)**.
+
+- 범위: **순수 리네임 — 동작 0 변경**(별도 커밋). `mapping_to_definition.py`(별칭쌍 방향·에러문구·docstring),
+  `definition_template.csv`·`samples/complete/complete_sample.csv`(헤더+주석), `MAPPING_SPEC.md`, 테스트.
+- ★YAML 정의(`definition.py`)의 `type` 필드(database|file)와는 **다른 층**이다 — 매핑 CSV의 `type` 열은
+  도구가 YAML로 컴파일하는 입력이고, sam/vsam은 도구 레벨에서 `type:file`+`compare` 블록으로 풀린다(D-047).
+- 하위호환 가드 테스트 추가(`db_or_file` 별칭 여전히 동작).
+
+**이유**: 이름이 값 집합을 정확히 반영해야 한다(sam/vsam 도입 시 db_or_file은 오해 유발). 별칭 유지로 역행 비용 0.

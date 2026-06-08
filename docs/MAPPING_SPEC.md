@@ -17,6 +17,8 @@
 > ✅ **실현(D-041 보정·보정2)**: `test_name`·`name` **삭제 완료**. 컬럼명 **직관화**(kind→`io`, type→`db_or_file`,
 > expected→`expected_output`, key→`key_columns`, mask→`ignore_columns`, normalize→`normalize_rules`, layout→`fixed_layout`).
 > 구 이름은 별칭으로 계속 수용(깨짐 0). 정본 헤더·칸 설명은 `samples/complete/complete_sample.csv` + 도구 docstring.
+> ↺ **D-046 보정**: `db_or_file` → **`type`** 으로 재명명(sam/vsam 값 도입으로 'db냐 file이냐'가 부정확해짐).
+> `db_or_file`는 구 별칭으로 계속 수용. 즉 이 열의 정본 이름 흐름은 type(원래) → db_or_file(D-041) → **type(D-046)**.
 - **삭제**: `test_name`, `name`. (폴더가 못 줌=손작업인데 비교에 불필요. 이름은 번호로 원본 체크리스트에서 찾음)
 - **전역 기본값으로 이동**(행별 칸에서 제거, config 1곳): `encoding`(=shift_jis), `has_header`(=true), `delimiter`(=,).
   → 예외만 해당 행에서 override.

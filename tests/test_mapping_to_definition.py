@@ -104,19 +104,19 @@ def test_missing_required_column_rejected():
 
 
 def test_bad_kind_and_type_rejected():
-    # 구 이름(kind/type) 입력도 별칭으로 읽되, 에러 문구는 신 이름(io/db_or_file)으로 안내.
+    # 구 이름(kind/db_or_file) 입력도 별칭으로 읽되, 에러 문구는 신 이름(io/type)으로 안내.
     r = m.mapping_to_definition(
-        "shell_id,kind,type,file\n001,sideways,file,a.csv\n001,input,ftp,a.csv\n"
+        "shell_id,kind,db_or_file,file\n001,sideways,file,a.csv\n001,input,ftp,a.csv\n"
     )
     assert r["ok"] is False
-    assert any("io" in e for e in r["errors"]) and any("db_or_file" in e for e in r["errors"])
+    assert any("io" in e for e in r["errors"]) and any("type" in e for e in r["errors"])
 
 
 def test_new_column_names_map_to_yaml(tmp_path):
-    """신 컬럼명(io/db_or_file/expected_output/key_columns/ignore_columns/normalize_rules/fixed_layout)이
-    구 이름과 동일 동작하고 compare 블록 YAML 키(key/mask/normalize/layout)로 매핑된다."""
+    """신 컬럼명(io/type/expected_output/key_columns/ignore_columns/normalize_rules/fixed_layout)이
+    compare 블록 YAML 키(key/mask/normalize/layout)로 매핑된다."""
     csv = (
-        "checklist,shell,shell_group,io,db_or_file,table,file,expected_output,"
+        "checklist,shell,shell_group,io,type,table,file,expected_output,"
         "compare_mode,key_columns,encoding,ignore_columns,normalize_rules,has_header,fixed_layout\n"
         "CK1,b.sh,業務A,input,file,,in.csv,,,,,,,,\n"
         "CK1,,,output,file,,out.csv,gold.csv,record,KEY,shift_jis,UPD,COL:zeropad:4,true,0:6\n"
@@ -129,6 +129,19 @@ def test_new_column_names_map_to_yaml(tmp_path):
     assert cmp["mask"] == "UPD"                 # ignore_columns → mask
     assert cmp["normalize"] == "COL:zeropad:4"  # normalize_rules → normalize
     assert cmp["layout"] == "0:6"               # fixed_layout → layout
+
+
+def test_db_or_file_alias_still_accepted(tmp_path):
+    """하위호환 가드: 구 컬럼명 db_or_file(=type의 옛 이름, D-046)도 그대로 읽힌다."""
+    csv = (
+        "checklist,io,db_or_file,file,expected_output\n"
+        "CK1,input,file,in.csv,\n"
+        "CK1,output,file,out.csv,gold.csv\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    out = yaml.safe_load(r["yaml"])["tests"][0]["outputs"][0]
+    assert out["type"] == "file"
 
 
 def test_blank_filenames_autofilled_single_io():
@@ -334,7 +347,7 @@ def test_shell_semicolon_sequence_rejected():
 
 def test_bom_prefixed_csv_parses():
     """UTF-8 BOM(엑셀 저장본) 붙은 CSV도 헤더로 인식한다(BOM 제거)."""
-    csv = "﻿checklist,io,db_or_file,file,expected_output\n001,input,file,in.csv,\n001,output,file,out.csv,gold.csv\n"
+    csv = "﻿checklist,io,type,file,expected_output\n001,input,file,in.csv,\n001,output,file,out.csv,gold.csv\n"
     r = m.mapping_to_definition(csv)
     assert r["ok"] and r["count"] == 1
 
