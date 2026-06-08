@@ -446,14 +446,14 @@
                     <div class="filter-hint" id="filter-hint"></div>
                     <div class="summary-meta">
                       <span>所要 <span class="el" id="s-elapsed">0</span> 秒</span>
-                      <span class="rep" id="report"></span>
+                      <span class="rep" style="margin-left:auto"><a class="inline-a" id="goto-artifacts">成果物（試験成績書・レポート）→ Artifacts</a></span>
                     </div>
                   </div>
                 </div>
 
                 <div class="actions" id="result-actions" style="display:none">
-                  <button class="ghost" id="evidence">⬇ 試験成績書(Excel)</button>
                   <button class="ghost" id="rerun-ng">NG分のみ再実行</button>
+                  <span class="hint" style="margin:0">試験成績書(Excel)・レポートは <b>Artifacts</b>、不一致は <b>Quarantine</b> タブ。</span>
                 </div>
 
                 <div id="results-wrap">
@@ -469,18 +469,29 @@
             </section>
           </section>
 
-          <!-- ===== Artifacts 탭(G5에서 試験成績書/리포트 이식 예정) ===== -->
+          <!-- ===== Artifacts 탭 = 試験成績書 · レポート ===== -->
           <section class="tabpanel" data-panel="artifacts">
-            <h1 class="page-title">Artifacts <span class="muted">試験成績書・レポート・差分</span></h1>
-            <div class="placeholder"><div class="big">実行後に成果物がここに集約されます</div>
-              <div>現在は Execution タブの結果欄から 試験成績書(Excel)・レポートを取得できます。（G5で本タブへ集約予定）</div></div>
+            <h1 class="page-title">Artifacts <span class="muted">試験成績書・レポート</span></h1>
+            <div id="art-empty" class="placeholder"><div class="big">実行後に成果物がここに表示されます</div>
+              <div>Execution タブで検証実行すると、試験成績書(Excel)・レポート(CSV)が生成されます。</div></div>
+            <div id="art-body" style="display:none">
+              <div class="panel">
+                <div class="panel-head"><h2>成果物</h2></div>
+                <div class="panel-body">
+                  <div class="actions" style="margin-top:0"><button class="primary" id="evidence">⬇ 試験成績書(Excel)</button></div>
+                  <div class="summary-meta" style="border-top:0; padding-top:0; margin-top:16px"><span class="rep" id="report"></span></div>
+                  <div class="hint">差分の全件は レポート/.diff、または <b>Quarantine</b> タブで確認できます。</div>
+                </div>
+              </div>
+            </div>
           </section>
 
-          <!-- ===== Quarantine 탭(G5에서 NG/MISSING 상세 이식 예정) ===== -->
+          <!-- ===== Quarantine 탭 = NG/MISSING/ERROR 격리(As-Is ↔ To-Be) ===== -->
           <section class="tabpanel" data-panel="quarantine">
-            <h1 class="page-title">Quarantine <span class="muted">NG・MISSING の隔離・差分（As-Is ↔ To-Be）</span></h1>
-            <div class="placeholder"><div class="big">不一致の隔離ビュー</div>
-              <div>現在は Execution タブの結果に差分（As-Is↔To-Be）が表示されます。（G5で本タブへ集約予定）</div></div>
+            <h1 class="page-title">Quarantine <span class="muted">NG・MISSING・ERROR の隔離（As-Is ↔ To-Be）</span></h1>
+            <div id="q-empty" class="placeholder"><div class="big">不一致なし</div>
+              <div>検証実行後、NG / MISSING / ERROR の項目だけがここに集約されます。</div></div>
+            <div id="quarantine-list"></div>
           </section>
 
           <!-- ===== Project Settings 탭 = 接続設定 (+ G6 ディレクトリ) ===== -->
@@ -732,6 +743,9 @@ function reset(){
   document.querySelectorAll('.scard').forEach(c=>c.classList.remove('active','disabled'));
   $("filter-empty").style.display="none";
   $("filter-hint").innerHTML="";
+  // Quarantine / Artifacts 초기화
+  $("quarantine-list").innerHTML=""; $("q-empty").style.display="";
+  $("art-body").style.display="none"; $("art-empty").style.display="";
 }
 function showBanner(id, html){ const b=$(id); b.innerHTML=`<div>${html}</div>`; b.classList.add("show"); }
 
@@ -890,6 +904,19 @@ function onProgress(m){
     renderDone(m.result);
   }
 }
+/* ───────── Quarantine: NG/MISSING/ERROR 출력만 격리 카드로 집약 ───────── */
+const _Q_BAD = ["NG","MISSING_TOBE","MISSING_ASIS","ERROR"];
+function quarantineCard(r){
+  const div=document.createElement("div");
+  div.className="outrow"; div.dataset.status=r.status; div.style.marginBottom="8px";
+  const name = r.shell_id + (r.output_name ? (" / "+r.output_name) : "");
+  let body="";
+  if (r.status==="NG") body=`<div class="detail show" style="margin:7px 0 0">${diffHtml(r.diff_lines)}</div>`;
+  else if (r.status==="MISSING_TOBE" || r.status==="MISSING_ASIS") body=`<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml(_MISS_MSG[r.status])}</div></div>`;
+  else if (r.status==="ERROR") body=`<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml("エラー: "+(r.error_message||""))}</div></div>`;
+  div.innerHTML=`<div class="outhead"><span class="outname">${escapeHtml(name)}</span><span class="badge b-${r.status}"><span class="bd"></span>${r.status}</span></div>`+body;
+  return div;
+}
 function renderDone(r){
   appendOutput(r.shell_id, r);
   const agg=shellAgg(r.shell_id);
@@ -897,6 +924,10 @@ function renderDone(r){
   const sh=$("shell-"+r.shell_id); if(sh) sh.dataset.status=agg;
   finishRow(r.shell_id);
   applyFilter();
+  if (_Q_BAD.includes(r.status)){
+    $("quarantine-list").appendChild(quarantineCard(r));
+    $("q-empty").style.display="none";
+  }
 }
 
 function renderSummary(s){
@@ -912,6 +943,8 @@ function renderSummary(s){
   else { verdict.textContent=`要確認 — NG/ERROR/MISSING ${bad} 件`; verdict.style.color="var(--ng)"; }
   const cfg=encodeURIComponent(lastConfig);
   $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)}</a>`;
+  // Artifacts 표시(試験成績書·레포트는 실행 후 항상 취득 가능)
+  $("art-empty").style.display="none"; $("art-body").style.display="block";
   $("summary").classList.add("show");
   setupCardFilters(s);
   setStepSummary("step-result", bad===0
@@ -983,6 +1016,7 @@ for (const c of document.querySelectorAll('.scard')) c.addEventListener("click",
   const f=c.getAttribute("data-f");
   setFilter(f==="*" ? null : f);
 });
+{ const ga=$("goto-artifacts"); if(ga) ga.addEventListener("click", ()=> showTab("artifacts")); }
 syncEnv();
 </script>
 </body>
