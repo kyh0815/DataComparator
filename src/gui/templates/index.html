@@ -62,28 +62,30 @@
   /* 사이드바 */
   .sidebar { width:var(--sidebar-w); flex-shrink:0; background:var(--c-surface); border-right:1px solid var(--line);
     display:flex; flex-direction:column; min-height:0; }
-  .side-top { padding:14px 14px 12px; border-bottom:1px solid var(--line); }
-  .side-lab { font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin:0 0 8px; }
-  .side-conn { margin-top:10px; font-size:11.5px; color:var(--muted); line-height:1.5; }
+  .side-head { padding:14px 14px 8px; display:flex; align-items:center; justify-content:space-between; }
+  .side-lab { font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin:0; }
+  /* 사이드바 = 프로젝트(=환경) 목록. B(멀티프로젝트) 확장 지점. */
+  .proj-list { padding:4px 8px; flex:1; overflow:auto; }
+  .proj-item { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:var(--radius-sm); font-size:13px;
+    color:var(--ink); cursor:pointer; user-select:none; border-left:2px solid transparent; margin-bottom:2px; }
+  .proj-item:hover { background:var(--c-surface-2); }
+  .proj-item.active { background:var(--c-selected); border-left-color:var(--c-primary); font-weight:600; }
+  .proj-item .proj-ic { width:18px; height:18px; flex-shrink:0; border-radius:5px; background:var(--c-surface-2);
+    border:1px solid var(--c-border-strong); display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted); }
+  .proj-item.active .proj-ic { background:var(--c-primary); border-color:var(--c-primary); color:#fff; }
+  .proj-item .proj-nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .side-foot { padding:10px 14px; border-top:1px solid var(--line); }
+  .side-conn { font-size:11px; color:var(--muted); line-height:1.5; }
   .side-conn .okmark { color:var(--c-ok); font-weight:600; }
-  .side-nav { padding:8px; flex:1; overflow:auto; }
-  .side-item { display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:var(--radius-sm); font-size:13px;
-    color:var(--ink); cursor:pointer; user-select:none; border-left:2px solid transparent; }
-  .side-item:hover { background:var(--c-surface-2); }
-  .side-item.active { background:var(--c-selected,var(--c-surface-2)); border-left-color:var(--c-primary); font-weight:600; }
-  .side-item .ic { width:16px; text-align:center; color:var(--muted); }
-  .side-item.active .ic { color:var(--c-primary); }
-  .side-foot { padding:10px 14px; border-top:1px solid var(--line); font-size:11px; color:var(--muted-2); }
 
-  /* 본문 + 탭바 */
+  /* 본문(상단 탭=기능) */
   .content { flex:1; display:flex; flex-direction:column; min-width:0; }
   .tabbar { height:var(--tabbar-h); flex-shrink:0; background:var(--c-surface); border-bottom:1px solid var(--line);
-    display:flex; align-items:stretch; padding:0 12px; gap:2px; }
+    display:flex; align-items:stretch; padding:0 14px; gap:2px; }
   .tab { border:0; background:transparent; font-family:inherit; font-size:13px; font-weight:500; color:var(--muted);
-    padding:0 14px; cursor:pointer; display:inline-flex; align-items:center; gap:7px; border-bottom:2px solid transparent; }
+    padding:0 14px; cursor:pointer; border-bottom:2px solid transparent; }
   .tab:hover { color:var(--ink); }
   .tab.active { color:var(--c-text); border-bottom-color:var(--c-primary); font-weight:600; }
-  .tab .dot { width:6px; height:6px; border-radius:50%; background:transparent; }
   .scroll { flex:1; overflow:auto; }
   .wrap { max-width:1000px; margin:0 auto; padding:22px 26px 64px; }
   .tabpanel { display:none; }
@@ -341,27 +343,19 @@
   <div class="body">
     <!-- ===== 사이드바(프로젝트/환경) ===== -->
     <aside class="sidebar">
-      <div class="side-top">
-        <p class="side-lab">プロジェクト / 環境</p>
-        <!-- 환경(설정파일) 선택 = 형제의 프로젝트 선택 위치. JS는 #config(hidden select)를 사용. -->
-        <div class="dd" id="dd-config"></div>
-        <select id="config" class="envsel" style="display:none">
-          <option value="samples/complete/config.yaml">サンプル demo（complete・20件 OK17/NG3/MISSING1）</option>
-          <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml — 実配備設定を作成）</option>
-        </select>
-        <div class="side-conn" id="conn-summary"></div>
+      <div class="side-head">
+        <p class="side-lab">プロジェクト</p>
       </div>
-      <nav class="side-nav">
-        <div class="side-item active" data-tab="mapping"><span class="ic">▤</span>Mapping</div>
-        <div class="side-item" data-tab="execution"><span class="ic">▷</span>Execution</div>
-        <div class="side-item" data-tab="artifacts"><span class="ic">▣</span>Artifacts</div>
-        <div class="side-item" data-tab="quarantine"><span class="ic">⚠</span>Quarantine</div>
-        <div class="side-item" data-tab="settings"><span class="ic">⚙</span>Project Settings</div>
-      </nav>
-      <div class="side-foot">ModernizePro Compare</div>
+      <!-- 사이드바 = 프로젝트(=환경) 목록. 클릭=그 config로 전환. B(멀티프로젝트) 확장 지점: 추가/관리·다벌 config. -->
+      <div class="proj-list" id="proj-list"></div>
+      <select id="config" hidden>
+        <option value="samples/complete/config.yaml">サンプル demo（complete・20件 OK17/NG3/MISSING1）</option>
+        <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml — 実配備設定を作成）</option>
+      </select>
+      <div class="side-foot"><div class="side-conn" id="conn-summary"></div></div>
     </aside>
 
-    <!-- ===== 본문(탭바 + 패널) ===== -->
+    <!-- ===== 본문(상단 탭=기능) ===== -->
     <div class="content">
       <nav class="tabbar">
         <button class="tab active" data-tab="mapping">Mapping</button>
@@ -588,10 +582,24 @@ const DEF = {{ definition | tojson }};
 /* ───────── タブ・サイドバー ナビ ───────── */
 function showTab(name){
   document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.tab===name));
-  document.querySelectorAll('.side-item').forEach(t=> t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.tabpanel').forEach(p=> p.classList.toggle('show', p.dataset.panel===name));
 }
-document.querySelectorAll('.tab,.side-item').forEach(t=> t.addEventListener('click', ()=> showTab(t.dataset.tab)));
+document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=> showTab(t.dataset.tab)));
+
+/* ───────── 사이드바 = 프로젝트(=환경) 목록. 클릭=config 전환. B(멀티프로젝트) 확장 지점 ───────── */
+function renderProjects(){
+  const sel=$("config"), c=$("proj-list"); if(!sel||!c) return;
+  c.innerHTML="";
+  [...sel.options].forEach(o=>{
+    const it=document.createElement("div");
+    it.className="proj-item"+(o.value===sel.value?" active":"");
+    it.title=o.textContent;
+    const nm=o.textContent.split("（")[0].split("(")[0].trim();
+    it.innerHTML=`<span class="proj-ic">▣</span><span class="proj-nm">${escapeHtml(nm)}</span>`;
+    it.addEventListener("click", ()=>{ if(sel.value!==o.value){ sel.value=o.value; renderProjects(); sel.dispatchEvent(new Event('change')); } });
+    c.appendChild(it);
+  });
+}
 
 /* ───────── 段(アコーディオン)制御 ───────── */
 function setStepSummary(id, html){ const e=$(id).querySelector(".sum"); if(e) e.innerHTML=html; }
@@ -1107,7 +1115,7 @@ async function syncEnv(){
 
 /* ───────── 初期化 ───────── */
 restoreLocal();
-buildDropdown("dd-config","config", syncEnv);
+renderProjects();
 updateConnSummary();
 for (const id of CONN_FIELDS) $(id).addEventListener("change", ()=>{ saveLocal(); updateConnSummary(); });
 $("config").addEventListener("change", syncEnv);
