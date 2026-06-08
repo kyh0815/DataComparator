@@ -265,7 +265,13 @@ def _check_db(config: Config, issues: list[PreflightIssue], connect) -> None:
         conn = connector(config.database)
         conn.close()
     except Exception as exc:  # noqa: BLE001 — 어떤 접속 실패도 게이트 에러로 수렴
-        issues.append(PreflightIssue("error", "DB", f"DB 接続に失敗: {exc}"))
+        hint = ""
+        if config.database.password is None:  # env 미설정이면 그 사실을 명시(인증실패와 구분)
+            hint = (
+                f" ※ 環境変数 {config.database.password_env} が設定されていません"
+                " — 設定後に再実行してください。"
+            )
+        issues.append(PreflightIssue("error", "DB", f"DB 接続に失敗: {exc}{hint}"))
 
 
 def _default_connect(db):

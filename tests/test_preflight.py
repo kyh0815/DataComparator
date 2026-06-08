@@ -192,6 +192,29 @@ def test_db_connect_failure_is_error(tmp_path):
     assert not r.ok and any("DB 接続に失敗" in i.message and i.coordinate == "DB" for i in r.errors)
 
 
+def test_db_failure_hints_unset_password_env(tmp_path):
+    """비번 env 미설정(password=None)이면 접속 실패 메시지에 env 키 미설정 사실을 1줄 덧붙인다."""
+    shell = tmp_path / "batch.sh"
+    shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    shell.chmod(0o755)
+    d = ShellDefinition(
+        test_id="001", test_name="t", input_type="database", input_csv="in.csv",
+        output_type="file", expected_output_csv="exp.dat", shell_program=str(shell),
+        inputs=[InputSpec(csv="in.csv", type="database", table="T")],
+        outputs=[OutputSpec(type="file", expected="exp.dat", file="o.dat")],
+    )
+    config = _config(tmp_path)
+    config.database.password = None  # env 미설정 상태 재현
+    config.database.password_env = "POSTGRES_PASSWORD"
+
+    def boom(db):
+        raise RuntimeError("connection refused")
+
+    r = preflight(config, [d], connect=boom)
+    db_errors = [i.message for i in r.errors if i.coordinate == "DB"]
+    assert db_errors and "POSTGRES_PASSWORD" in db_errors[0] and "設定されていません" in db_errors[0]
+
+
 def test_db_not_called_when_no_db(tmp_path):
     """파일 전용 셸이면 DB 접속을 시도하지 않는다(connect 미호출)."""
     called = []
