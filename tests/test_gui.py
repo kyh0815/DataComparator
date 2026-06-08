@@ -324,6 +324,43 @@ def test_save_writes_to_config_definition_file(client, tmp_path):
     assert r["ok"] and defp.read_text(encoding="utf-8").startswith("tests:")
 
 
+def test_paths_save_writes_paths_block(client, tmp_path):
+    """ディレクトリ設定 저장(G6): paths만 갱신, 다른 블록 보존, 빈칸은 기존값 유지."""
+    import yaml
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "encoding: Shift_JIS\n"
+        "paths: { asis_input_dir: ./a, asis_output_dir: ./b, tobe_input_dir: ./ti, tobe_output_dir: ./c, report_dir: ./r, definition_file: ./d.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u, password_env: POSTGRES_PASSWORD }\n"
+        "batch: { type: stub }\n",
+        encoding="utf-8",
+    )
+    r = client.post("/paths/save", data={
+        "config": str(cfgp),
+        "asis_input_dir": "/X/in", "asis_output_dir": "/X/out",
+        "tobe_input_dir": "",  # 빈칸 → 기존값 유지
+        "tobe_output_dir": "/X/tobe", "report_dir": "/X/rep", "definition_file": "./d2.yaml",
+    }).get_json()
+    assert r["ok"]
+    saved = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    assert saved["paths"]["asis_input_dir"] == "/X/in"
+    assert saved["paths"]["tobe_input_dir"] == "./ti"        # 빈칸 → 기존값 보존
+    assert saved["paths"]["definition_file"] == "./d2.yaml"
+    assert saved["database"]["host"] == "h" and saved["batch"]["type"] == "stub"  # 다른 블록 보존
+
+
+def test_paths_get_returns_current_paths(client, tmp_path):
+    """/paths는 선택 config의 paths를 폼 갱신용으로 돌려준다(G6)."""
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "paths: { asis_input_dir: ./aa, asis_output_dir: ./bb, tobe_output_dir: ./cc, report_dir: ./rr, definition_file: ./dd.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u }\n",
+        encoding="utf-8",
+    )
+    r = client.get("/paths?config=" + str(cfgp)).get_json()
+    assert r["asis_input_dir"] == "./aa" and r["definition_file"] == "./dd.yaml"
+
+
 # --- C3/C4: /preflight · /evidence 엔드포인트 -----------------------------------
 
 

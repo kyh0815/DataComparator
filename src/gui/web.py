@@ -32,6 +32,8 @@ import time
 import webbrowser
 from pathlib import Path
 
+import yaml
+
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
@@ -67,6 +69,7 @@ def index():
         "index.html",
         default_config=config_path,
         conn=conn,
+        paths=_paths_defaults(config_path),
         definition=definition,
         settings_open=settings_open,
     )
@@ -110,6 +113,32 @@ def connection_save():
         ok=True,
         message=f"接続設定を保存しました: {path.name}（パスワードは保存しません — 環境変数を使用）",
     )
+
+
+@app.route("/paths")
+def paths_get():
+    """선택 config의 paths(디렉토리·정의파일)를 폼 갱신용으로 돌려준다(읽기전용)."""
+    return jsonify(_paths_defaults(request.args.get("config") or "./config.yaml"))
+
+
+@app.route("/paths/save", methods=["POST"])
+def paths_save():
+    """paths(디렉토리·정의파일 경로)만 config.yaml에 원자적 저장(+.bak). 폴더 존재 검증은 事前点検."""
+    f = request.form
+    config_path = f.get("config") or "./config.yaml"
+    try:
+        path = connection.save_paths(
+            config_path,
+            asis_input_dir=f.get("asis_input_dir", ""),
+            asis_output_dir=f.get("asis_output_dir", ""),
+            tobe_input_dir=f.get("tobe_input_dir", ""),
+            tobe_output_dir=f.get("tobe_output_dir", ""),
+            report_dir=f.get("report_dir", ""),
+            definition_file=f.get("definition_file", ""),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return jsonify(ok=False, message=f"保存に失敗しました: {exc}"), 400
+    return jsonify(ok=True, message=f"ディレクトリ設定を保存しました: {path.name}")
 
 
 @app.route("/definition/preview")
@@ -302,6 +331,22 @@ def _connection_defaults(config_path: str) -> dict:
             "encoding": cfg.encoding,
         }
     return {"host": "", "port": "", "dbname": "", "user": "", "password_env": "POSTGRES_PASSWORD", "encoding": "Shift_JIS"}
+
+
+_PATHS_KEYS = ("asis_input_dir", "asis_output_dir", "tobe_input_dir", "tobe_output_dir", "report_dir", "definition_file")
+
+
+def _paths_defaults(config_path: str) -> dict:
+    """폼 초기값용 paths(원본 문자열·상대경로 보존). 현 config→example 순 best-effort(raw yaml)."""
+    for p in (config_path, str(_EXAMPLE_CONFIG)):
+        try:
+            raw = yaml.safe_load(Path(p).read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001 — 없거나 깨졌으면 다음 후보
+            continue
+        pa = raw.get("paths") if isinstance(raw, dict) else None
+        if isinstance(pa, dict) and pa:
+            return {k: str(pa.get(k, "") or "") for k in _PATHS_KEYS}
+    return {k: "" for k in _PATHS_KEYS}
 
 
 def _sse(payload: dict) -> str:

@@ -519,7 +519,27 @@
                 <div class="toast" id="c-toast"></div>
               </div>
             </div>
-            <!-- G6: ここに「ディレクトリ設定（paths 編集・保存）」を追加予定 -->
+            <div class="panel">
+              <div class="panel-head"><h2>ディレクトリ設定（paths）</h2></div>
+              <div class="panel-body">
+                <div class="grid">
+                  <div class="field"><label class="lab">As-Is 入力 <span class="opt">(asis_input_dir)</span></label><input type="text" id="p-asis-in" value="{{ paths.asis_input_dir }}" placeholder="例: /data/asis/input"></div>
+                  <div class="field"><label class="lab">As-Is 正解出力 <span class="opt">(asis_output_dir)</span></label><input type="text" id="p-asis-out" value="{{ paths.asis_output_dir }}" placeholder="例: /data/asis/output"></div>
+                  <div class="field"><label class="lab">To-Be 入力 <span class="opt">(tobe_input_dir)</span></label><input type="text" id="p-tobe-in" value="{{ paths.tobe_input_dir }}" placeholder="例: /data/tobe/input"></div>
+                  <div class="field"><label class="lab">To-Be 出力 <span class="opt">(tobe_output_dir)</span></label><input type="text" id="p-tobe-out" value="{{ paths.tobe_output_dir }}" placeholder="例: /data/tobe/output"></div>
+                  <div class="field"><label class="lab">レポート出力 <span class="opt">(report_dir)</span></label><input type="text" id="p-report" value="{{ paths.report_dir }}" placeholder="例: /data/reports"></div>
+                  <div class="field"><label class="lab">定義ファイル <span class="opt">(definition_file)</span></label><input type="text" id="p-def" value="{{ paths.definition_file }}" placeholder="例: ./test_definition.yaml"></div>
+                </div>
+                <div class="callout info">
+                  <div>As-Is / To-Be データの<b>場所</b>をここで指定します（環境ごと1回）。空欄は既存値を保持。相対パスは設定ファイル基準。
+                    項目ごとに場所が違う場合のみ、定義の <code>*_dir</code> で行単位 override。保存後の存在確認は <b>事前点検</b>。</div>
+                </div>
+                <div class="actions">
+                  <button class="ghost" id="p-save">ディレクトリ設定を保存</button>
+                </div>
+                <div class="toast" id="p-toast"></div>
+              </div>
+            </div>
           </section>
 
         </div>
@@ -668,6 +688,25 @@ async function refreshDefPreview(){
     else { pv.style.display=""; const m=$("def-msg"); if(m) m.textContent=(r.message||"")+" 下のマッピング表（CSV）から定義を作成・保存してください。"; }
   }catch(e){ /* 補助情報 */ }
 }
+
+/* ───────── ディレクトリ設定（paths 編集・保存 / 신규 G6） ───────── */
+const PATH_FIELDS={ "p-asis-in":"asis_input_dir","p-asis-out":"asis_output_dir","p-tobe-in":"tobe_input_dir","p-tobe-out":"tobe_output_dir","p-report":"report_dir","p-def":"definition_file" };
+function pathsForm(){ const fd=new FormData(); fd.append("config",$("config").value); for(const id in PATH_FIELDS) fd.append(PATH_FIELDS[id],$(id).value); return fd; }
+async function refreshPaths(){
+  try{
+    const r=await (await fetch("/paths?config="+encodeURIComponent($("config").value))).json();
+    for(const id in PATH_FIELDS){ const v=r[PATH_FIELDS[id]]; if(v!==undefined) $(id).value=v; }
+  }catch(e){ /* 補助情報 */ }
+}
+$("p-save").addEventListener("click", async (ev)=>{
+  ev.preventDefault(); const b=$("p-save"); b.disabled=true; const old=b.textContent; b.textContent="保存中…";
+  try{
+    const r=await (await fetch("/paths/save",{method:"POST",body:pathsForm()})).json();
+    toast("p-toast", r.message, !!r.ok);
+    if(r.ok) refreshDefPreview();
+  }catch(e){ toast("p-toast","通信エラー: "+e,false); }
+  finally{ b.disabled=false; b.textContent=old; }
+});
 
 /* ───────── ① 定義: ファイル選択で「生成→保存」を一括自動 ───────── */
 $("csv-btn").addEventListener("click", ()=> $("csv").click());
@@ -1001,6 +1040,7 @@ async function syncEnv(){
   setStepSummary("step-pre", ""); setStepDone("step-pre", false);
   const ce=$("ctx-env"); if(ce){ const o=$("config").selectedOptions[0]; ce.textContent=(o?o.textContent:"").split("（")[0].trim()||"環境"; }
   await refreshDefPreview();
+  refreshPaths();   // 환경 전환 시 디렉토리 폼도 그 config 기준으로 갱신
   if (DEF.ok){ markStepDone("step-def", "✓ 定義読込済"); }
   else { setStepSummary("step-def", ""); setStepDone("step-def", false); }
 }

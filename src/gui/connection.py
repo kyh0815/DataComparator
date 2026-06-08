@@ -138,3 +138,41 @@ def save_connection(
     tmp.write_text(new_text, encoding="utf-8")
     os.replace(tmp, cp)
     return cp
+
+
+_PATH_KEYS = (
+    "asis_input_dir", "asis_output_dir", "tobe_input_dir",
+    "tobe_output_dir", "report_dir", "definition_file",
+)
+
+
+def save_paths(config_path: str, **path_values: object) -> Path:
+    """paths(디렉토리·정의파일 경로)만 config.yaml에 원자적 저장한다(+.bak). 다른 블록은 보존.
+
+    save_connection과 같은 원자적 쓰기. 빈칸으로 온 키는 **기존값 유지**(지우지 않음).
+    경로 형식만 다루고, 실제 폴더 존재 여부는 事前点検(preflight)이 실행 전에 검증한다(저장 ≠ 검증 분리).
+    """
+    cp = Path(config_path)
+    template = cp if cp.is_file() else _EXAMPLE_CONFIG
+    if not template.is_file():
+        raise ConnectionError_(f"テンプレート設定が見つかりません: {template}")
+    raw = yaml.safe_load(template.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ConnectionError_(f"設定ファイルの最上位がマッピングではありません: {template}")
+
+    paths = raw.get("paths")
+    if not isinstance(paths, dict):
+        paths = {}
+    for k in _PATH_KEYS:
+        v = str(path_values.get(k, "") or "").strip()
+        if v:  # 빈칸은 기존값 유지(지우지 않음)
+            paths[k] = v
+    raw["paths"] = paths
+
+    new_text = yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
+    if cp.is_file():
+        shutil.copyfile(cp, cp.with_name(cp.name + ".bak"))
+    tmp = cp.with_name(cp.name + ".tmp")
+    tmp.write_text(new_text, encoding="utf-8")
+    os.replace(tmp, cp)
+    return cp
