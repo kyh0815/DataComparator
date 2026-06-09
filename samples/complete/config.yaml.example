@@ -14,13 +14,14 @@ paths:
   report_dir: ./reports
   definition_file: ./test_definition.yaml
 
-# DB CK(019·020)용. 파일흐름 22건은 DB 불요. 데모 박스 dc-pg는 5433(자기 환경에 맞게 수정).
+# DB CK(019·020)용. 파일흐름 22건은 DB 불요. ★이 database 블록이 접속 단일 진실 — run_demo도 여기서 읽는다.
+# ★아래는 예시값. 자기 PostgreSQL에 맞게 수정(특히 port: 표준 로컬 5432 / docker 등은 다를 수 있음).
 # ★password_env가 가리키는 환경변수에서 비밀번호를 읽는다 — 여기 평문 금지(모델 A).
 database:
   host: localhost
-  port: 5433
-  dbname: compare_proto
-  user: postgres
+  port: 5432            # ← 예시(표준 로컬 PG). 자기 포트로 수정.
+  dbname: compare_proto # ← createdb 로 만든 DB 이름과 일치시킬 것.
+  user: postgres        # ← 자기 DB 사용자.
   password_env: POSTGRES_PASSWORD
 
 batch:

@@ -3,7 +3,29 @@
 > 목적: 주니어 팀원이 **자기 PostgreSQL + 자기 샘플**로 e2e(프리플라이트→検証実行→試験成績書) 한 바퀴를 깨끗한 환경에서 막힘없이 돌린다.
 > 이 문서만 따라하면 끝나야 한다. 막히면 6번을 보라.
 
-전제: Python 3.10+, PostgreSQL 접속 가능, repo 클론 완료.
+전제: Python 3.10+, 자기 PostgreSQL(직접 띄움 — 도구가 안 띄운다).
+
+---
+
+## 0. 처음 준비 (clone 후 1회)
+
+```bash
+# ① 클론 & 의존성
+git clone <repo-url> && cd DataComparator
+pip install -r requirements.txt          # psycopg2 · pyyaml · flask · openpyxl
+
+# ② 설치 확인 — DB 없이 도는 단위 테스트로 환경 검증
+python3 -m pytest -q                      # 286 passed / 10 skipped 면 환경 OK
+
+# ③ ★자기 PostgreSQL 띄우기(도구가 안 띄움 — 직접). 예시는 docker, 비번은 자기가 정함:
+docker run -d --name my-pg -e POSTGRES_PASSWORD='<자기비번>' -p 5432:5432 postgres:16
+#   로컬에 PG가 이미 있으면 그걸 써도 됨(보통 5432). 설치 상세는 docs/SETUP.md.
+
+# ④ DB 생성 — createdb만 수동(최초 1회). ★스키마(db/schema*.sql)는 run_demo가 자동 적용 — 수동 적용 말 것.
+createdb -h localhost -p 5432 -U postgres compare_proto
+```
+
+> ★**DB는 팀원이 직접 띄운다.** 도구는 config에 적힌 값으로 *그 DB에 붙기만* 한다(첫 실배치 때 고객 DB에 붙는 연습).
 
 ---
 
@@ -102,16 +124,35 @@ GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
 # → http://127.0.0.1:8000/  (사전점검 → 실행 → 결과/試験成績書)
 ```
 
-### (C) 동봉 데모셋으로 먼저 감 잡기 (선택)
-자기 데이터 전에 정본 데모셋(24 CK — 파일/DB·byte/text/record·SAM/VSAM·N:M)으로 흐름만 확인:
-```bash
-POSTGRES_PASSWORD=devpw PGPORT=5433 ./samples/complete/run_demo.sh
-```
-데모 config(`samples/complete/config.yaml`)는 `.gitignore`라 clone 직후엔 없지만, `run_demo.sh`가
-커밋된 `samples/complete/config.yaml.example`에서 **자동 생성**한다(DB값은 자기 환경에 맞게 수정 가능).
-기대 결과: 출력 27건 / OK 22 · NG 4 · MISSING 1.
+### (C) ★먼저 권장: 동봉 데모셋으로 내 환경 검증 (자기 DB로 e2e)
+자기 데이터 전에 정본 데모셋(24 CK — 파일/DB·byte/text/record·SAM/VSAM·N:M)으로 자기 환경이 도는지 확인.
 
-**완료 기준**: 프리플라이트 통과 → 실행 → 試験成績書가 `report_dir`에 생성. 그게 보이면 셋업 성공.
+1. **데모 config의 DB값을 자기 것으로** — `samples/complete/config.yaml`(없으면 run_demo가 example에서 복사):
+   ```bash
+   cp samples/complete/config.yaml.example samples/complete/config.yaml   # run_demo가 없으면 자동 복사도 함
+   # → samples/complete/config.yaml 의 database: host/port/dbname/user 를 §0에서 띄운 자기 값으로 편집
+   ```
+   ★접속 값은 이 config가 **단일 진실** — run_demo의 스키마적용·골든·프리플라이트·비교가 **전부 여기서** 읽는다
+   (PGPORT 같은 env·하드코딩 없음). config의 port를 바꾸면 전부 그 포트로 붙는다.
+2. **비번 env + 실행**:
+   ```bash
+   export POSTGRES_PASSWORD='자기비번'
+   ./samples/complete/run_demo.sh
+   ```
+기대 결과: **출력 27건 / OK 22 · NG 4 · MISSING 1**, 試験成績書(.xlsx)가 `samples/complete/reports/`에 생성.
+
+> DB 없이 파일 CK만 보려면(022건): DB CK(019/020)는 빼고 `--shells`로 선택 —
+> `python3 -m src.cli.main --config samples/complete/config.yaml --shells CK001,…,CK024`(019·020 제외). DB 불요.
+
+**완료 기준**: 프리플라이트 통과 → 실행 → 試験成績書가 생성. 그게 보이면 셋업 성공.
+
+---
+
+## 7. 매핑표 작성 (자기 정의 만들 때)
+검증할 셸-입출력 매핑은 **엑셀 템플릿**으로 채운다(코드·고정길이가 Excel 자동변환에 안 깨지게 텍스트 서식 잠금):
+- 템플릿: `definition_template.xlsx`(루트). 팀원에게 이 파일을 공유 → Excel로 채워 제출.
+- 변환: `python3 tools/mapping_to_definition.py 채운표.xlsx -o test_definition.yaml` (.xlsx 직접 읽음, CSV 저장 불요).
+- 칼럼: checklist·io(input/output)·type(database/file/sam/vsam)·input·as_is_output·to_be_output·input_dir·as_is_dir·to_be_dir·compare_mode·key_columns·fixed_layout·… (헤더 그대로).
 
 ---
 
