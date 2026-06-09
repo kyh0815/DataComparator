@@ -1,0 +1,3 @@
+tx_id,customer_id,tx_date,tx_type,amount,balance_after,branch_code,memo
+TR01,C0001,2026-06-01,“ü‹à,200000,1700000,101,‹‹—^
+TR02,C0002,2026-06-01,o‹à,50000,89000,101,

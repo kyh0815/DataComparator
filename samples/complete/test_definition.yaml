@@ -1,0 +1,445 @@
+tests:
+- test_id: CK001
+  input:
+    tables:
+    - csv: ck001_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck001.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck001_zandaka.csv
+    file: ck001_zandaka.csv
+    tobe_dir: tobe/ck001_alt
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      mask: KOSHIN_NICHIJI
+      normalize: SHITEN_CD:zeropad:4;ZANDAKA:num:2;KISAN_YMD:date;BIKO:nullblank
+      has_header: true
+- test_id: CK002
+  input:
+    tables:
+    - csv: ck002_in1.csv
+      type: file
+    - csv: ck002_in2.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck002.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck002_shukei.csv
+    file: ck002_shukei.csv
+    compare:
+      mode: record
+      key: TX_ID
+      encoding: shift_jis
+      normalize: KINGAKU:num:0
+      has_header: true
+- test_id: CK003
+  input:
+    tables:
+    - csv: ck003_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck003.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck003_kensho.csv
+    file: ck003_kensho.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: ZANDAKA:num:2
+      has_header: true
+- test_id: CK004
+  input:
+    tables:
+    - csv: ck004_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck004.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck004_chohyo.txt
+    file: ck004_chohyo.txt
+    compare:
+      mode: byte
+- test_id: CK005
+  input:
+    tables:
+    - csv: ck005_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck005.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck005_seikyu.txt
+    file: ck005_seikyu.txt
+    compare:
+      mode: byte
+- test_id: CK006
+  input:
+    tables:
+    - csv: ck006_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck006.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck006_kouza.txt
+    file: ck006_kouza.txt
+    compare:
+      mode: text
+      encoding: shift_jis
+- test_id: CK007
+  input:
+    tables:
+    - csv: ck007_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck007.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck007_kinri.csv
+    file: ck007_kinri.csv
+    compare:
+      mode: record
+      key: CODE
+      encoding: shift_jis
+      normalize: RATE:num:4
+      has_header: true
+- test_id: CK008
+  input:
+    tables:
+    - csv: ck008_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck008.sh
+    shell_group: 業務A
+  outputs:
+  - type: file
+    expected: ck008_tesuryo.csv
+    file: ck008_tesuryo.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: TESU_CD:zeropad:5
+      has_header: true
+- test_id: CK009
+  input:
+    tables:
+    - csv: ck009_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck009.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck009_zokusei.csv
+    file: ck009_zokusei.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: BIKO:nullblank
+      has_header: true
+- test_id: CK010
+  input:
+    tables:
+    - csv: ck010_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck010.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck010_shiten.csv
+    file: ck010_shiten.csv
+    compare:
+      mode: record
+      key: SHITEN_CD
+      encoding: shift_jis
+      has_header: true
+- test_id: CK011
+  input:
+    tables:
+    - csv: ck011_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck011.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck011_zandaka.dat
+    file: ck011_zandaka.dat
+    compare:
+      mode: byte
+- test_id: CK012
+  input:
+    tables:
+    - csv: ck012_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck012.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck012_kinri.dat
+    file: ck012_kinri.dat
+    compare:
+      mode: byte
+- test_id: CK013
+  input:
+    tables:
+    - csv: ck013_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck013.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck013_uriage.csv
+    file: ck013_uriage.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+- test_id: CK014
+  input:
+    tables:
+    - csv: ck014_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck014.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck014_log.txt
+    file: ck014_log.txt
+    compare:
+      mode: text
+      encoding: shift_jis
+- test_id: CK015
+  input:
+    tables:
+    - csv: ck015_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck015_a.csv
+    file: ck015_a.csv
+    compare:
+      mode: record
+      key: ID
+      encoding: shift_jis
+      has_header: true
+- test_id: CK016
+  input:
+    tables:
+    - csv: ck016_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck016_b.txt
+    file: ck016_b.txt
+    compare:
+      mode: byte
+- test_id: CK017
+  input:
+    tables:
+    - csv: ck017_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck017.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck017_tesu.csv
+    file: ck017_tesu.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      normalize: TESU_CD:zeropad:4
+      has_header: true
+- test_id: CK018
+  input:
+    tables:
+    - csv: ck018_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck018.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck018_rep.txt
+    file: ck018_rep.txt
+    compare:
+      mode: byte
+- test_id: CK019
+  input:
+    tables:
+    - csv: ck019_in.csv
+      type: database
+      table: transaction_log
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck019_db.sh
+    shell_group: 業務C
+  outputs:
+  - type: database
+    expected: ck019_meisai.csv
+    table: tobe_result
+    export_as: ck019_meisai.csv
+    compare:
+      mode: record
+      key: tx_id
+      encoding: shift_jis
+      has_header: true
+- test_id: CK020
+  input:
+    tables:
+    - csv: ck020_tx.csv
+      type: database
+      table: rt_transaction
+    - csv: ck020_cust.csv
+      type: database
+      table: rt_customer
+  execution:
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck020_db.sh
+    shell_group: 業務C
+  outputs:
+  - type: file
+    expected: ck020_meisai.csv
+    file: ck020_meisai.csv
+    compare:
+      mode: record
+      key: tx_id
+      encoding: shift_jis
+      has_header: true
+  - type: database
+    expected: ck020_shukei.csv
+    table: rt_summary
+    export_as: ck020_shukei.csv
+    compare:
+      mode: record
+      key: customer_id
+      encoding: shift_jis
+      has_header: true
+- test_id: CK021
+  input:
+    tables:
+    - csv: ck021_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck021.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck021_zandaka.dat
+    file: ck021_zandaka.dat
+    compare:
+      key: '0'
+      layout: 0:6;6:14
+      mode: record
+      has_header: false
+- test_id: CK022
+  input:
+    tables:
+    - csv: ck022_in.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck022.sh
+    shell_group: 業務B
+  outputs:
+  - type: file
+    expected: ck022_kinri.dat
+    file: ck022_kinri.dat
+    compare:
+      key: '0'
+      layout: 0:6;6:14
+      mode: record
+      has_header: false
+- test_id: CK023
+  input:
+    tables:
+    - csv: ck023_in1.csv
+      type: file
+      src_dir: 業務D_io/asis_in
+    - csv: ck023_in2.csv
+      type: file
+      src_dir: 業務D_io/asis_in
+    - csv: ck023_in3.csv
+      type: file
+      src_dir: 業務D_io/asis_in
+  execution:
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck023.sh
+    shell_group: 業務D
+  outputs:
+  - type: file
+    expected: ck023_meisai.csv
+    file: ck023_meisai.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+  - type: file
+    expected: ck023_shukei.csv
+    file: ck023_shukei.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
+    compare:
+      mode: record
+      key: SHITEN_CD
+      encoding: shift_jis
+      has_header: true
+- test_id: CK024
+  input:
+    tables:
+    - csv: ck024_in1.csv
+      type: file
+      src_dir: 業務D_io/asis_in
+    - csv: ck024_in2.csv
+      type: file
+      src_dir: 業務D_io/asis_in
+  execution:
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck024.sh
+    shell_group: 業務D
+  outputs:
+  - type: file
+    expected: ck024_zandaka.csv
+    file: ck024_zandaka.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+  - type: file
+    expected: ck024_error.txt
+    file: ck024_error.txt
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
+    compare:
+      mode: byte

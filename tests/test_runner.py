@@ -250,3 +250,96 @@ def test_failure_shell_raises(tmp_path):
     cfg = _real_config(tmp_path)
     with pytest.raises(runner.RunnerError, match="終了コード 1"):
         runner.run_batch(_def("010", "file", "file"), cfg, conn=None)
+
+
+# --- P0: run_setup (입력 적재 전 준비 SQL/스크립트) ------------------------------
+
+
+def test_run_setup_none_is_noop(tmp_path):
+    """setup 미지정이면 무동작(예외 없음)."""
+    runner.run_setup(_def("001", "file", "file"), _config(tmp_path), conn=None)
+
+
+def test_run_setup_runs_script(tmp_path):
+    """비-.sql setup은 실행파일로 호출된다(마커 파일로 확인)."""
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "prep.sh"
+    script.write_text(f"#!/bin/sh\necho ok > {marker}\n", encoding="utf-8")
+    script.chmod(0o755)
+    d = _def("001", "file", "file", setup=str(script))
+    runner.run_setup(d, _config(tmp_path), conn=None)
+    assert marker.is_file()
+
+
+def test_run_setup_script_failure_raises(tmp_path):
+    """setup 스크립트 종료코드≠0 → RunnerError."""
+    script = tmp_path / "bad.sh"
+    script.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    script.chmod(0o755)
+    d = _def("001", "file", "file", setup=str(script))
+    with pytest.raises(runner.RunnerError, match="setup"):
+        runner.run_setup(d, _config(tmp_path), conn=None)
+
+
+def test_run_setup_sql_without_conn_raises(tmp_path):
+    """.sql setup인데 conn 없음 → RunnerError(.sql은 DB 필요)."""
+    sql = tmp_path / "reset.sql"
+    sql.write_text("SELECT 1;\n", encoding="utf-8")
+    d = _def("001", "file", "file", setup=str(sql))
+    with pytest.raises(runner.RunnerError, match="conn"):
+        runner.run_setup(d, _config(tmp_path), conn=None)
+
+
+# --- C6: 배치 호출 결합 제거 (config 외부화 / 2번째 규약 검증) --------------------
+
+
+def test_render_argv_pair_drop_and_eq_forms():
+    """렌더러: [flag,{값}] 쌍은 빈값이면 함께 드롭, '--f={값}'·'{값}'도 빈값이면 드롭."""
+    ctx = {"shell_id": "001", "input_table": "", "input_file": "/f",
+           "output_table": "T", "output_path": ""}
+    tmpl = ["run", "{shell_id}", "--it", "{input_table}", "--if", "{input_file}",
+            "--ot={output_table}", "--op={output_path}"]
+    assert runner._render_argv(tmpl, ctx) == ["run", "001", "--if", "/f", "--ot=T"]
+
+
+def test_no_transaction_log_fallback(tmp_path):
+    """폴백 제거: 입력 테이블은 정의값만 — 코어가 도메인 상수를 끼워넣지 않는다."""
+    d = _def("001", "database", "database", input_table="MY_TBL")
+    argv, *_ = runner._build_command(d, _config(tmp_path), clean=False)
+    assert "MY_TBL" in argv and "transaction_log" not in argv
+
+
+def test_second_batch_different_convention_via_config_only(tmp_path):
+    """★C6 핵심: 인자 규약·성공코드가 *다른* 2번째 배치를 config만 바꿔 붙인다(코어 0줄 수정).
+
+    같은 stub만 쓰면 결합이 안 풀려도 녹색이라, 일부러 전혀 다른 규약의 배치를 실제 실행해 검증한다.
+    """
+    marker = tmp_path / "argv.txt"
+    script = tmp_path / "batch2.sh"
+    script.write_text(f'#!/bin/sh\necho "$@" > "{marker}"\nexit 7\n', encoding="utf-8")
+    script.chmod(0o755)
+
+    cfg = _config(tmp_path)
+    # 전혀 다른 규약: 서브커맨드 run + shell_id 위치인자 + --src/--dst, DB 인자 없음, 성공코드 7.
+    cfg.batch.command = ["run", "{shell_id}", "--src", "{input_file}", "--dst", "{output_path}"]
+    cfg.batch.success_exit_code = 7
+    cfg.batch.env = {}
+    d = _def("C002", "file", "file", shell_program=str(script))
+
+    resolved = runner.run_batch(d, cfg)  # 성공코드 7 → RunnerError 안 남(코어 무수정)
+
+    got = marker.read_text(encoding="utf-8").split()
+    assert got[0] == "run" and got[1] == "C002"          # 새 규약대로 전달
+    assert "--src" in got and "--dst" in got
+    assert "--shell-id" not in got and "--db-host" not in got  # 옛 규약 흔적 없음
+    assert resolved[0][1] == tmp_path / "tobe_output" / "C002.csv"
+
+
+def test_success_exit_code_is_configurable(tmp_path, monkeypatch):
+    """성공 종료코드가 config 구동 — 기본(0)에서 7은 실패, success_exit_code=7이면 성공."""
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: _Proc(returncode=7))
+    with pytest.raises(runner.RunnerError, match="終了コード 7"):
+        runner.run_batch(_def("006", "file", "file"), _config(tmp_path))
+    cfg = _config(tmp_path)
+    cfg.batch.success_exit_code = 7
+    runner.run_batch(_def("006", "file", "file"), cfg)  # 이제 성공(예외 없음)

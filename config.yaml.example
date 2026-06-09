@@ -1,16 +1,18 @@
-# 실행 설정 예시. 복사해서 config.yaml로 만들고 환경에 맞게 수정한다.
+# 실배포 환경설정 템플릿. 복사해서 config.yaml로 만들고 환경에 맞게 수정한다(환경당 1회).
 #   cp config.yaml.example config.yaml
-# DB 비밀번호는 여기 적지 않고 password_env가 가리키는 환경변수에서 읽는다.
+# ★데모를 돌리려면 이 파일이 아니라 samples/complete/ 를 쓴다: samples/complete/run_demo.sh
+#   (단일 정본 데모셋 — 20 CK 한 바퀴). 이 템플릿은 실고객 배포 설정의 자리다.
+# DB 비밀번호는 여기 적지 않고 password_env가 가리키는 환경변수에서 읽는다(평문 금지).
 
 encoding: Shift_JIS
 
 paths:
-  asis_input_dir: ./samples/asis/input
-  asis_output_dir: ./samples/asis/output
-  tobe_input_dir: ./out/tobe_input          # 파일 입력(야간 배치) raw 복사 대상 (D-021, T2-3부터 사용)
+  asis_input_dir:  ./data/asis/input        # 실배포: 코드변환 후 As-Is 입력 디렉토리로 교체
+  asis_output_dir: ./data/asis/output       # 실배포: As-Is 출력(정답) 디렉토리로 교체
+  tobe_input_dir:  ./out/tobe_input         # 파일 입력(야간 배치) raw 복사 대상 (D-021)
   tobe_output_dir: ./out/tobe_output
-  report_dir: ./out/reports
-  definition_file: ./test_definition.yaml   # 셸별 정의 파일 (D-021, T2-3부터 사용)
+  report_dir:      ./out/reports
+  definition_file: ./test_definition.yaml   # mapping_to_definition으로 매핑표(CSV)→생성
 
 database:
   host: localhost
@@ -23,6 +25,33 @@ batch:
   type: stub                        # 'stub' | 'netcobol' (추후 확장)
   stub_dir: ./stub_batch            # 셸별 stub(run_batch_db.py / run_batch_file.py)은 정의 파일 execution.shell_program이 선택 (D-022)
   timeout_seconds: 60
+  # ── 배치 호출 계약(C6, 외부화) — 생략 시 아래 기본값(=동봉 stub의 한 사례)을 쓴다 ──
+  # 진짜 배치로 교체할 땐 이 블록만 바꾸면 된다(코어 0줄 수정). 토큰 규칙:
+  #   "{name}"=문맥값 치환. [flag, "{값}"] 쌍은 값이 비면 함께 빠짐(예: 파일 입력 셸은 --input-table 제외).
+  #   placeholder: shell_id/output_type/encoding/db_host/db_port/db_name/db_user/db_password/
+  #                input_table/input_file/output_table/output_path
+  # command:                        # argv 토큰(프로그램 경로는 정의의 shell_program이 앞에 붙음)
+  #   - "--shell-id"
+  #   - "{shell_id}"
+  #   - "--input-table"
+  #   - "{input_table}"             # 파일 입력이면 이 쌍은 자동 제외
+  #   - "--output-path"
+  #   - "{output_path}"             # DB 출력이면 자동 제외
+  # env:                            # 추가 환경변수(비밀번호 등 — argv 노출 금지)
+  #   POSTGRES_PASSWORD: "{db_password}"
+  # success_exit_code: 0            # 이 코드만 성공, 그 외 RunnerError
+  # clean_flag: "--clean"           # 골든 생성(clean) 시 덧붙일 플래그(미지원 배치면 비움)
+  # ── 업무 그룹별 환경(shell_group 값이 키) — base_dir=배치셸 디렉토리(D-040, 현재 lint용) ──
+  # ★업무별 데이터 디렉토리(D-044): 디렉토리가 업무마다 다르면 그룹에 적는다(선택). 경로 해석은
+  #   3단계 폴백 = 항목 override(정의 *_dir) > 업무 그룹 dir > 전역 paths. 비우면 전역 paths로 폴백.
+  # groups:
+  #   業務A:
+  #     base_dir: /opt/migsys/業務A          # 배치셸 디렉토리(필수)
+  #     asis_input_dir:  /data/業務A/asis/in    # ↓ 업무별 데이터 경로(선택). 비우면 전역 paths.
+  #     asis_output_dir: /data/業務A/asis/out
+  #     tobe_input_dir:  /data/業務A/tobe/in
+  #     tobe_output_dir: /data/業務A/tobe/out
+  #   業務B: { base_dir: /opt/migsys/業務B, success_exit_code: 0 }  # env/exit는 비우면 batch 전역 상속
 
 shells:
   range: [1, 10]    # 정의 파일(test_definition.yaml) 폴백. 정의 파일이 있으면 그쪽 셸 목록이 우선.

@@ -74,13 +74,12 @@ def _sse_messages(raw: bytes) -> list[dict]:
 
 
 def test_index_serves_japanese_page(client):
-    """단일 화면: 설정/접속 + 검증실행. 업로드/매핑/탭 어휘는 제거됐다(T7-3)."""
+    """単一画面(縦アコーディオン): 接続設定 + ①定義 ②事前点検 ③検証実行 ④結果(GUI 재구성)."""
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "現新比較" in body and "検証実行" in body and "設定 / 接続" in body
-    # 걷어낸 업로드/매핑 UI 흔적이 없어야(경량화 회귀 가드).
-    assert "アップロード検証" not in body and "マッピング表" not in body
+    assert "現新比較" in body and "検証実行" in body and "接続設定" in body
+    assert "事前点検" in body and "試験成績書" in body  # 4단계 동선이 한 화면에
 
 
 def test_index_embeds_definition_preview(client, monkeypatch):
@@ -254,3 +253,193 @@ def test_definition_preview_endpoint(client, monkeypatch):
     monkeypatch.setattr(web, "_definition_preview", lambda p: {"ok": True, "count": 3, "shells": []})
     r = client.get("/definition/preview?config=./config.yaml").get_json()
     assert r["ok"] and r["count"] == 3
+
+
+# --- 定義作成 화면(/define, D-037) -------------------------------------------------
+
+def test_define_page_renders(client):
+    """별도 정의작성 화면이 렌더되고 검증실행으로 돌아가는 링크가 있다."""
+    body = client.get("/define").get_data(as_text=True)
+    assert "定義作成" in body and 'href="/"' in body
+
+
+def test_index_folds_definition_upload(client):
+    """定義作成이 메인 화면 ①단계로 흡수됨(매핑 CSV 업로드 + 샘플 다운로드 링크가 인라인)."""
+    body = client.get("/").get_data(as_text=True)
+    assert "マッピング表" in body and "/definition/sample-csv" in body
+
+
+def test_from_csv_generates_definition(client):
+    """매핑표 CSV 업로드 → 정의 생성(셸·입출력 카운트 반환)."""
+    from io import BytesIO
+    csv = (
+        "shell_id,kind,type,table,file,expected\n"
+        "001,input,database,t_in,,\n"
+        "001,output,database,t_out,,\n"
+    )
+    data = {"csv": (BytesIO(csv.encode("utf-8")), "m.csv")}
+    r = client.post("/definition/from-csv", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] and r["count"] == 1
+    assert r["shells"][0]["input_count"] == 1 and r["shells"][0]["output_count"] == 1
+
+
+def test_from_csv_rejects_bad_rows(client):
+    """필수열/타입 불비 행이 있으면 ok=False·errors 반환(부분 생성 안 함)."""
+    from io import BytesIO
+    data = {"csv": (BytesIO(b"shell_id,kind\n001,input\n"), "m.csv")}
+    r = client.post("/definition/from-csv", data=data, content_type="multipart/form-data").get_json()
+    assert r["ok"] is False and r["errors"]
+
+
+def test_from_csv_requires_file(client):
+    r = client.post("/definition/from-csv", data={}, content_type="multipart/form-data").get_json()
+    assert r["ok"] is False
+
+
+def test_sample_csv_downloads(client):
+    """정의 CSV 샘플(동봉 Long 예시)을 화면에서 받을 수 있다."""
+    resp = client.get("/definition/sample-csv")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "checklist," in body  # checklist 기준 Long 형식 헤더(선두 #SAMPLE 주석 허용)
+
+
+def test_save_writes_to_config_definition_file(client, tmp_path):
+    """생성 yaml을 config의 definition_file 경로에 저장한다."""
+    defp = tmp_path / "gen_def.yaml"
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "encoding: Shift_JIS\n"
+        "paths:\n"
+        f"  asis_input_dir: {tmp_path}/in\n"
+        f"  asis_output_dir: {tmp_path}/out\n"
+        f"  tobe_output_dir: {tmp_path}/tobe\n"
+        f"  report_dir: {tmp_path}/rep\n"
+        f"  definition_file: {defp}\n"
+        "database: { host: h, port: 1, dbname: d, user: u, password_env: POSTGRES_PASSWORD }\n",
+        encoding="utf-8",
+    )
+    r = client.post("/definition/save",
+                    data={"yaml": "tests:\n  - test_id: X\n", "config": str(cfgp)}).get_json()
+    assert r["ok"] and defp.read_text(encoding="utf-8").startswith("tests:")
+
+
+def test_paths_save_writes_paths_block(client, tmp_path):
+    """ディレクトリ設定 저장(G6): paths만 갱신, 다른 블록 보존, 빈칸은 기존값 유지."""
+    import yaml
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "encoding: Shift_JIS\n"
+        "paths: { asis_input_dir: ./a, asis_output_dir: ./b, tobe_input_dir: ./ti, tobe_output_dir: ./c, report_dir: ./r, definition_file: ./d.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u, password_env: POSTGRES_PASSWORD }\n"
+        "batch: { type: stub }\n",
+        encoding="utf-8",
+    )
+    r = client.post("/paths/save", data={
+        "config": str(cfgp),
+        "asis_input_dir": "/X/in", "asis_output_dir": "/X/out",
+        "tobe_input_dir": "",  # 빈칸 → 기존값 유지
+        "tobe_output_dir": "/X/tobe", "report_dir": "/X/rep", "definition_file": "./d2.yaml",
+    }).get_json()
+    assert r["ok"]
+    saved = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    assert saved["paths"]["asis_input_dir"] == "/X/in"
+    assert saved["paths"]["tobe_input_dir"] == "./ti"        # 빈칸 → 기존값 보존
+    assert saved["paths"]["definition_file"] == "./d2.yaml"
+    assert saved["database"]["host"] == "h" and saved["batch"]["type"] == "stub"  # 다른 블록 보존
+
+
+def test_paths_get_returns_current_paths(client, tmp_path):
+    """/paths는 선택 config의 paths를 폼 갱신용으로 돌려준다(G6)."""
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "paths: { asis_input_dir: ./aa, asis_output_dir: ./bb, tobe_output_dir: ./cc, report_dir: ./rr, definition_file: ./dd.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u }\n",
+        encoding="utf-8",
+    )
+    r = client.get("/paths?config=" + str(cfgp)).get_json()
+    assert r["asis_input_dir"] == "./aa" and r["definition_file"] == "./dd.yaml"
+
+
+def test_groups_save_writes_batch_groups(client, tmp_path):
+    """業務別ディレクトリ 저장(D-045): batch.groups만 갱신, name·base_dir 필수, 기존 키·다른 블록 보존."""
+    import json
+    import yaml
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "paths: { asis_input_dir: ./a, asis_output_dir: ./b, tobe_output_dir: ./c, report_dir: ./r, definition_file: ./d.yaml }\n"
+        "database: { host: h, port: 1, dbname: d, user: u }\n"
+        "batch: { type: stub, groups: { 業務A: { base_dir: /old/A, success_exit_code: 3 } } }\n",
+        encoding="utf-8",
+    )
+    groups = [
+        {"name": "業務A", "base_dir": "/new/A", "asis_input_dir": "/data/A/in"},
+        {"name": "", "base_dir": "x"},        # name 없음 → 스킵
+        {"name": "業務B", "base_dir": ""},      # base_dir 없음 → 스킵
+    ]
+    r = client.post("/groups/save", data={"config": str(cfgp), "groups": json.dumps(groups)}).get_json()
+    assert r["ok"]
+    saved = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    assert set(saved["batch"]["groups"]) == {"業務A"}                # name·base_dir 없으면 스킵
+    assert saved["batch"]["groups"]["業務A"]["base_dir"] == "/new/A"  # 갱신
+    assert saved["batch"]["groups"]["業務A"]["asis_input_dir"] == "/data/A/in"
+    assert saved["batch"]["groups"]["業務A"]["success_exit_code"] == 3  # 기존 키 보존
+    assert saved["batch"]["type"] == "stub" and "database" in saved     # 다른 블록 보존
+
+
+def test_groups_get_returns_list(client, tmp_path):
+    """/groups는 batch.groups를 폼용 리스트로 돌려준다(D-045)."""
+    cfgp = tmp_path / "config.yaml"
+    cfgp.write_text(
+        "database: { host: h, port: 1, dbname: d, user: u }\n"
+        "batch: { type: stub, groups: { 業務A: { base_dir: /A, asis_input_dir: /A/in } } }\n",
+        encoding="utf-8",
+    )
+    r = client.get("/groups?config=" + str(cfgp)).get_json()
+    assert r[0]["name"] == "業務A" and r[0]["asis_input_dir"] == "/A/in"
+
+
+# --- C3/C4: /preflight · /evidence 엔드포인트 -----------------------------------
+
+
+def test_preflight_endpoint_returns_issues_json(client, monkeypatch):
+    """/preflight는 점검 결과(ok/errors/warnings)를 CSV 좌표 JSON으로 돌려준다(C3 재사용)."""
+    from src.core.preflight import PreflightIssue, PreflightReport
+
+    rep = PreflightReport([
+        PreflightIssue("error", "CK003/出A", "정답 파일이 없습니다: /x"),
+        PreflightIssue("warning", "CK002", "record인데 key가 없습니다"),
+    ])
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace())
+    monkeypatch.setattr(web, "preflight", lambda config: rep)
+    d = client.get("/preflight?config=c.yaml").get_json()
+    assert d["ok"] is False
+    assert d["errors"][0]["coordinate"] == "CK003/出A"
+    assert d["warnings"][0]["message"].startswith("record")
+
+
+def test_preflight_endpoint_config_error_is_ok_false(client, monkeypatch):
+    """config 로드 실패도 화면 메시지로(ok=false, coordinate=config)."""
+    def _boom(p):
+        raise RuntimeError("config 없음")
+
+    monkeypatch.setattr(web, "load_config", _boom)
+    d = client.get("/preflight").get_json()
+    assert d["ok"] is False and d["errors"][0]["coordinate"] == "config"
+
+
+def test_evidence_endpoint_downloads_xlsx(client, monkeypatch, tmp_path):
+    """/evidence는 생성한 試験成績書 파일을 첨부로 내려준다(C4)."""
+    cfg = SimpleNamespace(definition_file=tmp_path / "def.yaml", report_dir=tmp_path)
+    monkeypatch.setattr(web, "load_config", lambda p: cfg)
+    monkeypatch.setattr(web, "load_definitions", lambda p: ["DEF"])
+    monkeypatch.setattr(web.store, "latest_records", lambda p: ["REC"])
+
+    def fake_gen(definitions, records, out):
+        Path(out).write_bytes(b"xlsxdata")
+        return Path(out)
+
+    monkeypatch.setattr(web, "generate_evidence", fake_gen)
+    resp = client.get("/evidence?config=c.yaml")
+    assert resp.status_code == 200
+    assert resp.data == b"xlsxdata"

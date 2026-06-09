@@ -22,10 +22,13 @@ import sys
 import time
 from pathlib import Path
 
-from src.cli.output import CliReporter, should_use_color
-from src.config.definition import DefinitionError
+from src.cli.output import CliReporter, print_preflight, should_use_color
+from src.config.definition import DefinitionError, load_definitions
 from src.config.settings import ConfigError, load_config, parse_shell_selector
 from src.core import OrchestratorError, run_full_comparison
+from src.core import store
+from src.core.evidence import generate_evidence
+from src.core.preflight import preflight
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,10 +42,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="./config.yaml",
         help="설정 파일 경로 (기본: ./config.yaml)",
     )
-    parser.add_argument(
+    # 부분 실행 선택(C5): 셋은 상호배타. 미지정=전체 실행.
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         "--shells",
         default=None,
-        help="실행할 셸 범위 또는 ID (예: 1-10 또는 001,002,005). 미지정 시 정의 파일 전체",
+        help="실행할 셸 범위 또는 ID (예: 1-10 또는 001,002,005). OK여도 강제 재실행(rerun)",
+    )
+    selection.add_argument(
+        "--resume",
+        action="store_true",
+        help="이어하기 — 직전 실행의 미실행+ERROR만 재개(OK/NG는 건너뜀, C5)",
+    )
+    selection.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="재시험 — 직전 실행의 NG+ERROR만 재실행(고친 뒤 재검증, C5)",
     )
     parser.add_argument(
         "--report-dir",
@@ -53,6 +68,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="상세 출력 (모든 diff 줄 + 앱 로그)",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="실행 없이 사전 점검만(dry-run 게이트). 문제를 모두 모아 보고 후 종료(C3)",
+    )
+    parser.add_argument(
+        "--evidence",
+        action="store_true",
+        help="試験成績書(Excel)만 생성하고 종료 — 체크포인트 머지 최신 상태 기준(C4)",
     )
     return parser
 
@@ -80,13 +105,35 @@ def main(argv: list[str] | None = None) -> int:
         if args.verbose:
             _enable_verbose_logging()
 
+        if args.preflight:
+            # C3 게이트: 실행 없이 점검만. 에러 있으면 거부(2), 없으면 통과(0; warning은 허용).
+            report = preflight(config)
+            use_color = should_use_color(config.output.cli_color, sys.stdout)
+            print_preflight(report, use_color=use_color)
+            return 0 if report.ok else 2
+
+        if args.evidence:
+            # C4: 실행 없이 試験成績書(Excel)만 생성 — 체크포인트 머지 최신 상태 + 정의(계획) 기준.
+            if config.definition_file is None:
+                raise DefinitionError("definition_file이 설정되지 않아 試験成績書를 만들 수 없습니다.")
+            definitions = load_definitions(config.definition_file)
+            records = store.latest_records(store.checkpoint_path(config.report_dir))
+            out = config.report_dir / f"試験結果一覧_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+            path = generate_evidence(definitions, records, out)
+            print(f"試験成績書を出力しました: {path}")
+            return 0
+
         reporter = CliReporter(
             use_color=should_use_color(config.output.cli_color, sys.stdout),
             verbose=args.verbose,
         )
         start = time.perf_counter()
         summary = run_full_comparison(
-            config, on_progress=reporter.on_progress, shell_ids=shell_ids
+            config,
+            on_progress=reporter.on_progress,
+            shell_ids=shell_ids,
+            resume=args.resume,
+            retry_failed=args.retry_failed,
         )
         reporter.print_summary(summary, time.perf_counter() - start)
     except (ConfigError, DefinitionError, OrchestratorError) as exc:

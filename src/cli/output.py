@@ -158,3 +158,33 @@ class CliReporter:
 
     def _print(self, text: str) -> None:
         print(text, file=self._stream)
+
+
+def print_preflight(report, *, use_color: bool, stream=None) -> None:
+    """C3 프리플라이트 결과를 사람이 보기 좋게 출력한다(Interface 표시 — Core는 print 금지).
+
+    문제를 모두 모아 error/warning으로 나눠 좌표(checklist)와 함께 보이고, 마지막에 게이트 판정을
+    한 줄로 못박는다. 에러 0건이면 실행 통과, 1건 이상이면 거부(main이 종료코드로 반영).
+    """
+    out = stream or sys.stdout
+
+    def _c(text: str, color: str) -> str:
+        return f"{color}{text}{_RESET}" if use_color else text
+
+    print(_SUMMARY_RULE, file=out)
+    print("  プリフライト点検 (C3 dry-run)", file=out)
+    print(_SUMMARY_RULE, file=out)
+
+    for issue in report.errors:
+        print(f"  {_c('✖ ERROR', _RED)} [{issue.coordinate}] {issue.message}", file=out)
+    for issue in report.warnings:
+        print(f"  {_c('▲ WARN ', _YELLOW)} [{issue.coordinate}] {issue.message}", file=out)
+
+    print(_SUMMARY_RULE, file=out)
+    n_err, n_warn = len(report.errors), len(report.warnings)
+    if report.ok:
+        verdict = _c("通過 — 実行可", _GREEN) if n_warn == 0 else _c(f"通過（警告 {n_warn}件） — 実行可", _YELLOW)
+    else:
+        verdict = _c(f"拒否 — エラー {n_err}件（警告 {n_warn}件）。実行しません", _RED)
+    print(f"  判定: {verdict}", file=out)
+    print(_SUMMARY_RULE, file=out)

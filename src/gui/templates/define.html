@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>定義作成 — 現新比較ツール</title>
+<style>
+  :root {
+    --ok:#1a7f37; --ng:#c5303a; --ng-bg:#fcecec; --ng-bd:#f0c2c2;
+    --warn:#9a6700; --warn-bg:#fdf4e1; --warn-bd:#efd99b;
+    --accent:#15589e; --accent-2:#1d6fc4; --accent-bg:#eaf2fb; --accent-bd:#c4ddf6;
+    --bg:#eef1f4; --panel:#fff; --line:#e3e8ee; --line-2:#d4dbe3;
+    --ink:#1c2530; --ink-2:#3c4757; --muted:#6a7686; --radius:10px; --radius-sm:7px;
+    --shadow:0 1px 2px rgba(20,32,52,.04);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP",Meiryo,Arial,sans-serif;
+    margin:0; background:var(--bg); color:var(--ink); }
+  header { background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .header-in { max-width:880px; margin:0 auto; padding:14px 22px; display:flex; align-items:center; gap:12px; }
+  .header-in .bar { width:4px; height:34px; background:var(--accent); border-radius:3px; }
+  .header-in h1 { font-size:17px; margin:0; font-weight:700; }
+  .header-in .nav { margin-left:auto; font-size:13px; font-weight:600; }
+  .header-in .nav a { color:var(--accent); text-decoration:none; border:1px solid var(--accent-bd); padding:6px 12px; border-radius:var(--radius-sm); }
+  .header-in .nav a:hover { background:var(--accent-bg); }
+  main { max-width:880px; margin:0 auto; padding:22px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden; }
+  .panel-head { padding:15px 20px; border-bottom:1px solid var(--line); background:#fbfcfd; }
+  .panel-head h2 { font-size:14px; margin:0; font-weight:700; }
+  .panel-head .step { font-family:var(--mono); font-size:12px; color:#fff; background:var(--accent); border-radius:999px; padding:1px 9px; margin-right:8px; }
+  .panel-body { padding:18px 20px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .lab { display:block; font-size:12px; font-weight:600; color:var(--ink-2); margin:0 0 6px; }
+  input[type=text], input[type=number], textarea, input[type=file] {
+    width:100%; padding:9px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm);
+    font-size:13.5px; background:#fff; color:var(--ink); font-family:inherit; }
+  input:focus, textarea:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(29,111,196,.16); }
+  textarea { min-height:110px; resize:vertical; font-family:var(--mono); }
+  .num { width:74px; }
+  button { cursor:pointer; border-radius:var(--radius-sm); padding:10px 18px; font-size:13.5px; font-weight:600; font-family:inherit; }
+  button.run { background:var(--accent); color:#fff; border:1px solid var(--accent); }
+  button.run:hover:not(:disabled) { background:var(--accent-2); }
+  button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent-bd); }
+  button.ghost:hover:not(:disabled) { background:var(--accent-bg); }
+  button:disabled { opacity:.55; cursor:default; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .field { margin-bottom:14px; }
+  .mt { margin-top:14px; }
+  .badge { font-family:var(--mono); font-size:12px; background:var(--accent); color:#fff; border-radius:999px; padding:1px 9px; }
+  .slist { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .schip { border:1px solid var(--line); border-radius:7px; padding:4px 9px; background:#fff; font-size:12px; box-shadow:var(--shadow); }
+  .schip .sid { font-family:var(--mono); font-weight:700; }
+  .schip .io { color:var(--muted); margin-left:6px; }
+  .errbox { background:var(--ng-bg); border:1px solid var(--ng-bd); border-radius:var(--radius-sm); padding:11px 13px; margin-top:12px; font-size:13px; color:#7d2730; }
+  .errbox ul { margin:6px 0 0; padding-left:18px; }
+  .warnbox { background:#fff7e6; border:1px solid #f0c36d; border-radius:var(--radius-sm); padding:10px 13px; margin-top:10px; font-size:13px; color:#8a5a00; }
+  .warnbox ul { margin:6px 0 0; padding-left:18px; }
+  .okline { color:var(--ok); font-weight:700; margin-top:12px; display:flex; align-items:center; gap:8px; }
+  .callout { background:#f6f8fa; border:1px solid var(--line); border-left:3px solid var(--accent-2); border-radius:var(--radius-sm); padding:11px 13px; font-size:12.5px; color:var(--ink-2); margin-top:14px; }
+  .toast { font-size:13px; font-weight:600; margin-top:12px; min-height:18px; }
+  .toast.ok { color:var(--ok); } .toast.bad { color:var(--ng); }
+  details summary { cursor:pointer; font-weight:700; font-size:14px; padding:15px 20px; background:#fbfcfd; }
+  code { font-family:var(--mono); font-size:12px; background:#f1f4f8; padding:1px 5px; border-radius:4px; }
+  .hint { font-size:11.5px; color:var(--muted); margin-top:5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-in">
+    <span class="bar"></span>
+    <h1>定義作成</h1>
+    <span class="nav"><a href="/">検証実行 →</a></span>
+  </div>
+</header>
+
+<main>
+  <!-- ① マッピング表(CSV) → 定義生成 -->
+  <div class="panel">
+    <div class="panel-head"><h2><span class="step">1</span>マッピング表（CSV）から定義を生成</h2></div>
+    <div class="panel-body">
+      <div class="field">
+        <label class="lab">マッピング表（Long形式 CSV / Excel .xlsx）</label>
+        <input type="file" id="csv" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <div class="hint">checklist を1次キーに、io(input/output)・type(database/file/sam/vsam)・input・as_is_output・to_be_output … を行で（多重入出力は行追加）。Excelテンプレート(definition_template.xlsx)をそのまま提出可。
+          <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
+      </div>
+      <div class="actions">
+        <button class="run" id="gen">定義を生成</button>
+      </div>
+
+      <div id="result"></div>
+
+      <div id="after" style="display:none">
+        <div class="field mt">
+          <label class="lab">設定ファイル（保存先 config.yaml — その <code>definition_file</code> に書き込みます）</label>
+          <input type="text" id="config" value="{{ default_config }}">
+        </div>
+        <div class="actions">
+          <button class="run" id="save">この定義を config に保存</button>
+          <button class="ghost" id="dl">YAML ダウンロード</button>
+        </div>
+        <div class="toast" id="save-toast"></div>
+        <div class="callout">保存後は <a href="/">検証実行</a> 画面で同じ config を指定して実行できます。</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let GEN_YAML="";
+
+function download(text, filename, bom){
+  const blob=new Blob([(bom?"﻿":"")+text], {type:"text/plain;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+/* ① 生成 */
+$("gen").onclick=async()=>{
+  const f=$("csv").files[0];
+  const res=$("result"), after=$("after");
+  if(!f){ res.innerHTML='<div class="errbox">CSVファイルを選択してください。</div>'; after.style.display="none"; return; }
+  const fd=new FormData(); fd.append("csv", f);
+  $("gen").disabled=true; $("gen").textContent="生成中…";
+  try{
+    const r=await (await fetch("/definition/from-csv",{method:"POST",body:fd})).json();
+    if(r.ok){
+      GEN_YAML=r.yaml;
+      const chips=(r.shells||[]).map(s=>`<span class="schip"><span class="sid">${esc(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
+      const warns=(r.warnings||[]);
+      const warnBox=warns.length ? `<div class="warnbox">⚠ 警告（生成はされましたが確認してください）：<ul>${warns.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : "";
+      res.innerHTML=`<div class="okline">✓ <span>${r.count} シェルの定義を生成しました</span> <span class="badge">${r.count}</span></div><div class="slist">${chips}</div>${warnBox}`;
+      after.style.display="";
+    }else{
+      GEN_YAML=""; after.style.display="none";
+      const items=(r.errors||[]).map(e=>`<li>${esc(e)}</li>`).join("");
+      res.innerHTML=`<div class="errbox">生成できませんでした（1行でも不備があれば全体を拒否します）：<ul>${items}</ul></div>`;
+    }
+  }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${esc(e)}</div>`; }
+  finally{ $("gen").disabled=false; $("gen").textContent="定義を生成"; }
+};
+
+/* config に保存 / YAML ダウンロード */
+$("save").onclick=async()=>{
+  const t=$("save-toast");
+  const fd=new FormData(); fd.append("yaml", GEN_YAML); fd.append("config", $("config").value);
+  $("save").disabled=true;
+  try{
+    const r=await (await fetch("/definition/save",{method:"POST",body:fd})).json();
+    t.className="toast "+(r.ok?"ok":"bad"); t.textContent=(r.ok?"✓ ":"")+ (r.message||"");
+  }catch(e){ t.className="toast bad"; t.textContent="通信エラー: "+e; }
+  finally{ $("save").disabled=false; }
+};
+$("dl").onclick=()=>{ if(GEN_YAML) download(GEN_YAML, "test_definition.yaml", false); };
+</script>
+</body>
+</html>

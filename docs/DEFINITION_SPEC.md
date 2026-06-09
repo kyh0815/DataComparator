@@ -2,7 +2,7 @@
 
 > 現新比較ツール의 **정본(single source)**. 이 파일 하나로 Shell 1~N(최대 1000)을
 > 업로드→배치 실행→출력 정규화→이동→비교→결과까지 자동 수행한다.
-> 회의 확정(2026-06-03) 및 기획서 7.1(`docs/AlignmentCheck/InitialPlanning.md`)·D-033 기반.
+> 회의 확정(2026-06-03) 및 D-033 기반(초기 기획서 7.1은 정리 시 archived).
 
 ---
 
@@ -80,7 +80,7 @@ tests:
 |---|---|---|
 | `shell_id` | ✅ | 셸 식별자(문자열). 리포트·모니터링 단위 |
 | `test_name` | — | 사람용 이름(없으면 shell_id) |
-| `program` | ✅ | 실행할 배치 경로. **잡 1개로 호출(내부 PGM 다수는 잡이 처리), 최종 출력만 비교** |
+| `program` | ✅ | 실행할 배치 경로. **잡 1개로 호출(내부 PGM 다수는 잡이 처리), 최종 출력만 비교**. (매핑표 `shell`은 **단축 잡명**, 디렉토리·호출규약은 BatchConfig가 결합 — D-040) |
 | `timeout` | — | 배치 타임아웃(초, 기본 60) |
 | `inputs` | ✅(≥1) | 입력 목록 → 4-2 |
 | `outputs` | ✅(≥1) | 출력 목록 → 4-3 |
@@ -109,14 +109,19 @@ tests:
 | `file` | type=file면 ✅ | To-Be 출력 명: 배치가 만든 파일명(`tobe_output_dir`, 확장자 무관) — 규격 #9 |
 | `expected` | ✅ | As-Is 출력(정답) 명(`asis_output_dir`). To-Be 출력과 **바이트 비교** — 규격 #5 |
 | `expected_dir` | — | As-Is 출력 격납 패스 override(없으면 `config.asis_output_dir`) — 규격 #7 |
-| `expected_type` | — | As-Is 출력 종류(정보용 — 비교는 바이트라 판정 불변) — 규격 #6 |
 | `tobe_dir` | — | To-Be 출력 격납 패스 override(없으면 `config.tobe_output_dir`) — 규격 #11 |
+
+> 규격 #6(As-Is 출력 종류)은 **필드를 두지 않는다**(D-037 보정): 비교가 통짜 바이트라 판정에 무관하고
+> 리포트·화면에도 안 쓰여 inert였으므로 사용자 결정으로 제거. 출력 종류는 To-Be 기준 `type`(#10)만 둔다.
 | `name` | — | 출력 식별자(리포트/화면 라벨; 없으면 `export_as`/`file`) |
 
-> **출력 형식과 SAM**: 비교는 **통짜 바이트**(D-004)라 형식을 해석하지 않는다.
+> **출력 형식과 SAM**: 비교는 **통짜 바이트**(D-004)가 기본 원칙이다(형식을 해석하지 않는다).
 > - `type: file` → 배치가 만든 파일을 **그대로 비교**(SAM/CSV 등 확장자 무관).
-> - `type: database` → 도구가 **CSV로 export**(현 exporter, 컬럼순·`\n`·인코딩 D-027)해 CSV 정답과 비교.
-> - **SAM은 파일 출력에서만**(회의 확정) → SAM export 포맷터·레이아웃 **불필요**.
+> - `type: database` → SELECT 순서 비결정이라 그대로는 byte 비교 불가 → **export 시 `ORDER BY key`로
+>   행순서를 결정화한 뒤 통짜 바이트 비교가 1순위**(D-038, 현 exporter: 컬럼순·`\n`·인코딩 D-027).
+>   record(키 정합) 모드는 **순서 결정화가 불가능할 때의 폴백**. 즉 `key`는 "정렬 결정화용"이지 "정합 비교용"이 아니다.
+> - **SAM은 파일 출력에서만**(회의 확정). `layout`(바이트위치)은 **그 SAM 필드에 mask/normalize를 걸 때만
+>   소비**된다 — 순수 byte 비교 SAM은 layout 없이 된다(D-039). SAM export 포맷터는 불필요.
 
 ---
 

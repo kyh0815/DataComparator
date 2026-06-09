@@ -593,11 +593,11 @@
 
 1. **새 항목별 필드(전부 선택, 비면 config 공통 = 하위호환)**:
    - `InputSpec.src_dir`(#4 As-Is 입력 격납 패스), `InputSpec.dest_name`(#7-3 To-Be 격납 파일명). (`table`=#7-1, `dest_dir`=#7-4는 기존)
-   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.expected_type`(#6 As-Is 출력 종류·정보용), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존)
+   - `OutputSpec.expected_dir`(#7 As-Is 출력 격납 패스), `OutputSpec.tobe_dir`(#11 To-Be 출력 격납 패스). (`expected`=#5, `export_as`/`file`=#9, `type`=#10은 기존) *(#6 As-Is 출력 종류는 D-037 보정에서 제거 — 아래.)*
 2. **경로 해석 단일화(드리프트 차단)**: `src/core/paths.py` 신설 — `input_source_path`/`input_dest_dir`/`input_dest_path`/`output_asis_path`/`output_tobe_path`. "항목 경로 있으면 그걸, 없으면 config 공통". orchestrator(적재처·정답 경로)·runner(읽기처·To-Be 산출)·make_golden이 **모두 이 헬퍼를 공유**(기존 runner.resolve_input_dir/_tobe_path/_input_file_path 흡수·제거). 복사처=읽기처가 같은 규칙을 타 파일셸 드리프트를 구조적으로 차단.
 3. **#6(As-Is 출력 종류)는 메타**: 비교는 통짜 바이트(D-004)라 판정에 영향 없음 — 리포트·기록·문서용 정보로만 보유(바이트 자기일치 유지, [[dc-self-review]]).
 4. **#7-2(DB의 to_be 격납 패스)는 필드 미생성**: 우리 도구는 psycopg2로 CSV를 테이블에 **직접 적재**(스테이징 파일 경로 불요)하므로, DB 입력의 To-Be 격납지는 **테이블명(#7-1)**이 전부다. "DB는 경로 N/A". 만약 사장님 의도가 ⓐ적재 전 스테이징 디렉토리 또는 ⓑ스키마명이면 추후 `InputSpec.stage_dir`/`schema` 한 칸으로 확장(의미 확정 후) — **사장님 확인 대기 항목**.
-5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`expected_type`·`tobe_dir`)을 수용/방출 → 11항목이 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
+5. **도구·골든 정합**: `mapping_to_definition.py`·`checklist_to_template.py`가 새 선택 열(`src_dir`·`dest_name`·`expected_dir`·`tobe_dir`)을 수용/방출 → 매핑 CSV에 1:1. `make_golden.py`는 paths 헬퍼로 전환하며 **다중 출력 리스트 반환 미반영 잠복 버그(T7-2 이후 `copyfile(list)`)를 함께 수정**(출력마다 정답 경로로 복사).
 6. **`_needs_db` 보정**: 출력 중 **하나라도** database면 conn을 열도록(기존 1차 출력만 보던 것 → outputs 전건). 다중 출력에서 2번째가 DB여도 export 가능.
 
 **이유**: 검증 항목(셸)마다 데이터/정답/산출물의 실제 위치가 다를 수 있다는 사장님 규격을 그대로 받되, 대다수 케이스(공통 디렉토리)는 config 한 곳으로 간결하게 — override는 필요한 셸만. 경로 조립을 한 모듈로 모아 드리프트(복사처≠읽기처)를 원천 차단.
@@ -605,3 +605,272 @@
 **deferred(유지)**: #7-2 의미 확정 후 DB 스테이징/스키마 필드, 정교 비교(D-022), 물리 다중 DB 접속, Core/CLI/리포트 일본어화. SAM 등 확장자 실데이터 QA(2순위).
 
 **검증**: `tests/test_paths.py` 8개(override·fallback·rename·부모생성·디렉토리 미상 에러) + `test_definition.py` 항목별 경로 파싱 2개 + `test_mapping_to_definition.py` 경로 열 1개 + 기존 스위트 그린(하위호환: 경로 미기재 정의 무수정 동작).
+
+---
+
+## D-037. 定義作成 화면 복원 — CSV→정의를 별도 GUI 페이지로 (D-034 부분 보정)
+
+**결정**: T7-3(D-034)에서 운영 화면 경량화를 위해 GUI에서 걷어냈던 **매핑표(CSV)→정의 yaml 생성**을, **실행 화면과 분리된 별도 페이지 `/define`(定義作成)** 로 복원한다. "어떻게든 그걸 하는 화면이 있어야 한다"(사용자) — CLI 도구만으로는 부족.
+
+1. **페이지 2분할**: `/` 検証実行(운영=버튼+모니터+결과, 그대로 유지) / `/define` 定義作成(준비=정의 만들기). 헤더에 상호 링크. 실행 화면의 경량성은 보존(준비 기능이 섞이지 않음).
+2. **/define 기능**: 매핑표(Long CSV) 업로드 → `mapping_to_definition`(tools 재사용) → 미리보기(셸·입출력 카운트)/오류 행 표시 → **config의 definition_file에 저장** 또는 YAML 다운로드. 작성 시작점으로 **동봉 정의 CSV 샘플**(`samples/shell_mapping.long.example.csv`)을 화면에서 다운로드 제공. tools/ 로직 그대로 재사용(드리프트 없음). *(체크리스트→기입 템플릿 생성은 사용자 판단으로 GUI 미포함 — CLI `tools/checklist_to_template.py`로만 유지.)*
+3. **새 라우트**: `/define`(GET), `/definition/from-csv`(POST, 읽기전용 생성), `/definition/sample-csv`(GET, 샘플 다운로드), `/definition/save`(POST, config의 definition_file에 기록). 엄격 생성·round-trip은 tools 그대로(한 행이라도 오류면 전체 거부).
+4. **D-034와의 관계**: 운영 화면을 경량화한다는 D-034 원칙은 유지하되, "준비 작업도 화면이 필요하다"는 요구에 맞춰 **준비를 별도 화면으로** 둔 것(걷어낸 게 아니라 분리). 업로드-CSV "검증"(즉석 비교)·테이블선택 3칸·탭/위저드는 여전히 미복원.
+
+**이유**: 정의 작성(CSV→yaml)은 설치 준비의 핵심인데 CLI만 두면 비개발 사용자가 못 쓴다. 운영(실행)과 준비(정의 생성)를 **별도 화면으로 분리**하면 실행 화면의 간결함과 준비 화면의 기능성을 모두 얻는다.
+
+**검증**: `tests/test_gui.py` +7(=25개: /define 렌더·링크·from-csv 생성/거부/파일필수·sample-csv 다운로드·save가 definition_file에 기록) 통과. 라이브: 동봉 `samples/shell_mapping.long.example.csv` 업로드 → 2셸(001 입력3·출력2 / 002 입력1·출력1) 생성, 데모 정의 무사. 전체 178 passed.
+
+### D-037 보정. expected_type(#6 As-Is 출력 종류) 컬럼 제거
+
+**결정**(사용자): "새 정의 파일을 채웠을 때 커버 안 되는 부분" 감사 결과, 격납 패스 5종
+(`src_dir`·`dest_dir`·`dest_name`·`expected_dir`·`tobe_dir`)은 전부 엔진이 실사용(코드 추적+라이브 R02
+검증)하나 **`expected_type`만 파싱 후 아무 데서도 안 쓰임**(통짜 바이트 비교라 판정 무관, 리포트·화면
+노출 0건)이 확인됨. 사용자 결정으로 **컬럼·필드 제거**. 출력 "종류"는 To-Be 기준 `type`(#10)만 둔다.
+→ `OutputSpec.expected_type` 삭제, definition 파서·`mapping_to_definition`·`checklist_to_template`
+헤더·샘플 CSV·템플릿 yaml·DEFINITION_SPEC에서 제거. 사장님 11항목 중 #6은 정의에서 빠짐(통짜
+바이트 비교 모델에선 As-Is 출력 종류가 불요 — #7-2와 함께 "모델상 불필요"로 정리). 전체 178 passed.
+
+### D-037 보정2. 매핑 CSV의 1차 키 = checklist (열 이름 명확화)
+
+**결정**(사용자): 매핑 CSV는 **체크리스트 기준**이 포인트 — 1차 키 열을 `shell_id`가 아니라 **`checklist`**(체크리스트 번호)로, 실행 배치 열을 **`shell`**(구형 `program`)로 명명한다. 한 체크리스트가 입력 여러 개(예: A DB 짝수행 + B DB 홀수행을 shell이 Merge → C DB)를 읽고 최종 출력(C) 하나를 검증하는 구조라 **checklist로 묶는 Long 형식**(입출력 항목당 1행)이 정답. `mapping_to_definition`이 `checklist`/`shell`을 우선 인식(구형 `shell_id`/`program`도 호환). 샘플(`samples/shell_mapping.long.example.csv`)을 A·B→C 병합 예시로 교체, `checklist_to_template` 헤더도 동일 명명. (로더 yaml 필드는 그대로 `test_id`/`execution.shell_program` — CSV 열 이름만 사용자 어휘로.)
+
+**이유**: 검증 단위는 셸이 아니라 **체크리스트 항목**이고, 셸(실행 배치)은 그 체크리스트의 한 속성일 뿐. 열 이름이 `shell_id`라 "체크리스트 번호"인지 "실행 셸"인지 혼동됐음 — `checklist`(키)/`shell`(실행 배치)로 분리해 해소.
+
+**검증**: `tests/test_mapping_to_definition.py` +2(checklist 키·다중입력 병합·키열 필수), 샘플→정의 생성 ok(001 입력2·출력1 병합), 전체 그린.
+
+---
+
+## D-038. key = 정렬 결정화용(통짜 바이트 1순위), record는 폴백
+
+**결정**: "통짜 바이트"(D-004)가 기본 원칙. DB 출력은 SELECT 순서 비결정이라 그대로는 byte 비교 불가
+→ **export 시 `ORDER BY key`로 행순서를 결정화한 뒤 통짜 바이트 비교가 1순위**. record(키 정합) 모드는
+순서 결정화가 불가능할 때의 **폴백**. 즉 `key`는 "정렬 결정화용"이지 "정합 비교용"이 아니다.
+
+**이유**: 검증 도구의 생명은 통짜 바이트 신뢰성(해석 0). DB의 순서 비결정만 `ORDER BY key`로 제거하면
+byte 모드를 그대로 살릴 수 있다 — record는 그게 불가능한 예외에만. MAPPING_SPEC §5·DEFINITION_SPEC §4-3
+·HANDOFF_5 C1 문구를 이 한 줄로 통일.
+
+## D-039. SAM layout = mask/normalize 시에만 소비
+
+**결정**: `layout`(고정길이 바이트위치)은 **그 SAM 필드에 mask/normalize를 걸 때만 소비**된다. 순수
+통짜 바이트 비교 SAM은 layout 없이 된다. MAPPING_SPEC "layout 필수" → **"SAM이면 칼럼은 존재하되 값은
+mask/normalize 필요 시에만 채움"**으로 좁힘. DEFINITION_SPEC §4-3의 "SAM 레이아웃 불필요" 단정도 이로 보정.
+
+**이유**: 통짜 바이트(D-004)는 형식을 해석하지 않으므로 layout이 필요 없다. layout이 필요한 유일한 경우는
+SAM 내부 특정 필드만 마스킹/정규화할 때(바이트위치를 알아야 그 필드만 건드림) — 그 외엔 inert.
+
+## D-040. 매핑표 shell = 단축 잡명, 디렉토리·호출규약 = BatchConfig (2층 분리)
+
+**결정**: 매핑표 `shell` 칼럼은 **단축 잡명(예: `job001`)**으로 적고, 배치 디렉토리·호출규약(인자형식·
+성공코드·env)은 **config 전역 1벌(C6 BatchConfig)**이 결합한다. 현행 샘플의 풀패스(`/opt/batch/job001`)
+표기는 단축명으로 정정 — **단, 샘플 CSV 실파일·도구 정정은 데이터 입수 후**(이번엔 docs 예시 텍스트만).
+
+**이유**: 같은 디렉토리·호출규약을 행마다 반복하면 드리프트·손작업. 변하는 *어느 배치*만 매핑표에,
+고정값은 config 한 곳에. (열 이름 `shell`은 D-037 보정2와 동일.)
+
+## D-041. long 매핑 CSV 컬럼 다이어트 (설계 확정·구현 보류)
+
+**결정**: long 매핑 CSV의 컬럼을 다이어트한다 — ① `test_name`·`name` **삭제**(폴더가 못 줌=손작업인데
+비교에 불필요), ② `encoding`·`has_header`·`delimiter`를 **config 전역 기본값으로 이동**(행별 칸에서 제거,
+비우면 기본·적으면 그 행 override). 전역화에는 **config에 `has_header`·`delimiter` 키 신설**이 포함된다
+(현 config는 `encoding`만). 대상은 long 매핑 CSV이며 DEFINITION_SPEC YAML 필드와는 별개.
+**설계 확정, 구현(컬럼 제거·config 키 신설·도구 fallback)은 데이터 입수 후.**
+
+**이유**: 반복되는 고정값을 전부 전역으로 모아 사람 손작업·드리프트를 줄임("비우면 기본, 적으면 override").
+
+### D-041 보정. `test_name` 칼럼 정본 CSV에서 제거 (다이어트 ① 일부 실현)
+
+**결정**(사용자): 정본 데모셋 `samples/complete/complete_sample.csv`를 직접 채워보니 `test_name` 기입이
+수고로움이 드러남 → **정본 CSV에서 `test_name` 칼럼 제거**. test_name은 선택값(없으면 checklist 번호가
+라벨)이라 **무손실**. 도구(`mapping_to_definition`)는 **하위호환으로 계속 읽음**(구 정의·기존 YAML 보호) —
+정본 템플릿에서만 뺀 것. e2e 21건 OK17/NG3/MISSING1 무변, 269 green.
+- `name`(출력 라벨)은 **유지**: 다중출력(CK020 明細/集計) 구분에 실효 — 단 D-041 원안엔 삭제 대상이라
+  추후 동일 판단 시 제거 가능(현재는 보존). encoding/has_header/delimiter 전역화는 여전히 보류(데이터 입수 후).
+
+### D-041 보정2. 매핑 CSV 컬럼명 직관화 + `name` 삭제 (사용자)
+
+**결정**(사용자): 정본 CSV를 처음 보는 사람이 바로 이해하도록 컬럼명을 직관화. 구 이름은 **별칭으로 계속
+수용**(`mapping_to_definition._get` — 신 이름 우선·구 이름 호환 → 깨짐 0). `name`(출력 라벨)도 삭제 —
+출력은 table/file명으로 **항상 식별**되므로(같은 체크리스트 내 충돌 방지됨) name은 미관 라벨일 뿐, 없으면 file명 표시.
+- 이름: kind→**io** · type→**db_or_file** · expected→**expected_output** · key→**key_columns** ·
+  mask→**ignore_columns** · normalize→**normalize_rules** · layout→**fixed_layout**.
+- 유지: checklist·shell·shell_group·table·file·compare_mode·encoding·has_header·timeout.
+- 삭제: name(+ D-041 보정의 test_name). **compare 블록 YAML 키(key/mask/normalize/layout)는 불변**
+  (로더 내부 계약) — CSV 신 이름 → 같은 YAML 키로 운반.
+- complete_sample 헤더 갱신 + 칸 설명 `#` 주석. e2e 21건 무변, **270 passed**.
+- ⏳보류: `tools/checklist_to_template.py`는 핵심 기능이 test_name(항목명 선반영)이라 이번 rename에서 제외 —
+  test_name 폐지와 함께 재설계할지 별도 결정(현재 구 이름·별칭으로 정상 동작).
+
+## D-042. 폴더 스캐너 = 개념 프로토타입만 검증, 실구현 보류
+
+**결정**: `checklist-folders-sample/folder_scan_prototype.py`는 **레포 자산이 아니라 전략 세션의 개념
+프로토타입**(레포 미포함·참조용). MAPPING_SPEC의 "프로토타입 검증됨" 표현을 "개념 프로토타입으로 가능성
+확인"으로 정정. 실 스캐너(폴더→정의 골격)는 고객 폴더 실제 규칙 + 데이터 입수 후 신규 구현.
+
+**이유**: 폴더명 패턴·input/output 명칭·다중출력·SAM layout·파일↔테이블 대응이 확정돼야 정확히 짠다.
+추측 구현은 이 프로젝트가 내내 피한 실패.
+
+---
+
+## D-043. UI 방향 전환 — ModernizePro Compare(형제 제품 셸·녹색 디자인) 채택
+
+**배경**: 본 Comparator는 **ModernizePro Compare**라는 이름으로 사장님 회사 ModernizePro 제품군의
+**형제 제품**으로 출시된다. 코드 통합이 아니라 **같은 제품라인·같은 디자인 언어**를 공유한다. 형제 제품은
+이미 **[사이드바=프로젝트 목록 + 상단 탭(Dashboard / Mapping / Execution / Artifacts / Versions /
+Log viewer / Project Settings)]** 구조와 **녹색(틸/그린) 디자인**을 가진다.
+
+**결정**: 형제 제품의 셸 구조·디자인 언어를 따른다. 이로써 아래 기존 결정이 갱신/무효화된다.
+- **(무효)** "단일 화면 세로 흐름" 전제 → 형제 제품의 **사이드바+탭 구조**를 따른다. 우리의
+  정의→점검→실행→결과 세로 흐름은 폐기가 아니라 **'Execution 탭 내부 레이아웃'으로 존속**.
+- **(분산)** 기능을 탭으로 분산: 매핑표→**Mapping**, 검증실행→**Execution**, 試験成績書→**Artifacts**,
+  회차이력(기존 E2 보류)→**Versions**, DB접속→**Project Settings**, 로그→**Log viewer**.
+- **(폐기)** DESIGN_TOKENS.md의 먹네이비(#1F2937) 등 자체 토큰 → **재작성 예정**(주색은 D-043 보정 참조).
+  정식 가이드 없음 → **스크린샷 기반 추출**. DESIGN_TOKENS.md는 "값 폐기·재작성 예정"으로 표시.
+- **(갱신)** 외부 판매전략 자료 §12 *"엔터프라이즈 외피 나중에 자체 제작"* → **불필요**. 외피 = 형제 제품
+  셸 패턴 차용으로 충당. (해당 §12는 외부 문서라 repo에 반영 대상 없음 — 본 결정으로 무효 기록만.)
+
+**구현 보류**: UI·디자인 실작업은 **착수하지 않는다**. 착수 조건 = **첫 실배치 검증 후 + 형제 제품
+스크린샷 확보 후**. 지금은 본 D-043 기록 + DESIGN_TOKENS.md 상단 표시 + HANDOFF_5 C7/E2 supersede
+포인터만(코드·토큰 편집 금지).
+
+**이유**: 형제 제품과 동일 셸·디자인 언어를 쓰면 제품라인 일관성·고객 인지·개발 비용(자체 외피 제작 불요)
+모두 이득. 자체 토큰을 더 다듬는 건 곧 폐기될 값에 대한 매몰 작업이라 지금 중단하는 게 맞다.
+
+### D-043 보정. 주색 = 녹색 아님(색상명 미정)·ModernizePro Compare 한정
+
+**결정**(사용자): 형제 제품은 녹색(틸/그린)이지만, **ModernizePro Compare는 녹색이 아닌 별도 주색으로
+간다.** **셸 구조(사이드바+탭)·디자인 언어는 형제 제품과 공유, 주색만 분기.** 색상명은 **미정**(계열도
+미정) — 형제 제품·실제 가이드 스크린샷 확보 후 구체 값 확정. 범위는 **Compare 제품 한정**(형제 제품 색은 불변).
+
+**제약(주색 후보 조건)**: 기존 제품군 팔레트 **주황·연초록·파랑·보라**와 시각적으로 대비될 것.
+추가로 **빨강(우리 상태색 NG `#A83232`)과도 구분**될 것 — 검증툴에서 빨강=실패 의미라 주색으로 쓰면 혼동.
+→ 위 5색(주황·연초록·파랑·보라·빨강)과 충돌하지 않는 레인에서 스크린샷 확보 후 선택.
+→ D-043의 "녹색 계열로 대체" 표현 무효, DESIGN_TOKENS.md 배너도 "녹색 아닌 Compare 전용 색(미정)"으로 표시.
+
+**이유**: 같은 제품라인이되 Compare가 색으로 구분되는 형제 관계. 색은 스크린샷·정식 가이드 확보 후
+정해야 추측 토큰 매몰을 피한다. 지금은 "녹색 아님 + Compare 한정"만 확정, 구체 값은 보류.
+
+## D-044. UI 셸 재구성 착수 — ModernizePro Compare(그래파이트 + 형제 셸)
+
+**배경**: 형제 제품 ModernizePro 스크린샷 확보(`ui_screenshot/` 5장) → D-043 보류 조건("스크린샷 확보 후") 충족.
+형제는 **틸/그린**, 2계층(사이트=프로젝트목록 사이드바+탭 / 프로젝트=Dashboard·Mapping·Versions·Execution·
+Artifacts·Log viewer·Project Settings).
+
+**결정**(사용자): GUI를 형제 셸(상단 앱바 + 좌측 사이드바 + 상단 탭)로 재구성. 주색 = **그래파이트(딥 그레이)** —
+형제와 **색으로 구분**, 비활성처럼 안 보이게 **솔리드 딥**(검정 버튼처럼), **추후 변경 가능**(임시 확정).
+`DESIGN_TOKENS.md` 재작성 완료(그래파이트 토큰·셸 레이아웃·컴포넌트·커스텀 드롭다운).
+- **범위**: 현재 기능을 새 탭으로 **이식** + **디렉토리(paths) 편집·저장 신규**만(그 외 신기능 X).
+- **드롭다운**: 시스템 `<select>` → **커스텀(프로그램다운) UI**로 교체.
+- 탭 매핑: Mapping(정의/매핑표)·Execution(실행+모니터)·Artifacts(試験成績書/리포트)·Quarantine(NG/MISSING 상세)·
+  Project Settings(DB접속+디렉토리). 멀티프로젝트·Versions/Log/Scheduler/Approvals는 **후순위/보류**.
+- **불변**: 화면만(코어·comparator·스키마 무수정), **270 녹색 유지**, task 단위·각 task 끝 커밋.
+- **D-043(보류)·D-043 보정(주색 미정) supersede**: 스크린샷 확보 + 주색=그래파이트로 확정.
+
+**Task 분할**: G1 토큰(✅완료) → G2 셸 골격 → G3 Execution → G4 Mapping → G5 Artifacts+Quarantine →
+G6 Project Settings(paths/DB) → G7 시각 디테일. G8(멀티프로젝트 등) 보류.
+
+**이유**: 스크린샷 확보로 추측 매몰 위험 소멸(D-043 조건). 그래파이트는 형제 팔레트(주황·연초록·파랑·보라·틸)와
+충돌 0 + 무채 셸이라 상태색(OK/NG/MISSING)이 또렷이 튐 = 검증툴에 적합.
+
+## D-045. 업무별 데이터 디렉토리 — 3단계 경로 폴백 (구조 열기)
+
+**배경**(사장님 확인): As-Is/To-Be 데이터 디렉토리가 **업무마다 다를 수 있음**. 기존엔 전역 config.paths(공통)
++ 정의 CSV 항목별 `*_dir` override(체크리스트 행마다)뿐이라, 업무별로 다르면 행마다 반복해야 했다(GUI는 전역만).
+
+**결정**: config `batch.groups[업무]`(shell_group 키)에 **업무별 데이터 디렉토리**(`asis_input_dir`·
+`asis_output_dir`·`tobe_input_dir`·`tobe_output_dir`, 전부 선택)를 추가. 경로 해석을 **3단계 폴백**으로:
+**항목 override(정의 *_dir) > 업무 그룹 dir(shell_group) > 전역 config.paths**.
+- 구현: `paths.apply_group_dirs(definition, config)` — 항목 override **빈 칸에만** 그룹 dir을 채움(idempotent),
+  기존 `_dir(override>전역)` 해석을 그대로 사용(**paths 시그니처 무변경**). orchestrator·runner·preflight·
+  make_golden 진입점에서 호출 → 실행·골든·프리플라이트가 **동일 경로**(false-NG 구조적 차단, D-027 정신).
+- 하위호환: 그룹 dir 미설정이면 no-op → 전역 폴백(기존 동작). **273 passed 유지**(+그룹 dir 파싱·3단계 우선순위 테스트).
+- config.yaml.example에 업무별 dir 문서화. **GUI 업무별 디렉토리 편집 UI는 다음 단계**(현 Project Settings는 전역만).
+
+**이유**: 업무별 폴더가 실재(사장님 확인)하므로 "구조를 열어둔다"(나중에 실데이터 와도 재작업 없게). 단
+**업무별이냐 체크리스트별이냐의 최종 폴더 규약은 여전히 보류**(Input DB/Output DB 폴더 구조 확정 후) — 이번 건은
+"업무별일 때 대응 가능한 폴백을 마련"한 것이지 폴더 규약을 확정한 게 아니다.
+
+## D-046. 매핑 CSV 열 `db_or_file` → `type` 재명명 (D-041 이 열 결정 supersede)
+
+**배경**(사장님 확인): 코드변환은 문자코드만 바꾸고 형식은 보존 → 실무에 **SAM/VSAM**(고정길이) 파일이 그대로 온다.
+이를 매핑 CSV에서 표현하려고 이 열에 `sam`·`vsam` 값을 추가한다(D-047). 그러면 값이 {database, file, sam, vsam}
+4종이 되어, D-041에서 "직관화"를 이유로 붙인 이름 **`db_or_file`("DB냐 파일이냐")가 부정확**해진다(sam/vsam은
+file의 하위 형식이라 2분법에 안 맞음).
+
+**결정**: 이 열의 정본 이름을 **`type`** 으로 되돌린다. `db_or_file`은 **구 별칭으로 계속 수용**(기존
+`complete_sample.csv`·`definition_template.csv`·고객 작성본 깨짐 0). 즉 이 열의 이름 흐름:
+`type`(원래) → `db_or_file`(D-041, 직관화) → **`type`(D-046, sam/vsam 도입으로 2분법 깨짐)**.
+
+- 범위: **순수 리네임 — 동작 0 변경**(별도 커밋). `mapping_to_definition.py`(별칭쌍 방향·에러문구·docstring),
+  `definition_template.csv`·`samples/complete/complete_sample.csv`(헤더+주석), `MAPPING_SPEC.md`, 테스트.
+- ★YAML 정의(`definition.py`)의 `type` 필드(database|file)와는 **다른 층**이다 — 매핑 CSV의 `type` 열은
+  도구가 YAML로 컴파일하는 입력이고, sam/vsam은 도구 레벨에서 `type:file`+`compare` 블록으로 풀린다(D-047).
+- 하위호환 가드 테스트 추가(`db_or_file` 별칭 여전히 동작).
+
+**이유**: 이름이 값 집합을 정확히 반영해야 한다(sam/vsam 도입 시 db_or_file은 오해 유발). 별칭 유지로 역행 비용 0.
+
+## D-047. SAM/VSAM 대응 — type에 sam/vsam 값 추가, 매핑도구가 컴파일(코어 무수정)
+
+**배경**(사장님 확인): 코드변환은 문자코드만 바꾸고 **형식 보존** → SAM은 SAM, VSAM은 VSAM(둘 다 고정길이)으로
+온다. 실무에 존재하므로 대응 필요. ★VSAM은 insert 시 **키순 정렬 저장** → 물리 행순서가 As-Is와 달라
+순서 의존 비교(byte/위치)는 false-NG. **key 정렬·정합 필수.**
+
+**결정**: 매핑 CSV `type` 열에 `sam`·`vsam`을 추가(총 4값). **Option A — 매핑도구가 기존 record/layout/key로
+컴파일**(definition.py 스키마·orchestrator·comparator **무수정**, 코어 무수정 규칙 준수). 비교 엔진은 이미
+record 모드에서 layout(고정길이 슬라이스)·key(정렬+머지조인)를 지원하므로 **새 비교로직 0**.
+- **storage**: sam/vsam → YAML `type: file`(고정길이 파일이라 적재/추출은 file과 동일, 동봉 stub=run_batch_file).
+- **compare 도출**(`_apply_format_compare`):
+  - **sam** = 기본 **byte 통짜**(순차파일·순서 의미, D-039). `record` 명시 또는 `ignore_columns`/`normalize_rules`가
+    있으면 **record+layout 필드비교**(그땐 layout 필수). byte일 때 layout은 운반 안 함(死데이터 방지).
+  - **vsam** = **record+layout+key 필수**, `has_header: false`(고정길이=무헤더, 필드는 layout·인덱스).
+    ★**KSDS(키순 저장) 가정**이다. KSDS는 키순 저장이라 물리 순서가 As-Is/To-Be 간 어긋날 수 있어(특히 To-Be가
+    RDB면 ORDER BY 없이 순서 비보장 — DB SELECT 비결정과 같은 뿌리) key 정렬·정합이 안전판. VSAM 다른 종류:
+    **ESDS(입력순)=byte로 충분, RRDS=번호순.** 실무 업무배치는 대부분 KSDS라 record+key가 안전한 기본값이고
+    record+key는 ESDS에도 틀리지 않음(불필요 정렬일 뿐) → **3종 type 분기는 지금 구현 안 함**(과설계·추측 회피).
+- **lint(비치명 warnings)**: Option A에선 YAML로 컴파일되면 sam/vsam 정체가 사라져 preflight가 못 보므로
+  **매핑도구 단계에서** 경고한다. 결과 dict에 `warnings` 추가 → CLI(stderr)·GUI(定義作成 화면 警告박스) 노출.
+  - vsam인데 key_columns 빔 → 경고(키순 저장, 정렬키 없으면 false-NG).
+  - sam(필드비교)/vsam인데 fixed_layout 빔 → 경고(고정길이 분할 기준 없음).
+- ★**실데이터 분리**: 비교 로직·라우팅·lint는 지금. **실제 layout 바이트위치·key 컬럼 값은 데모 stub의
+  '가정 모양'**(VSAM=SAM동일 고정길이+키순 가정)이며, 실 SAM/VSAM 1건 입수 후 검증한다(README·데모 주석 명시).
+
+**범위/규칙**: 매핑도구(비코어)+template/samples+GUI 표시계층+데모 데이터만. **코어 무수정.** D-046(리네임)과
+별도 커밋. 데모셋에 sam(CK011/012 라벨 정정)+vsam(키로 순서흡수 OK 1 + 진짜 값차 NG 1) 정비, e2e 통과.
+
+**deferred**(실데이터 후):
+- 실 SAM/VSAM 실데이터 QA — layout 바이트위치·key 컬럼 확정.
+- **VSAM key 유일성 검증** — vsam key가 실제 유일한지 확인, 중복이면 경고(머지조인 오짝 = false-PASS 위험, §5).
+  KSDS 주키는 유일이라 보통 무문제지만 실 key 지정 시 의미 있음.
+- **ESDS/RRDS type 분기** — 실데이터에 ESDS(입력순)/RRDS(번호순)가 실재하면 type 분기 추가(현재 KSDS 가정 단일).
+- 1:N 시퀀스, 정교 비교(D-022).
+- (참고·작업 없음) SAM byte 부가조건(인코딩·고정길이 패딩·레코드길이 일치)은 앞단 변환툴 책임(D-004) —
+  어긋나면 우리 비교 문제 아니라 변환 문제이므로 진단 시 구분.
+
+## D-048. 매핑 CSV 칼럼 As-Is/To-Be 이름 통일 + dest_* 표면 제거 (매핑 표면만, 코어 무수정)
+
+**배경**: 채우는 사람이 디렉토리·파일명을 직관적으로 읽도록 칼럼 이름을 **As-Is/To-Be 짝 + io 흐름**으로 통일.
+기존 `file`은 입력행=입력파일명·출력행=To-Be출력명으로 **과적**돼 헷갈렸고, 디렉토리 칼럼이 맨 뒤에 몰려
+데이터 이름과 떨어져 있었다.
+
+**결정**: 매핑 CSV(사람이 채우는 표) 칼럼을 재명명/정리한다. **별칭 없이 신 이름**(정본 데모셋만 사용).
+- `file` → **`input`**(입력행) / **`to_be_output`**(출력행) 분리 · `expected_output` → **`as_is_output`**
+- `src_dir` → **`input_dir`** · `expected_dir` → **`as_is_dir`** · `tobe_dir` → **`to_be_dir`**
+- **`dest_dir`/`dest_name` 제거**(매핑 CSV 표면만, A안). 코어 `InputSpec.dest_*`·`paths.input_dest_*`는 유지 —
+  파일입력 To-Be 스테이징은 `config.tobe_input_dir` 폴백, 행별 지정이 필요하면 손YAML로(사장님 규격 #7-3/#7-4 보존).
+  ★B안(코어까지 삭제)은 기각: "코어 무수정·동작 0변경" 위반 + 검증 전 사장님 규격 임의 삭제(월권).
+- 정본 20칼럼 순서로 재배치(데이터 이름 옆에 디렉토리). `type`(구 db_or_file, D-046)은 유지.
+
+**범위/규칙**: **매핑도구(읽는 칼럼 분기)·두 CSV(template·complete_sample)·매핑 관련 도구
+(`checklist_to_template`)·문서·매핑 테스트만.** 매핑도구는 신 칼럼을 읽어 **기존 YAML 필드(csv·file·
+expected·src_dir·expected_dir·tobe_dir)로 그대로 방출** → **definition.py·models·paths·orchestrator·
+comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(코어 계약 불변 확인). 285 passed.
+
+**이유**: 이름은 사람용(매핑 표)·YAML 필드는 코어 계약 — 두 층 분리로 직관성 개선과 동작 보존을 양립.
+별칭 미유지: 정본 데모셋 외 구 이름 정의가 레포에 없음을 grep으로 확인(테스트는 신 이름으로 갱신).
+
+**엑셀(.xlsx) 지원(동반)**: 팀원 공유 마찰을 줄이려 — ① `tools/make_xlsx_template.py`가 정본 CSV →
+`definition_template.xlsx`(★전 셀 텍스트 서식 잠금: 선두0 `00100`·layout `0:6`·normalize가 Excel 자동변환에
+안 깨짐). ② `mapping_to_definition.read_mapping_bytes`가 **.xlsx를 직접 읽음**(zip 시그니처 감지 → 첫 시트
+→ CSV 텍스트, openpyxl 지연 import=試験成績書와 동일 의존). CLI·GUI(定義作成 화면·`/definition/from-csv`)
+모두 CSV/xlsx 수용 → 팀원은 엑셀로 채워 **CSV 저장 단계 없이** 제출. 코어 무수정(도구·표시계층만).

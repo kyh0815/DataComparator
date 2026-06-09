@@ -2,6 +2,7 @@
 psycopg2-binary>=2.9
 pyyaml>=6.0
 flask>=3.0          # 웹 UI(src/gui) 전용 — GUI 단계 채택(ARCHITECTURE 7, D-028). CLI는 불요.
+openpyxl>=3.1       # 試験成績書(Excel) 생성 전용 — C4(HANDOFF_V3). evidence.py에서 지연 import.
 
 # 개발용
 pytest>=8.0

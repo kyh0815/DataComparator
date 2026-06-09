@@ -1,0 +1,3 @@
+checklist,shell,shell_group,io,type,table,input,as_is_output,to_be_output,input_dir,as_is_dir,to_be_dir,compare_mode,key_columns,fixed_layout,ignore_columns,normalize_rules,has_header,encoding,timeout
+CK001,업무셸_경로.sh,業務A,input,file,,入力.csv,,,,,,,,,,,,,
+CK001,,,output,file,,,正解.csv,出力.csv,,,,byte,,,,,,,

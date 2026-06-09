@@ -20,6 +20,7 @@ import yaml
 
 from src.core.models import (
     BatchConfig,
+    BatchGroup,
     Config,
     DatabaseConfig,
     OutputConfig,
@@ -136,14 +137,74 @@ def _build_database(block: dict, path: Path) -> DatabaseConfig:
 
 
 def _build_batch(block: dict, base_dir: Path) -> BatchConfig:
-    """batch 블록을 BatchConfig로. 누락 키는 dataclass 기본값을 따른다."""
+    """batch 블록을 BatchConfig로. 누락 키는 dataclass 기본값(=동봉 stub 계약)을 따른다(C6).
+
+    command(argv 토큰 리스트)·env(추가 env 토큰)·success_exit_code·clean_flag를 config로 외부화한다.
+    """
     defaults = BatchConfig()
     stub_path = block.get("stub_path")
+    command = block.get("command")
+    env = block.get("env")
+    clean_flag = block.get("clean_flag", defaults.clean_flag)
+    resolved_env = (
+        {str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else dict(defaults.env)
+    )
+    resolved_exit = int(block.get("success_exit_code", defaults.success_exit_code))
+    groups = _build_batch_groups(block.get("groups") or {}, base_dir, resolved_env, resolved_exit)
     return BatchConfig(
         type=str(block.get("type", defaults.type)),
         stub_path=_abs_path(stub_path, base_dir, defaults.stub_path),
         timeout_seconds=int(block.get("timeout_seconds", defaults.timeout_seconds)),
+        command=[str(t) for t in command] if command is not None else list(defaults.command),
+        env=resolved_env,
+        success_exit_code=resolved_exit,
+        clean_flag=None if clean_flag is None else str(clean_flag),
+        groups=groups,
     )
+
+
+def _build_batch_groups(
+    block: dict, base_dir: Path, default_env: dict[str, str], default_exit: int
+) -> dict[str, BatchGroup]:
+    """batch.groups → {업무명: BatchGroup}. base_dir만 그룹 필수, env/success_exit_code는 비면 batch 전역 상속.
+
+    값=업무 태그→환경의 정본. 매핑표 shell_group이 이 키로 풀린다(D-040). ★보류: 파싱·lint만 —
+    runner는 base_dir로 셸 경로를 해석하지 않는다(데모는 shell_program 경로를 직접 실행). 실연결은 별 Task.
+    """
+    if not isinstance(block, dict):
+        raise ConfigError("batch.groups는 매핑이어야 합니다(업무명: { base_dir: ... }).")
+    groups: dict[str, BatchGroup] = {}
+    for name, spec in block.items():
+        if not isinstance(spec, dict):
+            raise ConfigError(f"batch.groups.{name}는 매핑이어야 합니다(base_dir 등).")
+        base = spec.get("base_dir")
+        if base is None:
+            raise ConfigError(f"batch.groups.{name}.base_dir가 없습니다(그룹 필수).")
+        g_env = spec.get("env")
+        g_exit = spec.get("success_exit_code")
+        groups[str(name)] = BatchGroup(
+            base_dir=_abs_path(base, base_dir, base_dir),  # 상대경로는 config 디렉토리 기준
+            env=(
+                {str(k): str(v) for k, v in g_env.items()}
+                if isinstance(g_env, dict)
+                else dict(default_env)  # 비면 batch 전역 env 상속
+            ),
+            success_exit_code=int(g_exit) if g_exit is not None else default_exit,  # 비면 전역 상속
+            # 업무별 데이터 디렉토리(선택, D-044). 비면 None → 경로 해석이 전역 config로 폴백.
+            asis_input_dir=_opt_group_dir(spec.get("asis_input_dir"), base_dir),
+            asis_output_dir=_opt_group_dir(spec.get("asis_output_dir"), base_dir),
+            tobe_input_dir=_opt_group_dir(spec.get("tobe_input_dir"), base_dir),
+            tobe_output_dir=_opt_group_dir(spec.get("tobe_output_dir"), base_dir),
+        )
+    return groups
+
+
+def _opt_group_dir(value: object | None, base_dir: Path) -> Path | None:
+    """업무 그룹의 선택 데이터 디렉토리. 없으면 None, 상대경로는 config 디렉토리 기준 절대화."""
+    if value is None:
+        return None
+    candidate = Path(str(value))
+    return candidate if candidate.is_absolute() else (base_dir / candidate).resolve()
 
 
 def _abs_path(value: object | None, base_dir: Path, default: Path) -> Path:

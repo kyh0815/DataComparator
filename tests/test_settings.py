@@ -134,3 +134,79 @@ def test_range_inclusive_and_reversed_rejected(tmp_path):
 
     with pytest.raises(ConfigError, match="range"):
         load_config(_write(tmp_path, _FULL_YAML.replace("  range: [1, 10]", "  range: [9, 2]")))
+
+
+# --- B: batch.groups(업무별 배치 환경) -------------------------------------------
+
+_GROUPS_YAML = _FULL_YAML.replace(
+    "batch:\n  type: stub\n  stub_path: ./stub_batch/run_batch.py\n  timeout_seconds: 60\n",
+    "batch:\n  type: stub\n  success_exit_code: 0\n  env: { POSTGRES_PASSWORD: gpw }\n"
+    "  groups:\n"
+    "    業務A: { base_dir: ./mock/A }\n"
+    '    業務B: { base_dir: /abs/B, success_exit_code: 3, env: { X: "y" } }\n',
+)
+
+
+def test_batch_groups_parsed_with_inheritance(tmp_path):
+    """batch.groups: base_dir 그룹 필수, env/success_exit_code는 비면 batch 전역 상속(B-Q2)."""
+    g = load_config(_write(tmp_path, _GROUPS_YAML)).batch.groups
+    assert set(g) == {"業務A", "業務B"}
+    assert g["業務A"].success_exit_code == 0                       # 상속(전역 0)
+    assert g["業務A"].env == {"POSTGRES_PASSWORD": "gpw"}          # 상속(전역 env)
+    assert g["業務A"].base_dir == (tmp_path / "mock/A").resolve()  # 상대→config 기준 절대화
+    assert g["業務B"].success_exit_code == 3                       # override
+    assert g["業務B"].env == {"X": "y"}                            # override
+    assert g["業務B"].base_dir == Path("/abs/B")                   # 절대경로 그대로
+
+
+def test_batch_groups_absent_is_empty(tmp_path):
+    """groups 미지정이면 빈 dict(하위호환)."""
+    assert load_config(_write(tmp_path, _FULL_YAML)).batch.groups == {}
+
+
+def test_batch_group_missing_base_dir_errors(tmp_path):
+    """그룹에 base_dir 없으면 ConfigError(base_dir만 그룹 필수)."""
+    bad = _GROUPS_YAML.replace("業務A: { base_dir: ./mock/A }", "業務A: { env: {} }")
+    with pytest.raises(ConfigError, match="base_dir"):
+        load_config(_write(tmp_path, bad))
+
+
+def test_batch_group_data_dirs_parsed(tmp_path):
+    """batch.groups[업무]의 업무별 데이터 디렉토리 파싱·절대화(D-044, 3단계 폴백 중간층)."""
+    y = _GROUPS_YAML.replace(
+        "業務A: { base_dir: ./mock/A }",
+        "業務A: { base_dir: ./mock/A, asis_input_dir: ./A/asis/in, tobe_output_dir: /abs/A/tobe }",
+    )
+    g = load_config(_write(tmp_path, y)).batch.groups["業務A"]
+    assert g.asis_input_dir == (tmp_path / "A/asis/in").resolve()   # 상대 → config 기준 절대화
+    assert g.tobe_output_dir == Path("/abs/A/tobe")                  # 절대 그대로
+    assert g.asis_output_dir is None                                 # 미지정 → None(전역 폴백)
+
+
+def test_apply_group_dirs_three_level_priority():
+    """경로 폴백: 항목 override > 업무 그룹 dir > 전역(미설정). 항목 override는 불변(D-044)."""
+    from src.core.models import (BatchConfig, BatchGroup, Config, DatabaseConfig,
+                                  InputSpec, OutputConfig, OutputSpec, ShellDefinition)
+    from src.core.paths import apply_group_dirs
+
+    group = BatchGroup(base_dir=Path("/g"), asis_input_dir=Path("/g/asis/in"),
+                       asis_output_dir=Path("/g/asis/out"), tobe_output_dir=Path("/g/tobe/out"))
+    cfg = Config(
+        encoding="shift_jis", asis_input_dir=Path("/G/in"), asis_output_dir=Path("/G/out"),
+        tobe_output_dir=Path("/G/tobe"), report_dir=Path("/r"),
+        database=DatabaseConfig(host="h", port=1, dbname="d", user="u"),
+        batch=BatchConfig(groups={"業務A": group}), shell_ids=["001"], output=OutputConfig(),
+    )
+    d = ShellDefinition(
+        test_id="001", test_name="t", input_type="file", input_csv="in.csv",
+        output_type="file", expected_output_csv="exp.dat", shell_program="x.sh", shell_group="業務A",
+        inputs=[InputSpec(csv="a.csv", type="file"),                       # override 없음 → 그룹
+                InputSpec(csv="b.csv", type="file", src_dir="/item/in")],  # 항목 override 우선
+        outputs=[OutputSpec(type="file", expected="exp.dat", file="out.dat")],
+    )
+    apply_group_dirs(d, cfg)
+    assert d.inputs[0].src_dir == "/g/asis/in"        # 빈칸 → 그룹
+    assert d.inputs[1].src_dir == "/item/in"          # 항목 override 우선(불변)
+    assert d.outputs[0].expected_dir == "/g/asis/out" # 빈칸 → 그룹
+    assert d.outputs[0].tobe_dir == "/g/tobe/out"
+    assert d.inputs[0].dest_dir is None               # 그룹에 tobe_input_dir 없음 → None(전역 폴백)

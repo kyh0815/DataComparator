@@ -3,25 +3,40 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>現新比較 自動検証ツール</title>
+<title>ModernizePro Compare — 現新比較</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230F172A'/><path d='M22 10 A7 7 0 1 0 22 22' fill='none' stroke='white' stroke-width='3.6' stroke-linecap='round'/></svg>">
 <!--
-  Phase 7 (T7-3) 経量化UI: 버튼 1개 → 自動実行(Shell 1~1000) → リアルタイム監視 → 結果.
-  검증 정의의 정본은 config가 가리키는 정의 파일(DEFINITION_SPEC) — 화면엔 입력타입·테이블 선택칸이 없다.
-  外部依存 0(시스템 폰트만, CDN·빌드 없음) — 온프레미스 제약 유지. 서버 진입점: src/gui/web.py.
-  진행은 이벤트 구동(shell_start/step/shell_done/summary/warning/error), 출력 단위 집계(T7-2).
+  ModernizePro Compare GUI(D-044) — 형제 제품 셸(상단바+사이드바+탭) + 그래파이트 테마(DESIGN_TOKENS 정본).
+  기능은 탭으로 재배치(신기능=디렉토리 설정만, G6). 모든 element ID·기존 JS 보존(백엔드 무개수, 화면만).
+  탭: Mapping(定義) / Execution(点検·実行·結果) / Artifacts / Quarantine / Project Settings(接続·ディレクトリ).
 -->
 <style>
   :root {
-    --ok:#1a7f37;   --ok-bg:#e7f4ec;   --ok-bd:#bfe2c9;
-    --ng:#c5303a;   --ng-bg:#fcecec;   --ng-bd:#f0c2c2;
-    --warn:#9a6700; --warn-bg:#fdf4e1; --warn-bd:#efd99b;
-    --accent:#15589e; --accent-2:#1d6fc4; --accent-bg:#eaf2fb; --accent-bd:#c4ddf6;
-    --bg:#eef1f4; --panel:#ffffff; --line:#e3e8ee; --line-2:#d4dbe3;
-    --ink:#1c2530; --ink-2:#3c4757; --muted:#6a7686; --muted-2:#8c97a5;
-    --field-bg:#ffffff; --radius:10px; --radius-sm:7px;
-    --shadow:0 1px 2px rgba(20,32,52,.04), 0 2px 6px rgba(20,32,52,.05);
-    --shadow-pop:0 6px 20px rgba(20,32,52,.10);
+    /* ===== DESIGN_TOKENS.md 정본(D-044 그래파이트) — 전 화면이 이 변수만 참조. 주색 변경은 여기 한 곳 ===== */
+    --c-topbar:#0F172A; --c-topbar-fg:#E2E8F0; --c-topbar-mut:#94A3B8; --c-topbar-line:#334155;
+    --c-selected:#F1F5F9;
+    --c-primary:#1E293B; --c-primary-fg:#FFFFFF; --c-accent:#334155;
+    --c-text:#0F172A; --c-text-mut:#64748B; --c-text-faint:#94A3B8;
+    --c-surface:#FFFFFF; --c-surface-2:#F1F5F9;
+    --c-border:#E2E8F0; --c-border-strong:#CBD5E1;
+    --c-ok:#16A34A; --c-ng:#DC2626; --c-error:#D97706; --c-info:#2563EB;
+    --c-step-badge:#E2E8F0;
+    --c-ok-soft:#DCFCE7; --c-ng-soft:#FEE2E2; --c-error-soft:#FEF3C7; --c-accent-soft:#F1F5F9; --c-info-soft:#DBEAFE;
+    --c-primary-hover:#0F172A;
+    --radius:10px; --radius-sm:6px; --radius-line:8px;
+    --shadow:none; --shadow-pop:0 6px 20px rgba(15,23,42,.12);
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+    --sidebar-w:248px; --topbar-h:44px; --tabbar-h:46px;
+
+    /* ===== 구 변수 → 토큰 별칭(기존 CSS 규칙이 그대로 그래파이트로 리테마) ===== */
+    --ok:var(--c-ok); --ok-bg:var(--c-ok-soft); --ok-bd:var(--c-ok);
+    --ng:var(--c-ng); --ng-bg:var(--c-ng-soft); --ng-bd:var(--c-ng);
+    --warn:var(--c-error); --warn-bg:var(--c-error-soft); --warn-bd:var(--c-error);
+    --accent:var(--c-accent); --accent-2:var(--c-primary-hover);
+    --accent-bg:var(--c-accent-soft); --accent-bd:var(--c-border-strong);
+    --bg:var(--c-surface-2); --panel:var(--c-surface); --line:var(--c-border); --line-2:var(--c-border-strong);
+    --ink:var(--c-text); --ink-2:var(--c-text); --muted:var(--c-text-mut); --muted-2:var(--c-text-faint);
+    --field-bg:var(--c-surface);
   }
   * { box-sizing:border-box; }
   html,body { height:100%; }
@@ -33,134 +48,224 @@
     font-feature-settings:"palt" 1;
   }
 
-  /* ---------- header ---------- */
-  header { background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(20,32,52,.02); position:sticky; top:0; z-index:20; }
-  .header-in { max-width:960px; margin:0 auto; padding:16px 24px; display:flex; align-items:center; gap:14px; }
-  .header-in .bar { width:4px; height:34px; background:var(--accent); border-radius:3px; }
-  .header-in .ttl h1 { font-size:17px; margin:0; font-weight:700; letter-spacing:.2px; color:var(--ink); }
-  .header-in .ttl p { margin:2px 0 0; font-size:12.5px; color:var(--muted); letter-spacing:.1px; }
+  /* ===================== 셸(상단바 + 사이드바 + 탭) — 형제 구조, 그래파이트 ===================== */
+  .app { display:flex; flex-direction:column; height:100vh; }
+  /* 상단 앱바 */
+  .topbar { height:var(--topbar-h); flex-shrink:0; background:var(--c-topbar); color:var(--c-topbar-fg);
+    display:flex; align-items:center; gap:12px; padding:0 16px; z-index:30; }
+  .topbar .brand { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; letter-spacing:.2px; color:#fff; }
+  .topbar .brand .glyph { width:18px; height:18px; display:inline-block; flex-shrink:0; }
+  .topbar .ctx { font-size:12.5px; color:var(--c-topbar-mut); display:flex; align-items:center; gap:8px; }
+  .topbar .ctx::before { content:""; width:1px; height:16px; background:var(--c-topbar-line); display:inline-block; margin-right:4px; }
+  .topbar .spacer { margin-left:auto; }
 
-  /* ---------- layout ---------- */
-  main { max-width:960px; margin:0 auto; padding:24px 24px 64px; }
+  .body { flex:1; display:flex; min-height:0; }
+  /* 사이드바 */
+  .sidebar { width:var(--sidebar-w); flex-shrink:0; background:var(--c-surface); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0; }
+  .side-conn-box { padding:12px 14px; border-bottom:1px solid var(--line); }
+  .side-conn-box .side-lab { margin:0 0 6px; }
+  /* 접속 환경 카드(구조화) */
+  .conn-card { background:var(--c-surface-2); border:1px solid var(--c-border); border-radius:var(--radius-sm); padding:9px 10px; }
+  .conn-card.empty { color:var(--muted); font-size:11.5px; }
+  .conn-row { display:flex; align-items:center; gap:7px; }
+  .conn-dot { width:7px; height:7px; border-radius:50%; background:var(--c-ok); flex-shrink:0; box-shadow:0 0 0 3px var(--c-ok-soft); }
+  .conn-host { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn-meta { display:flex; align-items:center; gap:6px; margin-top:7px; }
+  .conn-db { display:inline-flex; align-items:center; gap:4px; min-width:0; font-size:11px; color:var(--muted); overflow:hidden; }
+  .conn-db svg { flex-shrink:0; color:var(--muted-2); }
+  .conn-db .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn-enc { margin-left:auto; flex-shrink:0; font-size:10px; font-weight:600; color:var(--c-accent); background:var(--c-surface);
+    border:1px solid var(--c-border-strong); border-radius:4px; padding:1px 6px; letter-spacing:.2px; }
+  .side-head { padding:12px 14px 6px; display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .side-lab { font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin:0; }
+  .side-hint { font-size:10px; color:var(--muted-2); flex-shrink:0; }
+  /* 사이드바 = 프로젝트(=환경) 목록 (선택 표시는 배경+굵기, 좌측 무늬 없음). */
+  .proj-list { padding:4px 8px; flex:1; overflow:auto; }
+  .proj-item { display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:var(--radius-sm); font-size:13px;
+    color:var(--ink); cursor:pointer; user-select:none; margin-bottom:2px; }
+  .proj-item:hover { background:var(--c-surface-2); }
+  .proj-item.active { background:var(--c-selected); font-weight:600; }
+  .proj-item .proj-nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .proj-item .proj-edit { width:100%; padding:3px 7px; border:1px solid var(--c-primary); border-radius:5px; font-size:13px;
+    font-family:inherit; font-weight:600; background:var(--c-surface); color:var(--ink); outline:none; box-shadow:0 0 0 3px var(--c-accent-soft); }
+  /* 하단 프로필 */
+  .side-foot { padding:12px 14px; border-top:1px solid var(--line); }
+  .profile { display:flex; align-items:center; gap:10px; min-width:0; }
+  .profile .avatar { width:30px; height:30px; border-radius:50%; flex-shrink:0; color:#fff; font-weight:600; font-size:13px;
+    display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#334155,#64748B); }
+  .profile .pinfo { min-width:0; }
+  .profile .pname { font-size:12.5px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .profile .porg { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  /* ---------- panel / sections ---------- */
+  /* 본문(상단 탭=기능) */
+  .content { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .tabbar { height:var(--tabbar-h); flex-shrink:0; background:var(--c-surface); border-bottom:1px solid var(--line);
+    display:flex; align-items:stretch; padding:0 14px; gap:2px; }
+  .tab { border:0; background:transparent; font-family:inherit; font-size:13px; font-weight:500; color:var(--muted);
+    padding:0 14px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab:hover { color:var(--ink); }
+  .tab.active { color:var(--c-text); border-bottom-color:var(--c-primary); font-weight:600; }
+  .scroll { flex:1; overflow:auto; }
+  .wrap { max-width:1000px; margin:0 auto; padding:22px 26px 64px; }
+  .tabpanel { display:none; }
+  .tabpanel.show { display:block; }
+  .page-title { font-size:18px; font-weight:600; color:var(--c-text); margin:2px 0 16px; letter-spacing:.2px; }
+  .page-title .muted { font-size:13px; font-weight:400; color:var(--muted); margin-left:8px; }
+
+  /* ---------- panel ---------- */
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden; }
-  .panel-head { display:flex; align-items:center; gap:11px; padding:15px 20px; border-bottom:1px solid var(--line); background:#fbfcfd; }
-  .panel-head h2 { font-size:14px; margin:0; font-weight:700; color:var(--ink); letter-spacing:.2px; }
+  .panel-head { display:flex; align-items:center; gap:11px; padding:15px 20px; border-bottom:1px solid var(--line); background:var(--c-surface-2); }
+  .panel-head h2 { font-size:14px; margin:0; font-weight:600; color:var(--ink); letter-spacing:.2px; }
   .panel-head .sub { font-size:12px; color:var(--muted); margin-left:auto; font-weight:500; }
   .panel-body { padding:20px; }
+  .settings-sect { margin-bottom:18px; }
+  .settings-sect > h3 { font-size:13px; font-weight:600; color:var(--ink); margin:0 0 4px; }
+  .settings-sect > .d { font-size:12px; color:var(--muted); margin:0 0 12px; }
 
-  /* settings as <details> */
-  details.settings { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden; }
-  details.settings > summary {
-    list-style:none; cursor:pointer; padding:14px 20px; display:flex; align-items:center; gap:11px;
-    font-size:14px; font-weight:700; color:var(--ink); background:#fbfcfd; border-bottom:1px solid transparent;
-  }
-  details[open].settings > summary { border-bottom-color:var(--line); }
-  details.settings > summary::-webkit-details-marker { display:none; }
-  details.settings > summary .chev { margin-left:auto; color:var(--muted-2); font-size:12px; transition:transform .15s; }
-  details[open].settings > summary .chev { transform:rotate(90deg); }
-  details.settings > summary .sub { font-weight:500; font-size:12px; color:var(--muted); }
+  /* ---------- step (탭 내부 카드) ---------- */
+  .step { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden; }
+  .step-head { display:flex; align-items:center; gap:12px; padding:14px 20px; cursor:pointer; background:var(--c-surface-2); user-select:none; }
+  .step-head .num { width:24px; height:24px; flex-shrink:0; border-radius:6px; background:var(--c-step-badge); color:var(--c-accent); font-size:12px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; }
+  .step-head .num.done { background:var(--c-primary); color:#fff; }
+  .step-head h2 { font-size:14px; margin:0; font-weight:600; color:var(--ink); letter-spacing:.2px; }
+  .step-head .sum { margin-left:auto; font-size:12.5px; color:var(--muted); font-weight:500; text-align:right; }
+  .step-head .sum .ng { color:var(--ng); } .step-head .sum .ok { color:var(--ok); } .step-head .sum .wn { color:var(--warn); }
+  .step-head .chev { color:var(--muted-2); font-size:12px; transition:transform .15s; margin-left:12px; }
+  .step:not(.collapsed) .step-head .chev { transform:rotate(90deg); }
+  .step.collapsed .step-body { display:none; }
+  .step-body { padding:18px 20px; border-top:1px solid var(--line); }
+  .step.locked .step-head .num { background:var(--c-step-badge); color:var(--c-accent); }
 
   /* ---------- form ---------- */
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:15px 16px; }
-  .grid.cols2 { grid-template-columns:1fr 1fr; }
-  .field label.lab { font-size:11.5px; color:var(--muted); display:block; margin-bottom:6px; font-weight:600; letter-spacing:.2px; }
+  .field label.lab { font-size:11.5px; color:var(--muted); display:block; margin-bottom:6px; font-weight:500; letter-spacing:.2px; }
   .field label.lab .opt { color:var(--muted-2); font-weight:500; }
-  .field input[type=text], .field input[type=number] {
+  .field input[type=text], .field input[type=number], input[type=file] {
     width:100%; padding:9px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm);
     font-size:13.5px; background:var(--field-bg); color:var(--ink); transition:border-color .14s, box-shadow .14s;
-    font-variant-numeric:tabular-nums;
+    font-variant-numeric:tabular-nums; font-family:inherit;
   }
-  .field input::placeholder { color:#aeb7c2; }
-  .field input:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(29,111,196,.16); }
-  .field .hint { font-size:11px; color:var(--muted-2); margin-top:5px; }
+  .field input::placeholder { color:var(--c-text-faint); }
+  .field input:focus, input[type=file]:focus { outline:none; border-color:var(--accent-2); box-shadow:0 0 0 3px var(--c-accent-soft); }
+  .hint { font-size:11.5px; color:var(--muted-2); margin-top:6px; }
+  .hint a, .inline-a { color:var(--accent); text-decoration:none; font-weight:600; }
+  .hint a:hover, .inline-a:hover { text-decoration:underline; }
 
-  .actions { display:flex; gap:11px; align-items:center; flex-wrap:wrap; margin-top:18px; }
-  .actions .grow { flex:1; }
-  button.run, button.ghost {
-    border-radius:var(--radius-sm); padding:10px 18px; font-size:13.5px; font-weight:600;
-    cursor:pointer; letter-spacing:.2px; transition:filter .14s,background .14s,box-shadow .14s,border-color .14s;
+  /* ---------- 커스텀 드롭다운(시스템 select 대체 — 프로그램다운, 키보드 지원) ---------- */
+  .dd { position:relative; font-size:13.5px; }
+  .dd-trigger { width:100%; display:flex; align-items:center; gap:8px; padding:9px 11px; border:1px solid var(--line-2);
+    border-radius:var(--radius-sm); background:var(--field-bg); color:var(--ink); cursor:pointer; text-align:left; font-family:inherit; font-size:13.5px; }
+  .dd-trigger:hover { border-color:var(--c-border-strong); }
+  .dd.open .dd-trigger { border-color:var(--c-primary); box-shadow:0 0 0 3px var(--c-accent-soft); }
+  .dd-trigger .dd-val { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dd-trigger .dd-chev { color:var(--muted-2); font-size:11px; transition:transform .15s; }
+  .dd.open .dd-trigger .dd-chev { transform:rotate(180deg); }
+  .dd-menu { position:absolute; z-index:40; top:calc(100% + 4px); left:0; right:0; background:var(--c-surface);
+    border:1px solid var(--line); border-radius:var(--radius-sm); box-shadow:var(--shadow-pop); padding:4px; display:none; max-height:280px; overflow:auto; }
+  .dd.open .dd-menu { display:block; }
+  .dd-opt { padding:8px 10px; border-radius:5px; cursor:pointer; display:flex; align-items:center; gap:8px; color:var(--ink); }
+  .dd-opt:hover, .dd-opt.hl { background:var(--c-surface-2); }
+  .dd-opt .dd-ck { width:14px; color:var(--c-primary); font-weight:700; opacity:0; }
+  .dd-opt.sel .dd-ck { opacity:1; }
+
+  .actions { display:flex; gap:11px; align-items:center; flex-wrap:wrap; margin-top:16px; }
+  button.run, button.ghost, .filebtn {
+    border-radius:var(--radius-sm); padding:8px 14px; font-size:13px; font-weight:600;
+    cursor:pointer; transition:background .14s,border-color .14s,color .14s;
     display:inline-flex; align-items:center; gap:8px; font-family:inherit;
+    background:var(--c-surface); color:var(--c-text); border:1px solid var(--c-border-strong);
   }
-  button.run { background:var(--accent); color:#fff; border:1px solid var(--accent); box-shadow:0 1px 2px rgba(21,88,158,.3); }
-  button.run:hover:not(:disabled) { background:var(--accent-2); }
-  button.run:disabled { background:#a9c3e0; border-color:#a9c3e0; box-shadow:none; cursor:default; }
-  button.run.big { padding:12px 26px; font-size:14.5px; }
-  button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent-bd); }
-  button.ghost:hover:not(:disabled) { background:var(--accent-bg); border-color:var(--accent-2); }
-  button.ghost.busy { color:var(--muted); border-color:var(--line-2); }
+  button.run:hover:not(:disabled), button.ghost:hover:not(:disabled), .filebtn:hover {
+    background:var(--c-surface-2); border-color:var(--c-accent);
+  }
+  button.run:disabled, button.ghost:disabled { color:var(--c-text-faint); background:var(--c-surface-2); border-color:var(--c-border); cursor:default; }
+  button.ghost.busy { color:var(--c-text-mut); }
+
+  /* 主要 액션 = 솔리드 딥 그래파이트(비활성처럼 안 보이게) */
+  button#run, button.primary { background:var(--c-primary); color:var(--c-primary-fg); border-color:var(--c-primary); padding:10px 20px; font-size:14px; }
+  button#run:hover:not(:disabled), button.primary:hover:not(:disabled) { background:var(--c-primary-hover); border-color:var(--c-primary-hover); }
+  button#run:disabled { background:var(--c-text-faint); border-color:var(--c-text-faint); color:var(--c-primary-fg); opacity:.6; }
+  button.run.big { padding:10px 20px; font-size:14px; }
+  button.danger { color:var(--c-ng); border-color:var(--c-border-strong); }
+  button.danger:hover:not(:disabled) { border-color:var(--c-ng); background:var(--c-ng-soft); }
+
+  /* 커스텀 파일 선택 */
+  .filepick { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .filename { font-size:12.5px; color:var(--muted); }
+  .filename.has { color:var(--ink-2); font-weight:600; font-family:var(--mono); }
   .chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); cursor:pointer; user-select:none; }
-  .chk input { width:15px; height:15px; accent-color:var(--accent); cursor:pointer; }
+  .chk input { width:15px; height:15px; accent-color:var(--c-primary); cursor:pointer; }
+  .run-gate { font-size:12px; color:var(--muted); }
+  .run-gate.hide { display:none; }
+
+  details.adv { margin-top:14px; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
+  details.adv > summary { list-style:none; cursor:pointer; padding:10px 14px; font-size:12.5px; font-weight:600; color:var(--ink-2); background:var(--c-surface-2); }
+  details.adv > summary::-webkit-details-marker { display:none; }
+  details.adv .panel-body { padding:14px; }
 
   /* ---------- callouts ---------- */
   .callout { font-size:12.5px; line-height:1.65; border-radius:var(--radius-sm); padding:12px 14px; margin-top:14px; border:1px solid; display:flex; gap:11px; align-items:flex-start; }
-  .callout.info { background:var(--accent-bg); border-color:var(--accent-bd); color:#234e7d; }
-  .callout.warn { background:var(--warn-bg); border-color:var(--warn-bd); color:#6e4a00; }
-  .callout.sec  { background:#f4f6f8; border-color:var(--line-2); color:var(--ink-2); }
-  .callout b { color:inherit; font-weight:700; }
-  .callout code { font-family:var(--mono); font-size:11.5px; background:rgba(20,32,52,.07); padding:1px 5px; border-radius:4px; }
+  .callout.info { background:var(--accent-bg); border-color:var(--accent-bd); color:var(--c-accent); }
+  .callout.warn { background:var(--warn-bg); border-color:var(--warn-bd); color:var(--c-error); }
+  .callout b { color:inherit; font-weight:600; }
+  .callout code { font-family:var(--mono); font-size:11.5px; background:rgba(15,23,42,.06); padding:1px 5px; border-radius:4px; }
 
   /* connection test checklist + toast */
   .checks { margin-top:16px; display:none; }
   .checks.show { display:block; }
-  .checks .ck-title { font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:.4px; text-transform:uppercase; margin-bottom:8px; }
-  .checks .c { display:flex; align-items:center; gap:10px; padding:8px 11px; font-size:13px; border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:6px; background:#fbfcfd; }
-  .checks .c .mk { width:20px; height:20px; border-radius:50%; flex-shrink:0; font-weight:700; font-size:12px; display:inline-flex; align-items:center; justify-content:center; color:#fff; }
+  .checks .ck-title { font-size:11.5px; font-weight:600; color:var(--muted); letter-spacing:.4px; text-transform:uppercase; margin-bottom:8px; }
+  .checks .c { display:flex; align-items:center; gap:10px; padding:8px 11px; font-size:13px; border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:6px; background:var(--c-surface-2); }
+  .checks .c .mk { width:20px; height:20px; border-radius:50%; flex-shrink:0; font-weight:600; font-size:12px; display:inline-flex; align-items:center; justify-content:center; color:var(--c-primary-fg); }
   .checks .c.ok .mk { background:var(--ok); } .checks .c.bad .mk { background:var(--ng); } .checks .c.pend .mk { background:var(--muted-2); }
+  .checks .c.warn .mk { background:var(--warn); }
   .checks .c .nm { font-weight:600; color:var(--ink-2); }
   .checks .c .dt { color:var(--muted); font-family:var(--mono); font-size:12px; margin-left:auto; }
   .checks .c.pend { color:var(--muted); }
+  #preflight-out .bad, #preflight-out .warn, #preflight-out .ok { font-size:13px; padding:8px 11px; border-radius:var(--radius-sm); margin-bottom:6px; border:1px solid; font-weight:500; }
+  #preflight-out .pf-verdict { font-size:15px; padding:12px 14px; margin-bottom:12px; border-left-width:4px; font-weight:600; }
+  #preflight-out .bad { background:var(--ng-bg); color:var(--c-ng); border-color:var(--ng-bd); }
+  #preflight-out .warn { background:var(--warn-bg); color:var(--c-error); border-color:var(--warn-bd); }
+  #preflight-out .ok { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); }
   .toast { font-size:12.5px; margin-top:13px; padding:10px 13px; border-radius:var(--radius-sm); display:none; font-weight:600; border:1px solid; }
   .toast.ok { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); }
   .toast.bad { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); }
 
-  /* ---------- definition preview ---------- */
-  .def-preview { border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 15px; background:#fbfcfd; margin-bottom:16px; }
-  .def-head { font-weight:700; color:var(--accent); margin-bottom:9px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .def-head .badge-n { font-family:var(--mono); font-size:12px; background:var(--accent); color:#fff; border-radius:999px; padding:1px 9px; }
-  .def-head .fname { font-family:var(--mono); font-size:12px; color:var(--ink-2); font-weight:600; }
-  .shelllist { display:flex; flex-wrap:wrap; gap:6px; }
-  .schip { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:7px; padding:4px 8px; background:#fff; font-size:12px; box-shadow:var(--shadow); }
-  .schip .sid { font-family:var(--mono); font-weight:700; color:var(--ink); }
-  .schip .flow { display:inline-flex; align-items:center; gap:5px; }
-  .schip .arrow { color:var(--muted-2); font-weight:700; }
-  .schip .mult { font-size:10px; color:var(--accent); font-weight:700; }
-  .schip.more { color:var(--muted); font-weight:600; background:#fbfcfd; box-shadow:none; }
-  .ttag { font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:4px; letter-spacing:.2px; border:1px solid; }
-  .ttag.db { background:var(--accent-bg); color:#234e7d; border-color:var(--accent-bd); }
-  .ttag.file { background:#eef2e9; color:#3d5a2b; border-color:#cfe0bd; }
-  .def-note { color:var(--muted); font-weight:500; margin-top:9px; font-size:11.5px; }
-  .def-preview.bad { background:var(--warn-bg); border-color:var(--warn-bd); }
-  .def-preview.bad .def-head { color:#6e4a00; }
+  /* ---------- definition gen result ---------- */
+  .def-preview { border:1px solid var(--warn-bd); border-radius:var(--radius-sm); padding:14px 15px; background:var(--warn-bg); margin-bottom:16px; }
+  .def-head { font-weight:600; color:var(--c-error); margin-bottom:9px; }
+  .def-note { color:var(--c-error); font-weight:500; margin-top:6px; font-size:11.5px; }
+  .errbox { background:var(--ng-bg); border:1px solid var(--ng-bd); border-radius:var(--radius-sm); padding:11px 13px; margin-top:12px; font-size:13px; color:var(--c-ng); }
+  .errbox ul { margin:6px 0 0; padding-left:18px; }
+  .okline { color:var(--ok); font-weight:600; margin-top:12px; display:flex; align-items:center; gap:8px; }
+  .slist { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .schip { border:1px solid var(--line); border-radius:7px; padding:4px 9px; background:var(--c-surface); font-size:12px; }
+  .schip .sid { font-family:var(--mono); font-weight:600; }
+  .schip .io { color:var(--muted); margin-left:6px; }
 
   /* ---------- banners ---------- */
-  .banner { display:none; padding:13px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; margin-bottom:14px; border:1px solid; align-items:flex-start; gap:10px; }
+  .banner { display:none; padding:13px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; margin-bottom:14px; border:1px solid; align-items:flex-start; gap:10px; }
   .banner.show { display:flex; }
   .banner.err { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); }
-  .banner.warn { background:var(--warn-bg); color:#6e4a00; border-color:var(--warn-bd); }
+  .banner.warn { background:var(--warn-bg); color:var(--c-error); border-color:var(--warn-bd); }
 
   /* ---------- summary ---------- */
-  #summary { display:none; }
+  #summary { display:none; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--c-surface); margin-bottom:14px; }
   #summary.show { display:block; }
+  #summary .panel-head { background:var(--c-surface-2); }
   .summary-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:11px; }
-  .scard { border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px 14px 13px; background:#fbfcfd; position:relative; overflow:hidden; cursor:pointer; transition:box-shadow .14s, border-color .14s, transform .04s; user-select:none; }
-  .scard:hover:not(.disabled) { border-color:var(--line-2); box-shadow:var(--shadow-pop); }
-  .scard:active:not(.disabled) { transform:translateY(1px); }
-  .scard.active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bd); }
+  .scard { border:1px solid var(--c-border); border-radius:var(--radius-sm); padding:12px 14px; background:var(--c-surface); cursor:pointer; transition:border-color .14s, box-shadow .14s; user-select:none; }
+  .scard:hover:not(.disabled) { border-color:var(--c-border-strong); box-shadow:var(--shadow-pop); }
+  .scard.active { border-color:var(--c-primary); box-shadow:0 0 0 2px var(--c-accent-soft); }
   .scard.disabled { cursor:default; opacity:.5; }
   .filter-hint { font-size:12px; color:var(--muted); margin-top:10px; min-height:15px; }
-  .filter-hint b { color:var(--ink-2); font-weight:700; }
+  .filter-hint b { color:var(--ink-2); font-weight:600; }
   .filter-hint a { color:var(--accent); cursor:pointer; text-decoration:none; margin-left:8px; }
   .filter-hint a:hover { text-decoration:underline; }
-  .scard::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--muted-2); }
-  .scard.ok::before { background:var(--ok); } .scard.ng::before { background:var(--ng); }
-  .scard.err::before { background:var(--warn); } .scard.miss::before { background:var(--muted-2); }
-  .scard.total::before { background:var(--accent); }
-  .scard .n { font-size:27px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
-  .scard.ok .n { color:var(--ok); } .scard.ng .n { color:var(--ng); } .scard.err .n { color:var(--warn); }
-  .scard.total .n { color:var(--ink); } .scard.miss .n { color:var(--ink-2); }
-  .scard .l { font-size:11.5px; color:var(--muted); margin-top:7px; font-weight:600; letter-spacing:.3px; }
+  .scard .n { font-size:22px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; color:var(--c-text); }
+  .scard.ok .n { color:var(--c-ok); } .scard.ng .n { color:var(--c-ng); } .scard.err .n { color:var(--c-error); }
+  .scard.miss .n { color:var(--c-text-mut); }
+  .scard .l { font-size:11px; color:var(--c-text-mut); margin-top:6px; font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
   .summary-meta { display:flex; align-items:center; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted); }
   .summary-meta .el { font-weight:600; color:var(--ink-2); font-variant-numeric:tabular-nums; }
   .summary-meta .rep { margin-left:auto; }
@@ -170,43 +275,43 @@
   /* ---------- results / shell rows ---------- */
   #results-wrap { display:none; }
   #results-wrap.show { display:block; }
-  .results-head { display:flex; align-items:center; gap:10px; margin:22px 2px 12px; }
-  .results-head h3 { font-size:13px; margin:0; font-weight:700; color:var(--ink-2); letter-spacing:.3px; }
-  .results-head .live { font-size:11px; color:var(--accent); font-weight:700; display:none; align-items:center; gap:6px; }
+  .results-head { display:flex; align-items:center; gap:10px; margin:6px 2px 12px; }
+  .results-head h3 { font-size:13px; margin:0; font-weight:600; color:var(--ink-2); letter-spacing:.3px; }
+  .results-head .live { font-size:11px; color:var(--accent); font-weight:600; display:none; align-items:center; gap:6px; }
   .results-head .live.show { display:inline-flex; }
   .results-head .live .pulse { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; }
+  .results-head .vchk { margin-left:auto; }
   @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
-  .shell { border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:8px; background:var(--panel); box-shadow:var(--shadow); transition:border-color .2s, box-shadow .2s; animation:rise .26s ease both; }
+  .shell { border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:8px; background:var(--panel); transition:border-color .2s, box-shadow .2s; animation:rise .26s ease both; }
   @keyframes rise { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
-  .shell.running { border-color:var(--accent-bd); box-shadow:0 0 0 3px rgba(29,111,196,.08); }
+  .shell.running { border-color:var(--accent-bd); box-shadow:0 0 0 3px var(--c-accent-soft); }
   .shell-head { display:flex; align-items:center; gap:12px; padding:12px 15px; }
   .shell-head .ix { font-family:var(--mono); font-size:11.5px; color:var(--muted-2); font-weight:600; min-width:46px; }
-  .shell-head .sid { font-family:var(--mono); font-size:14px; font-weight:700; color:var(--ink); background:#f1f4f7; border:1px solid var(--line); border-radius:6px; padding:2px 9px; letter-spacing:.5px; }
+  .shell-head .sid { font-family:var(--mono); font-size:14px; font-weight:600; color:var(--ink); background:var(--c-surface-2); border:1px solid var(--line); border-radius:6px; padding:2px 9px; letter-spacing:.5px; }
   .shell-head .badge { margin-left:auto; }
-  .badge { font-size:11px; font-weight:700; padding:3px 11px; border-radius:999px; letter-spacing:.4px; border:1px solid; display:inline-flex; align-items:center; gap:6px; text-transform:uppercase; }
+  .badge { font-size:11px; font-weight:600; padding:3px 11px; border-radius:999px; letter-spacing:.4px; border:1px solid; display:inline-flex; align-items:center; gap:6px; text-transform:uppercase; }
   .badge .bd { width:7px; height:7px; border-radius:50%; }
   .badge.b-OK { background:var(--ok-bg); color:var(--ok); border-color:var(--ok-bd); } .badge.b-OK .bd{ background:var(--ok); }
   .badge.b-NG { background:var(--ng-bg); color:var(--ng); border-color:var(--ng-bd); } .badge.b-NG .bd{ background:var(--ng); }
-  .badge.b-ERROR, .badge.b-MISSING_TOBE, .badge.b-MISSING_ASIS { background:var(--warn-bg); color:#7a5200; border-color:var(--warn-bd); }
+  .badge.b-ERROR, .badge.b-MISSING_TOBE, .badge.b-MISSING_ASIS { background:var(--warn-bg); color:var(--c-error); border-color:var(--warn-bd); }
   .badge.b-ERROR .bd, .badge.b-MISSING_TOBE .bd, .badge.b-MISSING_ASIS .bd { background:var(--warn); }
-  .badge.b-RUN { background:#eef1f4; color:var(--muted); border-color:var(--line-2); }
-  .badge.b-RUN .bd { background:var(--muted-2); animation:pulse 1s infinite; }
+  .badge.b-RUN { background:var(--c-info-soft); color:var(--c-info); border-color:var(--c-info); }
+  .badge.b-RUN .bd { background:var(--c-info); animation:pulse 1s infinite; }
 
-  /* step progress */
   .steps { display:flex; align-items:center; gap:0; padding:0 15px 13px; flex-wrap:wrap; }
-  .step { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted-2); font-weight:600; }
-  .step .sdot { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--line-2); background:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:transparent; flex-shrink:0; transition:all .2s; }
-  .step.active { color:var(--accent); }
-  .step.active .sdot { border-color:var(--accent); background:var(--accent-bg); }
-  .step.active .sdot::after { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; }
-  .step.done { color:var(--ok); }
-  .step.done .sdot { border-color:var(--ok); background:var(--ok); color:#fff; }
-  .step.done .sdot::after { content:"✓"; }
-  .step.err { color:var(--warn); }
-  .step.err .sdot { border-color:var(--warn); background:var(--warn); color:#fff; }
-  .step.err .sdot::after { content:"!"; }
-  .step .res { font-family:var(--mono); font-size:11px; }
+  .step-i { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted-2); font-weight:600; }
+  .step-i .sdot { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--line-2); background:var(--c-surface); display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:transparent; flex-shrink:0; transition:all .2s; }
+  .step-i.active { color:var(--c-info); }
+  .step-i.active .sdot { border-color:var(--c-info); background:var(--c-info-soft); }
+  .step-i.active .sdot::after { content:""; width:6px; height:6px; border-radius:50%; background:var(--c-info); animation:pulse 1s infinite; }
+  .step-i.done { color:var(--ok); }
+  .step-i.done .sdot { border-color:var(--ok); background:var(--ok); color:var(--c-primary-fg); }
+  .step-i.done .sdot::after { content:"✓"; }
+  .step-i.err { color:var(--warn); }
+  .step-i.err .sdot { border-color:var(--warn); background:var(--warn); color:var(--c-primary-fg); }
+  .step-i.err .sdot::after { content:"!"; }
+  .step-i .res { font-family:var(--mono); font-size:11px; }
   .connector { flex:1; min-width:22px; height:1.5px; background:var(--line-2); margin:0 9px; border-radius:1px; transition:background .2s; }
   .connector.fill { background:var(--ok); }
 
@@ -215,171 +320,346 @@
   .detail.show { display:block; }
   .detail .dline { margin-bottom:10px; }
   .detail .dline:last-child { margin-bottom:0; }
-  .detail .ln { font-size:11px; color:var(--muted); font-weight:700; margin-bottom:5px; font-family:var(--mono); letter-spacing:.3px; }
+  .detail .ln { font-size:11px; color:var(--muted); font-weight:600; margin-bottom:5px; font-family:var(--mono); letter-spacing:.3px; }
   .detail .row { font-family:var(--mono); font-size:12.5px; line-height:1.5; padding:7px 11px; border-radius:6px; display:flex; gap:10px; align-items:baseline; white-space:pre-wrap; word-break:break-all; }
-  .detail .row .tag { font-weight:700; flex-shrink:0; width:46px; font-size:11px; letter-spacing:.3px; }
-  .detail .row.asis { background:#fdf3f3; border:1px solid var(--ng-bd); border-bottom:0; border-radius:6px 6px 0 0; }
-  .detail .row.asis .tag { color:var(--ng); }
-  .detail .row.tobe { background:#f1f9f3; border:1px solid var(--ok-bd); border-radius:0 0 6px 6px; }
-  .detail .row.tobe .tag { color:var(--ok); }
-  .detail mark { padding:1px 0; border-radius:2px; font-weight:700; }
-  .detail mark.a { background:#ffc9c9; color:#7d1620; box-shadow:0 0 0 1px #ffb3b3; }
-  .detail mark.b { background:#a3e9b4; color:#0a5224; box-shadow:0 0 0 1px #86dd9b; }
-  .detail .errbox { font-family:var(--mono); font-size:12.5px; background:var(--warn-bg); border:1px solid var(--warn-bd); border-radius:6px; padding:9px 12px; color:#6e4a00; white-space:pre-wrap; word-break:break-all; }
-  .detail .more { font-size:11.5px; color:var(--muted); margin-top:8px; font-weight:600; }
+  .detail .row .tag { font-weight:600; flex-shrink:0; width:46px; font-size:11px; letter-spacing:.3px; }
+  .detail .row.asis { background:var(--c-surface-2); border:1px solid var(--c-border); border-left:2px solid var(--c-ng); border-bottom:0; border-radius:6px 6px 0 0; }
+  .detail .row.asis .tag { color:var(--c-ng); }
+  .detail .row.tobe { background:var(--c-surface-2); border:1px solid var(--c-border); border-left:2px solid var(--c-ok); border-radius:0 0 6px 6px; }
+  .detail .row.tobe .tag { color:var(--c-ok); }
+  .detail mark { padding:1px 0; border-radius:2px; font-weight:600; }
+  .detail mark.a { background:var(--c-ng-soft); color:var(--c-ng); }
+  .detail mark.b { background:var(--c-ok-soft); color:var(--c-ok); }
+  .detail .errbox { font-family:var(--mono); font-size:12.5px; background:var(--warn-bg); border:1px solid var(--warn-bd); border-radius:6px; padding:9px 12px; color:var(--c-error); white-space:pre-wrap; word-break:break-all; margin-top:0; }
+  .detail .more { font-size:11.5px; color:var(--muted); margin-top:8px; font-weight:500; }
 
-  /* 출력별 결과 블록(T7-2: 셸 안 다중 출력) */
   .outs { margin:0 15px 13px; display:flex; flex-direction:column; gap:7px; }
-  .outrow { border:1px solid var(--line); border-radius:7px; padding:8px 11px; background:#fbfcfd; }
+  .outrow { border:1px solid var(--line); border-radius:7px; padding:8px 11px; background:var(--c-surface-2); }
   .outhead { display:flex; align-items:center; gap:9px; font-size:12px; }
-  .outhead .outname { font-family:var(--mono); font-weight:700; color:var(--ink); }
+  .outhead .outname { font-family:var(--mono); font-weight:600; color:var(--ink); }
   .outrow .detail { margin:7px 0 0; }
 
   .empty { text-align:center; padding:34px 20px; color:var(--muted-2); font-size:13px; }
+  .placeholder { text-align:center; padding:60px 20px; color:var(--muted); }
+  .placeholder .big { font-size:15px; font-weight:600; color:var(--ink-2); margin-bottom:6px; }
+
+  /* 업무별 디렉토리 카드(D-045) */
+  .gcard { border:1px solid var(--c-border); border-radius:var(--radius-sm); padding:14px; margin-bottom:10px; background:var(--c-surface-2); }
+  .gcard .ghead { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .gcard .ghead input { flex:1; padding:8px 11px; border:1px solid var(--line-2); border-radius:var(--radius-sm); font-size:13.5px; font-weight:600; background:var(--c-surface); color:var(--ink); font-family:inherit; }
+  .gcard .g-del { color:var(--c-ng); border-color:var(--c-border-strong); padding:6px 11px; font-size:12px; flex-shrink:0; }
+  .gcard .g-del:hover { border-color:var(--c-ng); background:var(--c-ng-soft); }
 </style>
 </head>
 <body>
-<header>
-  <div class="header-in">
-    <span class="bar"></span>
-    <div class="ttl">
-      <h1>現新比較 自動検証ツール</h1>
-      <p>メインフレーム → Linux バッチ出力の同等性を、バイト単位で自動検証</p>
+<div class="app">
+  <!-- ===== 상단 앱바 ===== -->
+  <header class="topbar">
+    <span class="brand"><svg class="glyph" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1E293B"/><path d="M22 10 A7 7 0 1 0 22 22" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/></svg>ModernizePro Compare</span>
+    <span class="ctx">現新比較 自動検証 · <span id="ctx-env">サンプル demo</span></span>
+    <span class="spacer"></span>
+  </header>
+
+  <div class="body">
+    <!-- ===== 사이드바(프로젝트/환경) ===== -->
+    <aside class="sidebar">
+      <!-- 최상단: 접속 환경 -->
+      <div class="side-conn-box">
+        <p class="side-lab">接続環境</p>
+        <div class="side-conn" id="conn-summary"></div>
+      </div>
+      <div class="side-head">
+        <p class="side-lab">プロジェクト</p>
+        <span class="side-hint">ダブルクリックで改名</span>
+      </div>
+      <!-- 사이드바 = 프로젝트(=환경) 목록. 클릭=그 config로 전환. B(멀티프로젝트) 확장 지점. -->
+      <div class="proj-list" id="proj-list"></div>
+      <select id="config" hidden>
+        <option value="samples/complete/config.yaml">サンプル demo（complete・20件 OK17/NG3/MISSING1）</option>
+        <option value="./config.yaml"{% if default_config == "./config.yaml" %} selected{% endif %}>本番（./config.yaml — 実配備設定を作成）</option>
+      </select>
+      <!-- 하단: 프로필 -->
+      <div class="side-foot">
+        <div class="profile">
+          <span class="avatar">M</span>
+          <div class="pinfo"><div class="pname">Master</div><div class="porg">KS Info System</div></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===== 본문(상단 탭=기능) ===== -->
+    <div class="content">
+      <nav class="tabbar">
+        <button class="tab active" data-tab="mapping">Mapping</button>
+        <button class="tab" data-tab="execution">Execution</button>
+        <button class="tab" data-tab="artifacts">Artifacts</button>
+        <button class="tab" data-tab="quarantine">Quarantine</button>
+        <button class="tab" data-tab="settings">Project Settings</button>
+      </nav>
+      <div class="scroll">
+        <div class="wrap">
+
+          <!-- ===== Mapping 탭 = ① 定義ファイル ===== -->
+          <section class="tabpanel show" data-panel="mapping">
+            <h1 class="page-title">Mapping <span class="muted">マッピング表（CSV）→ 検証定義</span></h1>
+            <section class="step" id="step-def">
+              <div class="step-head" data-step="def"><span class="num">1</span><h2>定義ファイル</h2><span class="sum"></span><span class="chev">▶</span></div>
+              <div class="step-body">
+                <div class="def-preview" id="def-preview" {% if definition.ok %}style="display:none"{% endif %}>
+                  <div class="def-head">検証定義が未設定です</div>
+                  <div class="def-note" id="def-msg">{{ definition.message }} 下のマッピング表（CSV）から定義を作成・保存してください。</div>
+                </div>
+                <div class="field">
+                  <label class="lab">マッピング表（Long形式 CSV）</label>
+                  <div class="filepick">
+                    <input type="file" id="csv" accept=".csv,text/csv" style="display:none">
+                    <button type="button" class="filebtn" id="csv-btn">ファイルを選択して適用</button>
+                    <span class="filename" id="csv-name">選択されていません</span>
+                  </div>
+                  <div class="hint">ファイルを選ぶと自動で定義を生成・保存します（形式エラー時はメッセージを表示）。
+                    checklist を1次キーに input/output 行で記入。 <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
+                </div>
+                <div id="result"></div>
+              </div>
+            </section>
+          </section>
+
+          <!-- ===== Execution 탭 = ② 点検 + ③ 実行 + ④ 結果 ===== -->
+          <section class="tabpanel" data-panel="execution">
+            <h1 class="page-title">Execution <span class="muted">事前点検 → 検証実行 → 結果</span></h1>
+
+            <section class="step" id="step-pre">
+              <div class="step-head" data-step="pre"><span class="num">2</span><h2>事前点検</h2><span class="sum"></span><span class="chev">▶</span></div>
+              <div class="step-body">
+                <div class="callout info">
+                  <div>夜間1000件の空振りを防ぐため、実行前に <b>定義・正解/入力ファイル存在・接続・出力先権限</b> を点検します。エラーがあると検証実行は無効のままです。</div>
+                </div>
+                <div class="actions">
+                  <button class="ghost" id="preflight">✓ 事前点検を実行</button>
+                </div>
+                <div class="checks show" id="preflight-out" style="display:none"></div>
+              </div>
+            </section>
+
+            <section class="step" id="step-run">
+              <div class="step-head" data-step="run"><span class="num">3</span><h2>検証実行</h2><span class="sum"></span><span class="chev">▶</span></div>
+              <div class="step-body">
+                <div class="actions">
+                  <button class="run big" id="run" disabled>▶ 検証実行（全件）</button>
+                  <span class="run-gate" id="run-gate">先に「事前点検」を通過してください（エラー0）</span>
+                </div>
+                <details class="adv">
+                  <summary>詳細指定（範囲・一部のみ実行）</summary>
+                  <div class="panel-body">
+                    <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / CK001 / 001,003)</span></label><input type="text" id="shells" placeholder="全件"></div>
+                    <div class="hint">空欄＝全件。NG分だけの再実行は、実行後に結果欄の「NG分のみ再実行」が簡単です。</div>
+                  </div>
+                </details>
+              </div>
+            </section>
+
+            <section class="step" id="step-result">
+              <div class="step-head" data-step="result"><span class="num">4</span><h2>結果・試験成績書</h2><span class="sum">未実行</span><span class="chev">▶</span></div>
+              <div class="step-body">
+                <div id="banner" class="banner err"></div>
+                <div id="warnbar" class="banner warn"></div>
+
+                <div id="summary">
+                  <div class="panel-head">
+                    <h2>検証サマリー</h2>
+                    <span class="sub" id="s-verdict"></span>
+                  </div>
+                  <div class="panel-body">
+                    <div class="summary-cards">
+                      <div class="scard total" data-f="*"><div class="n" id="s-total">0</div><div class="l">合計</div></div>
+                      <div class="scard ok" data-f="OK"><div class="n" id="s-ok">0</div><div class="l">OK</div></div>
+                      <div class="scard ng" data-f="NG"><div class="n" id="s-ng">0</div><div class="l">NG</div></div>
+                      <div class="scard err" data-f="ERROR"><div class="n" id="s-err">0</div><div class="l">ERROR</div></div>
+                      <div class="scard miss" data-f="MISSING_TOBE,MISSING_ASIS"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
+                    </div>
+                    <div class="filter-hint" id="filter-hint"></div>
+                    <div class="summary-meta">
+                      <span>所要 <span class="el" id="s-elapsed">0</span> 秒</span>
+                      <span class="rep" style="margin-left:auto"><a class="inline-a" id="goto-artifacts">成果物（試験成績書・レポート）→ Artifacts</a></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="actions" id="result-actions" style="display:none">
+                  <button class="ghost" id="rerun-ng">NG分のみ再実行</button>
+                  <span class="hint" style="margin:0">試験成績書(Excel)・レポートは <b>Artifacts</b>、不一致は <b>Quarantine</b> タブ。</span>
+                </div>
+
+                <div id="results-wrap">
+                  <div class="results-head">
+                    <h3>検証結果</h3>
+                    <span class="live" id="live"><span class="pulse"></span>実行中…</span>
+                    <label class="chk vchk"><input type="checkbox" id="verbose"> 差分を全件表示</label>
+                  </div>
+                  <div id="results"></div>
+                  <div class="empty" id="filter-empty" style="display:none">該当する結果がありません</div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <!-- ===== Artifacts 탭 = 試験成績書 · レポート ===== -->
+          <section class="tabpanel" data-panel="artifacts">
+            <h1 class="page-title">Artifacts <span class="muted">試験成績書・レポート</span></h1>
+            <div id="art-empty" class="placeholder"><div class="big">実行後に成果物がここに表示されます</div>
+              <div>Execution タブで検証実行すると、試験成績書(Excel)・レポート(CSV)が生成されます。</div></div>
+            <div id="art-body" style="display:none">
+              <div class="panel">
+                <div class="panel-head"><h2>成果物</h2></div>
+                <div class="panel-body">
+                  <div class="actions" style="margin-top:0"><button class="primary" id="evidence">⬇ 試験成績書(Excel)</button></div>
+                  <div class="summary-meta" style="border-top:0; padding-top:0; margin-top:16px"><span class="rep" id="report"></span></div>
+                  <div class="hint">差分の全件は レポート/.diff、または <b>Quarantine</b> タブで確認できます。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== Quarantine 탭 = NG/MISSING/ERROR 격리(As-Is ↔ To-Be) ===== -->
+          <section class="tabpanel" data-panel="quarantine">
+            <h1 class="page-title">Quarantine <span class="muted">NG・MISSING・ERROR の隔離（As-Is ↔ To-Be）</span></h1>
+            <div id="q-empty" class="placeholder"><div class="big">不一致なし</div>
+              <div>検証実行後、NG / MISSING / ERROR の項目だけがここに集約されます。</div></div>
+            <div id="quarantine-list"></div>
+          </section>
+
+          <!-- ===== Project Settings 탭 = 接続設定 (+ G6 ディレクトリ) ===== -->
+          <section class="tabpanel" data-panel="settings">
+            <h1 class="page-title">Project Settings <span class="muted">接続・環境設定（環境ごと1回）</span></h1>
+            <div class="panel">
+              <div class="panel-head"><h2>接続設定（DB）</h2></div>
+              <div class="panel-body">
+                <div class="grid">
+                  <div class="field"><label class="lab">ホスト (host)</label><input type="text" id="c-host" value="{{ conn.host }}"></div>
+                  <div class="field"><label class="lab">ポート (port)</label><input type="number" id="c-port" value="{{ conn.port }}"></div>
+                  <div class="field"><label class="lab">データベース (dbname)</label><input type="text" id="c-dbname" value="{{ conn.dbname }}"></div>
+                  <div class="field"><label class="lab">ユーザー (user)</label><input type="text" id="c-user" value="{{ conn.user }}"></div>
+                  <div class="field"><label class="lab">パスワード環境変数 <span class="opt">(password_env)</span></label><input type="text" id="c-pwenv" value="{{ conn.password_env }}"></div>
+                  <div class="field"><label class="lab">エンコーディング</label><input type="text" id="c-encoding" value="{{ conn.encoding }}"></div>
+                </div>
+                <div class="callout warn">
+                  <div>検証専用 DB／最小権限アカウントで実行してください（入力テーブルを TRUNCATE します）。パスワードは保存せず環境変数から読みます。</div>
+                </div>
+                <div class="actions">
+                  <button class="ghost" id="c-test">接続テスト（読み取り）</button>
+                  <button class="ghost" id="c-save">接続設定を保存</button>
+                </div>
+                <div class="checks" id="c-checks"></div>
+                <div class="toast" id="c-toast"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2>ディレクトリ設定（paths）</h2></div>
+              <div class="panel-body">
+                <div class="grid">
+                  <div class="field"><label class="lab">As-Is 入力 <span class="opt">(asis_input_dir)</span></label><input type="text" id="p-asis-in" value="{{ paths.asis_input_dir }}" placeholder="例: /data/asis/input"></div>
+                  <div class="field"><label class="lab">As-Is 正解出力 <span class="opt">(asis_output_dir)</span></label><input type="text" id="p-asis-out" value="{{ paths.asis_output_dir }}" placeholder="例: /data/asis/output"></div>
+                  <div class="field"><label class="lab">To-Be 入力 <span class="opt">(tobe_input_dir)</span></label><input type="text" id="p-tobe-in" value="{{ paths.tobe_input_dir }}" placeholder="例: /data/tobe/input"></div>
+                  <div class="field"><label class="lab">To-Be 出力 <span class="opt">(tobe_output_dir)</span></label><input type="text" id="p-tobe-out" value="{{ paths.tobe_output_dir }}" placeholder="例: /data/tobe/output"></div>
+                  <div class="field"><label class="lab">レポート出力 <span class="opt">(report_dir)</span></label><input type="text" id="p-report" value="{{ paths.report_dir }}" placeholder="例: /data/reports"></div>
+                  <div class="field"><label class="lab">定義ファイル <span class="opt">(definition_file)</span></label><input type="text" id="p-def" value="{{ paths.definition_file }}" placeholder="例: ./test_definition.yaml"></div>
+                </div>
+                <div class="callout info">
+                  <div>As-Is / To-Be データの<b>場所</b>をここで指定します（環境ごと1回）。空欄は既存値を保持。相対パスは設定ファイル基準。
+                    項目ごとに場所が違う場合のみ、定義の <code>*_dir</code> で行単位 override。保存後の存在確認は <b>事前点検</b>。</div>
+                </div>
+                <div class="actions">
+                  <button class="ghost" id="p-save">ディレクトリ設定を保存</button>
+                </div>
+                <div class="toast" id="p-toast"></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><h2>業務別ディレクトリ（任意）</h2><span class="sub">業務ごとに場所が違う場合</span></div>
+              <div class="panel-body">
+                <div class="callout info">
+                  <div>業務（shell_group）ごとに As-Is/To-Be ディレクトリが違う場合に指定します。経路解決:
+                    <b>項目 override（定義 <code>*_dir</code>）＞ 業務ディレクトリ ＞ 全体 paths</b>。空欄は全体 paths にフォールバック。</div>
+                </div>
+                <div id="groups-list"></div>
+                <div class="actions">
+                  <button class="ghost" id="g-add" type="button">＋ 業務を追加</button>
+                  <button class="ghost" id="g-save">業務別ディレクトリを保存</button>
+                </div>
+                <div class="toast" id="g-toast"></div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
     </div>
   </div>
-</header>
-
-<main>
-  <!-- ① 設定 / 接続（接이식 · 설치 시 1회） -->
-  <details class="settings" id="settings" {% if settings_open %}open{% endif %}>
-    <summary>
-      設定 / 接続
-      <span class="sub">DB接続テスト・config.yaml 保存（設置時のみ）</span>
-      <span class="chev">▶</span>
-    </summary>
-    <div class="panel-body">
-      <div class="grid">
-        <div class="field"><label class="lab">ホスト (host)</label><input type="text" id="c-host" value="{{ conn.host }}"></div>
-        <div class="field"><label class="lab">ポート (port)</label><input type="number" id="c-port" value="{{ conn.port }}"></div>
-        <div class="field"><label class="lab">データベース (dbname)</label><input type="text" id="c-dbname" value="{{ conn.dbname }}"></div>
-        <div class="field"><label class="lab">ユーザー (user)</label><input type="text" id="c-user" value="{{ conn.user }}"></div>
-        <div class="field"><label class="lab">パスワード環境変数 <span class="opt">(password_env)</span></label><input type="text" id="c-pwenv" value="{{ conn.password_env }}"></div>
-        <div class="field"><label class="lab">エンコーディング</label><input type="text" id="c-encoding" value="{{ conn.encoding }}"></div>
-      </div>
-      <div class="callout sec">
-        <div>パスワードはツールに入力・保存しません（<b>モデルA</b>）。DBA が環境変数 <code>{{ conn.password_env }}</code> または <code>.pgpass</code> に設定し、ツールはそこから取得します。</div>
-      </div>
-      <div class="callout warn">
-        <div>検証専用の <b>最小権限アカウント</b> と <b>検証専用 DB / スキーマ</b> を使用してください。本ツールは入力テーブルを TRUNCATE+INSERT、結果テーブルに INSERT するため、<b>本番 DB を指すと汚染します</b>。</div>
-      </div>
-      <div class="actions">
-        <button class="ghost" id="c-test">接続テスト（読み取り）</button>
-        <button class="ghost" id="c-save">config.yaml に保存</button>
-      </div>
-      <div class="callout info">
-        <div><b>検証の内容（シェル毎の入力・出力・テーブル・バッチ）は定義ファイルが正本</b>です（<code>config.yaml</code> の <code>definition_file</code>）。この画面では接続確認と保存のみで、I/Oタイプやテーブルは選びません。</div>
-      </div>
-      <div class="checks" id="c-checks"></div>
-      <div class="toast" id="c-toast"></div>
-    </div>
-  </details>
-
-  <!-- ② 検証実行（定義ファイル駆動 · ボタン1つ） -->
-  <div class="panel">
-    <div class="panel-head">
-      <h2>検証実行</h2>
-      <span class="sub">定義ファイル駆動 · Shell 1〜1000 自動実行</span>
-    </div>
-    <div class="panel-body">
-      {% if definition.ok %}
-      <div class="def-preview" id="def-preview">
-        <div class="def-head">検証定義<span class="badge-n">{{ definition.count }} シェル</span></div>
-        <div class="shelllist" id="def-shells"></div>
-        <div class="def-note">この定義（config の <code>definition_file</code>）を、設定済みディレクトリのデータに対して順次実行します。</div>
-      </div>
-      {% else %}
-      <div class="def-preview bad" id="def-preview">
-        <div class="def-head">検証定義が読み込めません</div>
-        <div class="def-note">{{ definition.message }} 「設定 / 接続」または <code>config.yaml</code> の <code>definition_file</code> を確認してください。</div>
-      </div>
-      {% endif %}
-      <div class="grid">
-        <div class="field"><label class="lab">設定ファイル <span class="opt">(config.yaml)</span></label><input type="text" id="config" value="{{ default_config }}"><div class="hint">DB接続・ディレクトリ・定義ファイルの場所</div></div>
-        <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / 007)</span></label><input type="text" id="shells" placeholder="全件"><div class="hint">未指定なら定義の全シェル</div></div>
-      </div>
-      <div class="actions">
-        <button class="run big" id="run">▶ 検証実行</button>
-        <label class="chk"><input type="checkbox" id="verbose"> 差分を上限なしで全件表示（200行超）</label>
-      </div>
-      <div class="callout sec">
-        <div>各シェルの <b>入力ロード → バッチ実行 → 結果比較</b> がリアルタイムに表示され、出力単位（1シェルに出力2件なら結果2件）で OK/NG/ERROR/MISSING を集計します。終了後にサマリーと CSV レポートを出力します。</div>
-      </div>
-      <div class="callout warn">
-        <div>現在「新環境バッチ」は <b>stub（デモ用）</b> です — 実検証は実バッチ置換後（導入段階で <code>program</code> を実行ファイルに差し替え）。同梱サンプルは <code>config.yaml.example</code> が <code>samples/asis/</code> を指します。</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 共通: バナー / サマリー / 結果 -->
-  <div id="banner" class="banner err"></div>
-  <div id="warnbar" class="banner warn"></div>
-
-  <div id="summary" class="panel">
-    <div class="panel-head">
-      <h2>検証サマリー</h2>
-      <span class="sub" id="s-verdict"></span>
-    </div>
-    <div class="panel-body">
-      <div class="summary-cards">
-        <div class="scard total" data-f="*"><div class="n" id="s-total">0</div><div class="l">合計</div></div>
-        <div class="scard ok" data-f="OK"><div class="n" id="s-ok">0</div><div class="l">OK</div></div>
-        <div class="scard ng" data-f="NG"><div class="n" id="s-ng">0</div><div class="l">NG</div></div>
-        <div class="scard err" data-f="ERROR"><div class="n" id="s-err">0</div><div class="l">ERROR</div></div>
-        <div class="scard miss" data-f="MISSING_TOBE,MISSING_ASIS"><div class="n" id="s-miss">0</div><div class="l">MISSING</div></div>
-      </div>
-      <div class="filter-hint" id="filter-hint"></div>
-      <div class="summary-meta">
-        <span>所要 <span class="el" id="s-elapsed">0</span> 秒</span>
-        <span class="rep" id="report"></span>
-      </div>
-    </div>
-  </div>
-
-  <div id="results-wrap">
-    <div class="results-head">
-      <h3>検証結果</h3>
-      <span class="live" id="live"><span class="pulse"></span>実行中…</span>
-    </div>
-    <div id="results"></div>
-    <div class="empty" id="filter-empty" style="display:none">該当する結果がありません</div>
-  </div>
-</main>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+/* 활성 config(=선택된 프로젝트)를 읽는 단일 accessor. 서버 _active_config()와 짝.
+   config을 읽는 모든 곳이 여기로 모인다 — 멀티프로젝트 확장 시 이 함수만 바꾼다(B 확장 지점). */
+const activeConfig = () => activeConfig();
 function scrollToEl(id, block){ const el=$(id); if(el) el.scrollIntoView({behavior:"smooth", block:block||"start"}); }
 const STEP_ORDER = ["load","run","compare"];
 let verboseFlag = false;
 let running = false;
 let es = null;                       // SSE ハンドル
 let lastConfig = "{{ default_config }}";
+let preflightOK = false;            // ②点検通過(エラー0)で③解禁
 
-/* ───────── 定義プレビュー（サーバ埋め込み JSON をチップ描画） ───────── */
+/* ───────── 定義の読み込み状態（失敗時のみ警告） ───────── */
 const DEF = {{ definition | tojson }};
-function tTag(t){ return t==="database" ? '<span class="ttag db">DB</span>' : '<span class="ttag file">ファイル</span>'; }
-function renderDefShells(){
-  if (!DEF || !DEF.ok) return;
-  const cont=$("def-shells"); if(!cont) return;
-  const CAP=24;
-  const chips=(DEF.shells||[]).slice(0,CAP).map(s=>{
-    const im = s.input_count>1 ? `<span class="mult">×${s.input_count}</span>` : "";
-    const om = s.output_count>1 ? `<span class="mult">×${s.output_count}</span>` : "";
-    return `<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span>`+
-      `<span class="flow">${tTag(s.input_type)}${im}<span class="arrow">→</span>${tTag(s.output_type)}${om}</span></span>`;
-  }).join("");
-  const more = (DEF.shells||[]).length>CAP ? `<span class="schip more">他 ${DEF.shells.length-CAP} 件</span>` : "";
-  cont.innerHTML = chips + more;
+
+/* ───────── タブ・サイドバー ナビ ───────── */
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.dataset.tab===name));
+  document.querySelectorAll('.tabpanel').forEach(p=> p.classList.toggle('show', p.dataset.panel===name));
 }
+document.querySelectorAll('.tab').forEach(t=> t.addEventListener('click', ()=> showTab(t.dataset.tab)));
+
+/* ───────── 사이드바 = 프로젝트(=환경) 목록. 클릭=전환 / 더블클릭=改名(localStorage). B 확장 지점 ───────── */
+let projNames = {};
+try { projNames = JSON.parse(localStorage.getItem("dc_projnames")||"{}"); } catch(e){ projNames={}; }
+function saveProjNames(){ try { localStorage.setItem("dc_projnames", JSON.stringify(projNames)); } catch(e){} }
+function projLabel(o){ return projNames[o.value] || o.textContent.split("（")[0].split("(")[0].trim(); }
+function renderProjects(){
+  const sel=$("config"), c=$("proj-list"); if(!sel||!c) return;
+  c.innerHTML="";
+  [...sel.options].forEach(o=>{
+    const it=document.createElement("div");
+    it.className="proj-item"+(o.value===sel.value?" active":"");
+    it.title=o.textContent+"（クリックで切替 / ダブルクリックで改名）";
+    const nm=document.createElement("span"); nm.className="proj-nm"; nm.textContent=projLabel(o);
+    it.appendChild(nm);
+    it.addEventListener("click", ()=>{ if(sel.value!==o.value){ sel.value=o.value; renderProjects(); sel.dispatchEvent(new Event('change')); } });
+    it.addEventListener("dblclick", (e)=>{ e.stopPropagation(); editProjName(it, o); });
+    c.appendChild(it);
+  });
+}
+function editProjName(item, o){
+  const inp=document.createElement("input"); inp.className="proj-edit"; inp.value=projLabel(o);
+  item.innerHTML=""; item.appendChild(inp); inp.focus(); inp.select();
+  let closed=false;
+  const done=(save)=>{ if(closed) return; closed=true;
+    if(save){ const v=inp.value.trim(); if(v) projNames[o.value]=v; else delete projNames[o.value]; saveProjNames(); }
+    renderProjects();
+  };
+  inp.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); done(true); } else if(e.key==="Escape") done(false); });
+  inp.addEventListener("blur", ()=> done(true));
+}
+
+/* ───────── 段(アコーディオン)制御 ───────── */
+function setStepSummary(id, html){ const e=$(id).querySelector(".sum"); if(e) e.innerHTML=html; }
+function setStepDone(id, done){ const n=$(id).querySelector(".num"); if(n) n.classList.toggle("done", done); }
+function markStepDone(id, summaryHtml){ setStepSummary(id, summaryHtml); setStepDone(id, true); }
+document.querySelectorAll(".step-head").forEach(h=>{
+  const num=h.querySelector(".num"); if(num) num.dataset.num=num.textContent;
+  h.addEventListener("click", ()=> h.parentElement.classList.toggle("collapsed"));
+});
 
 /* ───────── 設定: 永続化 + フォーム ───────── */
 const CONN_FIELDS = ["c-host","c-port","c-dbname","c-user","c-pwenv","c-encoding","config"];
@@ -391,9 +671,19 @@ function restoreLocal(){
   let o; try { o=JSON.parse(localStorage.getItem("dc_conn")||"{}"); } catch(e){ o={}; }
   for (const id of CONN_FIELDS) if (o[id]!==undefined && o[id]!=="") $(id).value=o[id];
 }
+function updateConnSummary(){
+  const h=$("c-host").value, p=$("c-port").value, d=$("c-dbname").value, e=$("c-encoding").value;
+  const el=$("conn-summary");
+  if(!h){ el.innerHTML = `<div class="conn-card empty">未設定 — Project Settings で入力</div>`; return; }
+  const dbIcon = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><ellipse cx="8" cy="3.2" rx="6" ry="2.2"/><path d="M2 3.2v9.6c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V3.2c0 1.2-2.7 2.2-6 2.2S2 4.4 2 3.2Z" opacity=".5"/></svg>`;
+  el.innerHTML =
+    `<div class="conn-card">
+       <div class="conn-row"><span class="conn-dot"></span><span class="conn-host">${escapeHtml(h)}:${escapeHtml(p)}</span></div>
+       <div class="conn-meta"><span class="conn-db">${dbIcon}<span class="nm">${escapeHtml(d)}</span></span><span class="conn-enc">${escapeHtml(e)}</span></div>
+     </div>`;
+}
 function toast(id,msg,ok){ const t=$(id); t.textContent=msg; t.className="toast "+(ok?"ok":"bad"); t.style.display="block"; }
 function connForm(){
-  // 접속 테스트·저장은 DB 접속 정보만 필요.
   const fd=new FormData();
   fd.append("host",$("c-host").value);
   fd.append("port",$("c-port").value);
@@ -401,13 +691,48 @@ function connForm(){
   fd.append("user",$("c-user").value);
   fd.append("password_env",$("c-pwenv").value);
   fd.append("encoding",$("c-encoding").value);
-  fd.append("config",$("config").value);
+  fd.append("config",activeConfig());
   return fd;
+}
+function escapeHtml(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function download(text, filename, bom){
+  const blob=new Blob([(bom?"﻿":"")+text], {type:"text/plain;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+
+/* ───────── カスタムドロップダウン（#config を駆動。系统selectは隠す） ───────── */
+function buildDropdown(hostId, selectId, onChange){
+  const sel=$(selectId), host=$(hostId); if(!sel||!host) return;
+  const opts=[...sel.options].map(o=>({value:o.value,label:o.textContent}));
+  let open=false, hl=-1;
+  host.innerHTML=`<button type="button" class="dd-trigger"><span class="dd-val"></span><span class="dd-chev">▾</span></button><div class="dd-menu"></div>`;
+  const trigger=host.querySelector('.dd-trigger'), menu=host.querySelector('.dd-menu'), val=host.querySelector('.dd-val');
+  function render(){
+    val.textContent = (sel.selectedOptions[0]||{}).textContent || "";
+    menu.innerHTML = opts.map((o,i)=>
+      `<div class="dd-opt ${o.value===sel.value?'sel':''} ${i===hl?'hl':''}" data-i="${i}"><span class="dd-ck">✓</span><span>${escapeHtml(o.label)}</span></div>`).join("");
+  }
+  function setOpen(o){ open=o; host.classList.toggle('open',o); if(o){ hl=opts.findIndex(x=>x.value===sel.value); render(); } }
+  function pick(i){ if(i<0||i>=opts.length) return; sel.value=opts[i].value; render(); setOpen(false); sel.dispatchEvent(new Event('change')); if(onChange) onChange(); }
+  trigger.addEventListener('click',()=> setOpen(!open));
+  menu.addEventListener('click',e=>{ const el=e.target.closest('.dd-opt'); if(el) pick(+el.dataset.i); });
+  host.addEventListener('keydown',e=>{
+    if(!open && (e.key==='Enter'||e.key===' '||e.key==='ArrowDown')){ setOpen(true); e.preventDefault(); return; }
+    if(!open) return;
+    if(e.key==='ArrowDown'){ hl=Math.min(opts.length-1,hl+1); render(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ hl=Math.max(0,hl-1); render(); e.preventDefault(); }
+    else if(e.key==='Enter'){ pick(hl); e.preventDefault(); }
+    else if(e.key==='Escape'){ setOpen(false); }
+  });
+  trigger.tabIndex=0;
+  document.addEventListener('click',e=>{ if(!host.contains(e.target)) setOpen(false); });
+  render();
 }
 
 /* ───────── 接続テスト（実 /connection/test, 読み取り専用） ───────── */
-$("c-test").addEventListener("click", async () => {
-  saveLocal();
+$("c-test").addEventListener("click", async (ev) => {
+  ev.preventDefault(); saveLocal();
   const btn=$("c-test"); btn.disabled=true; btn.classList.add("busy"); btn.textContent="接続中…";
   $("c-toast").style.display="none";
   const cont=$("c-checks"); cont.classList.add("show");
@@ -430,36 +755,143 @@ $("c-test").addEventListener("click", async () => {
 });
 
 /* ───────── 保存（実 /connection/save, DB接続・encodingのみ） ───────── */
-$("c-save").addEventListener("click", async () => {
-  saveLocal();
+$("c-save").addEventListener("click", async (ev) => {
+  ev.preventDefault(); saveLocal(); updateConnSummary();
   const btn=$("c-save"); btn.disabled=true; btn.textContent="保存中…";
   try{
     const resp=await fetch("/connection/save",{method:"POST",body:connForm()});
     const r=await resp.json();
     toast("c-toast", r.message, !!r.ok);
-    if (r.ok) refreshDefPreview();   // 保存で定義ファイル経路が変わり得る → プレビュー更新
+    if (r.ok) refreshDefPreview();
   }catch(err){ toast("c-toast","通信エラー: "+err,false); }
-  finally{ btn.disabled=false; btn.textContent="config.yaml に保存"; }
+  finally{ btn.disabled=false; btn.textContent="接続設定を保存"; }
 });
 
-// 設定保存後など、サーバから定義プレビューを取り直してチップを更新。
 async function refreshDefPreview(){
   try{
-    const r=await (await fetch("/definition/preview?config="+encodeURIComponent($("config").value))).json();
-    DEF.ok=r.ok; DEF.count=r.count; DEF.shells=r.shells; DEF.message=r.message;
+    const r=await (await fetch("/definition/preview?config="+encodeURIComponent(activeConfig()))).json();
+    DEF.ok=r.ok; DEF.message=r.message;
     const pv=$("def-preview"); if(!pv) return;
-    if (r.ok){
-      pv.classList.remove("bad");
-      pv.innerHTML=`<div class="def-head">検証定義<span class="badge-n">${r.count} シェル</span></div>`+
-        `<div class="shelllist" id="def-shells"></div>`+
-        `<div class="def-note">この定義（config の <code>definition_file</code>）を、設定済みディレクトリのデータに対して順次実行します。</div>`;
-      renderDefShells();
-    } else {
-      pv.classList.add("bad");
-      pv.innerHTML=`<div class="def-head">検証定義が読み込めません</div><div class="def-note">${escapeHtml(r.message||"")}</div>`;
-    }
-  }catch(e){ /* プレビューは補助情報 — 失敗しても実行は可能 */ }
+    if (r.ok){ pv.style.display="none"; }
+    else { pv.style.display=""; const m=$("def-msg"); if(m) m.textContent=(r.message||"")+" 下のマッピング表（CSV）から定義を作成・保存してください。"; }
+  }catch(e){ /* 補助情報 */ }
 }
+
+/* ───────── ディレクトリ設定（paths 編集・保存 / 신규 G6） ───────── */
+const PATH_FIELDS={ "p-asis-in":"asis_input_dir","p-asis-out":"asis_output_dir","p-tobe-in":"tobe_input_dir","p-tobe-out":"tobe_output_dir","p-report":"report_dir","p-def":"definition_file" };
+function pathsForm(){ const fd=new FormData(); fd.append("config",activeConfig()); for(const id in PATH_FIELDS) fd.append(PATH_FIELDS[id],$(id).value); return fd; }
+async function refreshPaths(){
+  try{
+    const r=await (await fetch("/paths?config="+encodeURIComponent(activeConfig()))).json();
+    for(const id in PATH_FIELDS){ const v=r[PATH_FIELDS[id]]; if(v!==undefined) $(id).value=v; }
+  }catch(e){ /* 補助情報 */ }
+}
+$("p-save").addEventListener("click", async (ev)=>{
+  ev.preventDefault(); const b=$("p-save"); b.disabled=true; const old=b.textContent; b.textContent="保存中…";
+  try{
+    const r=await (await fetch("/paths/save",{method:"POST",body:pathsForm()})).json();
+    toast("p-toast", r.message, !!r.ok);
+    if(r.ok) refreshDefPreview();
+  }catch(e){ toast("p-toast","通信エラー: "+e,false); }
+  finally{ b.disabled=false; b.textContent=old; }
+});
+
+/* ───────── 業務別ディレクトリ（編集・保存 / D-045） ───────── */
+const GROUPS_DATA = {{ groups | tojson }};
+const G_DIRS = ["asis_input_dir","asis_output_dir","tobe_input_dir","tobe_output_dir"];
+const G_LABELS = { base_dir:"バッチシェル (base_dir) ※必須", asis_input_dir:"As-Is 入力", asis_output_dir:"As-Is 正解出力", tobe_input_dir:"To-Be 入力", tobe_output_dir:"To-Be 出力" };
+function groupCard(g){
+  g = g || {};
+  const div=document.createElement("div"); div.className="gcard";
+  const field=(k,ph)=>`<div class="field"><label class="lab">${G_LABELS[k]}</label><input type="text" data-k="${k}" value="${escapeHtml(g[k]||"")}" placeholder="${ph||""}"></div>`;
+  div.innerHTML =
+    `<div class="ghead"><input type="text" data-k="name" value="${escapeHtml(g.name||"")}" placeholder="業務名（例: 業務A）"><button class="ghost g-del" type="button">削除</button></div>`+
+    `<div class="grid">${field("base_dir","/opt/migsys/業務A")}${G_DIRS.map(k=>field(k,"空欄=全体paths")).join("")}</div>`;
+  div.querySelector(".g-del").addEventListener("click", ()=> div.remove());
+  return div;
+}
+function renderGroups(list){ const c=$("groups-list"); c.innerHTML=""; (list||[]).forEach(g=> c.appendChild(groupCard(g))); }
+function collectGroups(){
+  return [...document.querySelectorAll("#groups-list .gcard")].map(card=>{
+    const o={}; card.querySelectorAll("input[data-k]").forEach(i=> o[i.dataset.k]=i.value.trim()); return o;
+  });
+}
+async function refreshGroups(){
+  try{ renderGroups(await (await fetch("/groups?config="+encodeURIComponent(activeConfig()))).json()); }catch(e){}
+}
+$("g-add").addEventListener("click", ()=> $("groups-list").appendChild(groupCard()));
+$("g-save").addEventListener("click", async (ev)=>{
+  ev.preventDefault(); const b=$("g-save"); b.disabled=true; const old=b.textContent; b.textContent="保存中…";
+  try{
+    const fd=new FormData(); fd.append("config",activeConfig()); fd.append("groups", JSON.stringify(collectGroups()));
+    const r=await (await fetch("/groups/save",{method:"POST",body:fd})).json();
+    toast("g-toast", r.message, !!r.ok); if(r.ok) refreshDefPreview();
+  }catch(e){ toast("g-toast","通信エラー: "+e,false); }
+  finally{ b.disabled=false; b.textContent=old; }
+});
+renderGroups(GROUPS_DATA);
+
+/* ───────── ① 定義: ファイル選択で「生成→保存」を一括自動 ───────── */
+$("csv-btn").addEventListener("click", ()=> $("csv").click());
+$("csv").addEventListener("change", applyDefinition);
+async function applyDefinition(){
+  const f=$("csv").files[0], nm=$("csv-name"), res=$("result");
+  if(!f){ nm.textContent="選択されていません"; nm.classList.remove("has"); return; }
+  nm.textContent=f.name; nm.classList.add("has");
+  const btn=$("csv-btn"); btn.disabled=true; const old=btn.textContent; btn.textContent="処理中…"; res.innerHTML="";
+  try{
+    const gfd=new FormData(); gfd.append("csv", f);
+    const gen=await (await fetch("/definition/from-csv",{method:"POST",body:gfd})).json();
+    if(!gen.ok){
+      const items=(gen.errors||[]).map(e=>`<li>${escapeHtml(e)}</li>`).join("");
+      res.innerHTML=`<div class="errbox">定義を作成できませんでした（1行でも不備があれば全体を拒否します）：<ul>${items}</ul></div>`;
+      return;
+    }
+    const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", activeConfig());
+    const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
+    if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
+    const chips=(gen.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
+    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div><div class="slist">${chips}</div>`;
+    await refreshDefPreview();
+    markStepDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
+  }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+
+/* ───────── ② 事前点検 (実 /preflight) — 通過で③解禁 ───────── */
+function renderPreflight(d){
+  const box=$("preflight-out"); box.style.display="block"; box.innerHTML="";
+  const line=(cls,mk,i)=>`<div class="${cls}">${mk} [${escapeHtml(i.coordinate)}] ${escapeHtml(i.message)}</div>`;
+  const ne=(d.errors||[]).length, nw=(d.warnings||[]).length;
+  let html="";
+  if (d.ok && nw===0) html=`<div class="pf-verdict ok">✓ 事前点検 通過 — 実行できます</div>`;
+  else if (d.ok) html=`<div class="pf-verdict warn">▲ 通過（警告 ${nw}件） — 実行できます（内容を確認）</div>`;
+  else html=`<div class="pf-verdict bad">✖ 拒否 — エラー ${ne}件。修正してください</div>`;
+  for (const i of (d.errors||[])) html+=line("bad","✖",i);
+  for (const i of (d.warnings||[])) html+=line("warn","▲",i);
+  box.innerHTML=html;
+}
+function setRunGate(){
+  $("run").disabled = !preflightOK;
+  $("run-gate").classList.toggle("hide", preflightOK);
+  $("step-run").classList.toggle("locked", !preflightOK);
+}
+$("preflight").addEventListener("click", async () => {
+  const btn=$("preflight"); btn.disabled=true; const old=btn.textContent; btn.textContent="点検中…";
+  try {
+    const d=await (await fetch("/preflight?config="+encodeURIComponent(activeConfig()))).json();
+    renderPreflight(d);
+    preflightOK = !!d.ok;
+    setRunGate();
+    const nw=(d.warnings||[]).length;
+    if (preflightOK){
+      markStepDone("step-pre", nw ? `<span class="wn">▲ 通過（警告 ${nw}件）</span>` : `<span class="ok">✓ 通過</span>`);
+    } else {
+      setStepSummary("step-pre", `<span class="ng">✖ エラー ${(d.errors||[]).length}件</span>`);
+    }
+  } catch(e){ renderPreflight({ok:false, errors:[{coordinate:"通信", message:String(e)}], warnings:[]}); preflightOK=false; setRunGate(); }
+  finally { btn.disabled=false; btn.textContent=old; }
+});
 
 /* ───────── 結果レンダリング（イベント駆動） ───────── */
 function reset(){
@@ -468,10 +900,14 @@ function reset(){
   $("banner").classList.remove("show");
   $("warnbar").classList.remove("show");
   $("results-wrap").classList.remove("show");
+  $("result-actions").style.display="none";
   activeFilter=null;
   document.querySelectorAll('.scard').forEach(c=>c.classList.remove('active','disabled'));
   $("filter-empty").style.display="none";
   $("filter-hint").innerHTML="";
+  // Quarantine / Artifacts 초기화
+  $("quarantine-list").innerHTML=""; $("q-empty").style.display="";
+  $("art-body").style.display="none"; $("art-empty").style.display="";
 }
 function showBanner(id, html){ const b=$(id); b.innerHTML=`<div>${html}</div>`; b.classList.add("show"); }
 
@@ -532,13 +968,13 @@ function shellRow(id,index,total){
        <span class="badge b-RUN" id="badge-${id}"><span class="bd"></span>処理中</span>
      </div>
      <div class="steps" id="steps-${id}">
-       <span class="step" data-step="load"><span class="sdot"></span>入力ロード <span class="res"></span></span>
+       <span class="step-i" data-step="load"><span class="sdot"></span>入力ロード <span class="res"></span></span>
        <span class="connector" data-conn="0"></span>
-       <span class="step" data-step="run"><span class="sdot"></span>バッチ実行 <span class="res"></span></span>
+       <span class="step-i" data-step="run"><span class="sdot"></span>バッチ実行 <span class="res"></span></span>
        <span class="connector" data-conn="1"></span>
-       <span class="step" data-step="compare"><span class="sdot"></span>結果比較 <span class="res"></span></span>
+       <span class="step-i" data-step="compare"><span class="sdot"></span>結果比較 <span class="res"></span></span>
      </div>
-     <div class="outs" id="outs-${id}"></div>`;   // T7-2: 출력별 결과 블록
+     <div class="outs" id="outs-${id}"></div>`;
   $("results").appendChild(el);
   return el;
 }
@@ -565,8 +1001,6 @@ function setBadge(id,status,label){
 }
 function finishRow(id){ const row=$("shell-"+id); if(row) row.classList.remove("running"); }
 
-function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-// As-Is/To-Be の共通前後を除いた「変化区間」だけ <mark> で囲む（文字単位）。
 function diffMark(a,b){
   a=String(a); b=String(b);
   let s=0; const n=Math.min(a.length,b.length);
@@ -579,7 +1013,7 @@ function diffMark(a,b){
     escapeHtml(b.slice(0,s))+wrap(b.slice(s,eb),"b")+escapeHtml(b.slice(eb)),
   ];
 }
-const DIFF_CAP = 200;   // 셸당 화면 표시 상한(대량 NG에서 DOM 폭증 방지). 체크 시 해제.
+const DIFF_CAP = 200;
 function diffHtml(diff_lines){
   diff_lines = diff_lines || [];
   const lines = verboseFlag ? diff_lines : diff_lines.slice(0, DIFF_CAP);
@@ -592,12 +1026,11 @@ function diffHtml(diff_lines){
      </div>`;
   }).join("");
   const more = (!verboseFlag && diff_lines.length>DIFF_CAP)
-    ? `<div class="more">ほか ${diff_lines.length-DIFF_CAP} 行（「上限なしで全件表示」または レポート/.diff で確認）</div>` : "";
+    ? `<div class="more">ほか ${diff_lines.length-DIFF_CAP} 行（「差分を全件表示」または レポート/.diff で確認）</div>` : "";
   return html+more;
 }
 const _MISS_MSG = { "MISSING_TOBE":"To-Be 出力がありません（新環境バッチが結果を生成しませんでした）",
                     "MISSING_ASIS":"As-Is 正解CSVがありません（対応する正解ファイルが見つかりません）" };
-// 출력 1건 결과를 셸 안에 블록으로 추가(다중 출력이면 N개 누적). data-status로 카드 필터.
 function appendOutput(shell, r){
   const cont=$("outs-"+shell); if(!cont) return;
   const block=document.createElement("div");
@@ -613,7 +1046,6 @@ function appendOutput(shell, r){
   }
   cont.appendChild(block);
 }
-// 셸 헤더 배지 = 출력들의 worst(OK 아닌 게 있으면 그 상태).
 const _STATUS_PRIO = ["ERROR","MISSING_TOBE","MISSING_ASIS","NG","OK"];
 function shellAgg(shell){
   const got=new Set([...$("outs-"+shell).querySelectorAll(".outrow")].map(o=>o.dataset.status));
@@ -621,7 +1053,6 @@ function shellAgg(shell){
   return "OK";
 }
 
-// 진행 이벤트: 단계 점등은 step 이벤트가, 출력별 결과는 shell_done(출력마다)이 구동한다.
 function onProgress(m){
   if (m.kind==="shell_start"){
     shellRow(m.shell_id, m.index, m.total);
@@ -635,11 +1066,30 @@ function onProgress(m){
     renderDone(m.result);
   }
 }
+/* ───────── Quarantine: NG/MISSING/ERROR 출력만 격리 카드로 집약 ───────── */
+const _Q_BAD = ["NG","MISSING_TOBE","MISSING_ASIS","ERROR"];
+function quarantineCard(r){
+  const div=document.createElement("div");
+  div.className="outrow"; div.dataset.status=r.status; div.style.marginBottom="8px";
+  const name = r.shell_id + (r.output_name ? (" / "+r.output_name) : "");
+  let body="";
+  if (r.status==="NG") body=`<div class="detail show" style="margin:7px 0 0">${diffHtml(r.diff_lines)}</div>`;
+  else if (r.status==="MISSING_TOBE" || r.status==="MISSING_ASIS") body=`<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml(_MISS_MSG[r.status])}</div></div>`;
+  else if (r.status==="ERROR") body=`<div class="detail show" style="margin:7px 0 0"><div class="errbox">${escapeHtml("エラー: "+(r.error_message||""))}</div></div>`;
+  div.innerHTML=`<div class="outhead"><span class="outname">${escapeHtml(name)}</span><span class="badge b-${r.status}"><span class="bd"></span>${r.status}</span></div>`+body;
+  return div;
+}
 function renderDone(r){
   appendOutput(r.shell_id, r);
-  setBadge(r.shell_id, shellAgg(r.shell_id));
+  const agg=shellAgg(r.shell_id);
+  setBadge(r.shell_id, agg);
+  const sh=$("shell-"+r.shell_id); if(sh) sh.dataset.status=agg;
   finishRow(r.shell_id);
   applyFilter();
+  if (_Q_BAD.includes(r.status)){
+    $("quarantine-list").appendChild(quarantineCard(r));
+    $("q-empty").style.display="none";
+  }
 }
 
 function renderSummary(s){
@@ -655,8 +1105,15 @@ function renderSummary(s){
   else { verdict.textContent=`要確認 — NG/ERROR/MISSING ${bad} 件`; verdict.style.color="var(--ng)"; }
   const cfg=encodeURIComponent(lastConfig);
   $("report").innerHTML=`レポート: <a href="/report/${encodeURIComponent(s.report_name)}?config=${cfg}">${escapeHtml(s.report_name)}</a>`;
+  // Artifacts 표시(試験成績書·레포트는 실행 후 항상 취득 가능)
+  $("art-empty").style.display="none"; $("art-body").style.display="block";
   $("summary").classList.add("show");
   setupCardFilters(s);
+  setStepSummary("step-result", bad===0
+    ? `<span class="ok">✓ 全件一致 ${s.total}件</span>`
+    : `合計 ${s.total} / <span class="ok">OK ${s.ok_count}</span> / <span class="ng">NG ${s.ng_count}</span> / ERROR ${s.error_count} / MISSING ${s.missing_count}`);
+  $("result-actions").style.display="flex";
+  $("rerun-ng").disabled = (bad===0);
   scrollToEl("summary", "center");
 }
 
@@ -666,33 +1123,65 @@ function handleMsg(m){
   else if (m.type==="warning") showBanner("warnbar", escapeHtml(m.message));
   else if (m.type==="error") showBanner("banner", escapeHtml(m.message));
 }
-function setRunning(on){ running=on; $("run").disabled=on; }
+function setRunning(on){ running=on; $("run").disabled = on || !preflightOK; $("rerun-ng").disabled=on; }
 
-/* ───────── 検証実行（実 /run, SSE） ───────── */
+/* ───────── ③ 検証実行（実 /run, SSE） ───────── */
 function finishRun(){ if(es){ es.close(); es=null; } $("live").classList.remove("show"); setRunning(false); }
-$("run").addEventListener("click", () => {
-  if (running) return;
+function startRun(){
+  if (running || !preflightOK) return;
   reset(); setRunning(true);
-  verboseFlag=$("verbose").checked; lastConfig=$("config").value; saveLocal();
+  verboseFlag=$("verbose").checked; lastConfig=activeConfig(); saveLocal();
+  markStepDone("step-run", "▶ 実行しました"); setStepDone("step-run", false);
+  setStepSummary("step-result", "実行中…"); setStepDone("step-result", false);
   $("results-wrap").classList.add("show"); $("live").classList.add("show");
-  scrollToEl("results-wrap", "start");
   const params=new URLSearchParams();
-  params.set("config",$("config").value);
+  params.set("config",activeConfig());
   if ($("shells").value.trim()) params.set("shells",$("shells").value.trim());
   es=new EventSource("/run?"+params.toString());
   es.onmessage=(e)=>{ const m=JSON.parse(e.data); if(m.type==="done") finishRun(); else handleMsg(m); };
   es.onerror=()=> finishRun();
+}
+$("run").addEventListener("click", startRun);
+
+$("rerun-ng").addEventListener("click", () => {
+  const bad=[...document.querySelectorAll('#results .shell')]
+    .filter(s=> s.dataset.status && s.dataset.status!=="OK" && s.dataset.status!=="RUN")
+    .map(s=> s.id.replace(/^shell-/,""));
+  if(!bad.length) return;
+  $("shells").value = bad.join(",");
+  startRun();
 });
+
+$("evidence").addEventListener("click", () => {
+  window.location="/evidence?config="+encodeURIComponent(activeConfig());
+});
+
+/* 環境(설정파일) 전환 — 選択 config の定義を読み直し、②ゲートを初期化。 */
+async function syncEnv(){
+  preflightOK=false; setRunGate();
+  const pf=$("preflight-out"); pf.style.display="none"; pf.innerHTML="";
+  setStepSummary("step-pre", ""); setStepDone("step-pre", false);
+  const ce=$("ctx-env"); if(ce){ const o=$("config").selectedOptions[0]; ce.textContent= o ? projLabel(o) : "環境"; }
+  await refreshDefPreview();
+  refreshPaths();    // 환경 전환 시 디렉토리 폼도 그 config 기준으로 갱신
+  refreshGroups();   // 업무별 디렉토리도 갱신
+  if (DEF.ok){ markStepDone("step-def", "✓ 定義読込済"); }
+  else { setStepSummary("step-def", ""); setStepDone("step-def", false); }
+}
 
 /* ───────── 初期化 ───────── */
 restoreLocal();
-for (const id of CONN_FIELDS) $(id).addEventListener("change", saveLocal);
+renderProjects();
+updateConnSummary();
+for (const id of CONN_FIELDS) $(id).addEventListener("change", ()=>{ saveLocal(); updateConnSummary(); });
+$("config").addEventListener("change", syncEnv);
 for (const c of document.querySelectorAll('.scard')) c.addEventListener("click", () => {
   if (c.classList.contains("disabled")) return;
   const f=c.getAttribute("data-f");
   setFilter(f==="*" ? null : f);
 });
-renderDefShells();
+{ const ga=$("goto-artifacts"); if(ga) ga.addEventListener("click", ()=> showTab("artifacts")); }
+syncEnv();
 </script>
 </body>
 </html>
