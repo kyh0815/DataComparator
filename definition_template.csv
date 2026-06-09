@@ -1,32 +1,3 @@
-﻿# ============================================================================
-#  検証定義テンプレート（マッピング表 / Long形式 CSV）— 복사해서 값을 채우세요.
-#  checklist를 1차키로, 입출력 항목당 1행. 같은 checklist 값 = 한 체크리스트(입력 N행·출력 M행).
-#  ★원칙: 디렉토리는 config(공통 1곳), 정의엔 *파일명만*. 흩어진 경우만 항목별 *_dir로 override.
-#  ★normalize_rules/ignore_columns는 사람이 false-NG 확인 후 그 컬럼만(과한 적용 = false-PASS).
-#
-#  [필수]  checklist   체크리스트 번호(=검증 단위·1차키)
-#          io          input | output  (이 행이 입력인지 출력인지)
-#          type        database | file | sam | vsam (저장 형식)  (구: db_or_file)
-#                       sam/vsam=고정길이(file로 컴파일). sam=byte 기본, vsam=record+layout+key 필수(D-047)
-#  [입력행] table      type=database면 필수 — 적재 대상 DB 테이블
-#          file        입력 파일명(빈칸이면 규칙 자동채움)
-#  [출력행] file        To-Be 출력/Export 파일명     expected_output  As-Is 정답 파일명(↔ file 과 비교)
-#          table       type=database면 결과 테이블
-#  [실행]  shell       실행 배치(직접 실행 경로/단축명·체크리스트당 1회. ';' 1:N 미지원=거부)
-#          shell_group 업무 태그(config batch.groups 키 — 경로 아님)   timeout 초   setup 준비SQL(선택)
-#  [비교]  compare_mode  byte | text | record (같다고 볼 범위; 미지정=byte)
-#          key_columns   record 정렬·정합 키(DB 출력 사실상 필수)      encoding  판정 인코딩(없으면 config)
-#          ignore_columns 무시할 컬럼(更新日時 등; ';' 구분)            normalize_rules  "COL:rule[:arg];.."
-#                         (rule: date / num:N / nullblank / zeropad:N / trim)
-#          has_header  true/false       fixed_layout  고정길이(SAM) "start:end;.."
-#  [디렉토리 override · 선택 · D-036] 비우면 config 공통, 흩어질 때만 그 행에:
-#          src_dir / dest_dir / dest_name / expected_dir / tobe_dir / in_encoding
-#
-#  ── 기입 예(아래 본문 행은 골격입니다 — 실제 값으로 교체하세요) ──
-#   · 파일 출력(byte 완전일치):  CK001 입력행 + 출력행
-#   · DB 출력(record·key 필수):  CK002,batch.sh,業務A,input,database,取引テーブル,,,,,,,,,
-#                                CK002,,,output,database,結果テーブル,結果.csv,正解.csv,record,主キー,shift_jis,更新日時,,true,,
-# ============================================================================
 checklist,shell,shell_group,io,type,table,file,expected_output,compare_mode,key_columns,encoding,ignore_columns,normalize_rules,has_header,fixed_layout,timeout
 CK001,업무셸_경로.sh,業務A,input,file,,入力.csv,,,,,,,,,
 CK001,,,output,file,,出力.csv,正解.csv,byte,,,,,,,
