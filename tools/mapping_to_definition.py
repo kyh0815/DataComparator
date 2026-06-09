@@ -24,12 +24,12 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용 / 괄호=구 이름 호환):
   shell_group    [선택] 업무 그룹 태그(예: 業務A). **디렉토리 아님** — 경로·env는 config batch.groups가 듦(D-040).
                  체크리스트당 1값(행마다 다르면 에러). 비면 미사용(하위호환). ★lint(멤버십)는 preflight가 함.
   table          [type=database면 필수] As-Is 데이터를 적재할/결과가 쓰일 테이블명.
-  file           [선택] 파일명. 비우면 자동 생성(아래 규칙). 입력=입력CSV / 출력(db)=export CSV / 출력(file)=산출 파일.
-  expected_output[선택] 정답 파일명(asis_output_dir). 비우면 To-Be 출력과 같은 이름으로 자동.  (구: expected)
+  input          [입력행] 입력 파일명. 비우면 자동 생성(아래 규칙). io=output 행에선 빈 칸.
+  as_is_output   [출력행] As-Is 정답 파일명(↔ to_be_output 과 비교). 비우면 To-Be 출력명과 같게 자동.
+  to_be_output   [출력행] To-Be 출력/Export 파일명. 비우면 자동. io=input 행에선 빈 칸.
   timeout        [선택] 초(기본 60).
   setup          [선택] 입력 적재 전 1회 실행할 준비 SQL(.sql)/스크립트 경로(체크리스트당 1회). 마스터·시퀀스 리셋용.
   in_encoding    [입력/선택] 입력 적재 인코딩(미지정 시 config 전역).
-  (구 선택열 name·test_name 은 더 이상 정본에 없음 — 적혀 있으면 호환으로 읽기만 함, D-041.)
 
   ── 출력별 비교 옵션(선택 / 출력 행에서 읽어 compare 블록으로 운반) ──
   비우면 byte(바이트 완전 일치) 기본. 셀 내부 다중값(ignore_columns·fixed_layout·normalize_rules)은 `;` 구분(CSV `,` 충돌 방지).
@@ -40,13 +40,13 @@ CSV 열(대소문자·순서 무관, 빈 칸 허용 / 괄호=구 이름 호환):
   fixed_layout   고정길이(SAM) "start:end;start:end;..".  (구: layout)
   normalize_rules 컬럼별 정규화 "COL:rule[:arg];.." (rule: date/num:N/nullblank/zeropad:N/trim).  (구: normalize)
 
-  ── 항목별 격납 패스(선택, 사장님 규격 #4·#7·#7-3·#7-4·#11 / D-036) ──
-  비우면 config.yaml 공통 디렉토리를 쓴다(권장). 셸별로 위치가 다를 때만 적는다.
-  src_dir       [입력]  As-Is 입력 격납 패스(#4).        없으면 asis_input_dir.
-  dest_dir      [입력]  type=file의 To-Be 격납 패스(#7-4). 없으면 tobe_input_dir.
-  dest_name     [입력]  type=file의 To-Be 격납 파일명(#7-3). 없으면 입력 파일명 그대로.
-  expected_dir  [출력]  As-Is 출력(정답) 격납 패스(#7). 없으면 asis_output_dir.
-  tobe_dir      [출력]  To-Be 출력 격납 패스(#11).       없으면 tobe_output_dir.
+  ── 항목별 격납 디렉토리(선택, 사장님 규격 #4·#7·#11 / D-036) ──
+  비우면 config.yaml 공통 디렉토리를 쓴다(권장). 업무·셸별로 위치가 흩어질 때만 적는다(적으면 그 행이 config보다 우선).
+  input_dir     [입력행]  As-Is 입력 격납 디렉토리(#4).   없으면 asis_input_dir.
+  as_is_dir     [출력행]  As-Is 정답 격납 디렉토리(#7).    없으면 asis_output_dir.
+  to_be_dir     [출력행]  To-Be 출력 격납 디렉토리(#11).   없으면 tobe_output_dir.
+  ※ 파일입력의 To-Be 스테이징 위치/파일명(구 dest_dir/dest_name, #7-3/#7-4)은 매핑표에서 제거 —
+    config.tobe_input_dir 폴백. 행별 지정이 필요해지면 손YAML(InputSpec.dest_dir/dest_name)로(코어는 유지).
 
 **빈 파일명 자동 규칙**(D-035, 사용자 확정 — 내용은 수기, 파일명은 규칙):
   · 셸의 입력(또는 출력)이 1개면 `{shell_id}.csv`.
@@ -175,20 +175,23 @@ def mapping_to_definition(csv_text: str) -> dict:
         if row.get("setup") and not sh["setup"]:  # 체크리스트당 1회 준비 SQL/스크립트
             sh["setup"] = row["setup"]
 
-        fname = row.get("file", "")        # 빈 칸이면 나중에 자동(규칙)
         table = row.get("table", "")
 
         storage = _storage_type(itype)  # sam/vsam → file(고정길이 파일 저장). database/file은 그대로.
+        # ★신 칼럼명(As-Is/To-Be 통일) → 기존 YAML 필드로 방출(코어 무수정). 칼럼=사람용, YAML=코어 계약.
         if kind == "input":
             if storage == "database" and not table:
                 errors.append(f"{n}行目[{sid}]: 入力=database には table が必要です。")
                 continue
-            spec = {"csv": fname, "type": storage}   # csv는 _autofill_names가 채울 수 있음
+            spec = {"csv": row.get("input", ""), "type": storage}   # input=입력 파일명. 빈 칸이면 _autofill_names.
             if storage == "database":
                 spec["table"] = table
-            for col in ("dest_dir", "src_dir", "dest_name", "in_encoding"):  # #4·#7-3·#7-4 + 적재 인코딩
-                if row.get(col):
-                    spec[col] = row[col]
+            if row.get("input_dir"):       # input_dir(#4 As-Is 입력 격납) → YAML src_dir
+                spec["src_dir"] = row["input_dir"]
+            if row.get("in_encoding"):     # 입력 적재 인코딩 override(선택)
+                spec["in_encoding"] = row["in_encoding"]
+            # ★dest_dir/dest_name(To-Be 입력 스테이징, #7-3/#7-4)은 매핑 CSV 표면에서 제거(A) —
+            #   코어는 유지하되 행별 지정은 안 받음. 파일입력 스테이징은 config.tobe_input_dir 폴백.
             sh["inputs"].append(spec)
         else:  # output
             if storage == "database" and not table:
@@ -198,17 +201,17 @@ def mapping_to_definition(csv_text: str) -> dict:
             if mode and mode not in _VALID_MODE:
                 errors.append(f"{n}行目[{sid}]: compare_mode は {_VALID_MODE} のいずれか（受領: '{mode}'）。")
                 continue
-            spec = {"type": storage, "expected": _get(row, "expected_output", "expected")}
+            tobe_name = row.get("to_be_output", "")  # To-Be 출력명. 빈 칸이면 _autofill_names.
+            spec = {"type": storage, "expected": row.get("as_is_output", "")}  # as_is_output=정답 파일명 → YAML expected
             if storage == "database":
                 spec["table"] = table
-                spec["export_as"] = fname      # 비면 자동
+                spec["export_as"] = tobe_name
             else:
-                spec["file"] = fname           # 비면 자동
-            if row.get("name"):
-                spec["name"] = row["name"]
-            for col in ("expected_dir", "tobe_dir"):  # #7·#11 (선택)
-                if row.get(col):
-                    spec[col] = row[col]
+                spec["file"] = tobe_name
+            if row.get("as_is_dir"):       # as_is_dir(#7 정답 격납) → YAML expected_dir
+                spec["expected_dir"] = row["as_is_dir"]
+            if row.get("to_be_dir"):       # to_be_dir(#11 To-Be 출력 격납) → YAML tobe_dir
+                spec["tobe_dir"] = row["to_be_dir"]
             cmp_block = _compare_block(row, mode)  # P0 §3: 출력별 비교 옵션
             cmp_block = _apply_format_compare(itype, cmp_block, sid, n, warnings)  # D-047: sam/vsam 비교방식 도출
             if cmp_block:

@@ -19,6 +19,13 @@
 > 구 이름은 별칭으로 계속 수용(깨짐 0). 정본 헤더·칸 설명은 `samples/complete/complete_sample.csv` + 도구 docstring.
 > ↺ **D-046 보정**: `db_or_file` → **`type`** 으로 재명명(sam/vsam 값 도입으로 'db냐 file이냐'가 부정확해짐).
 > `db_or_file`는 구 별칭으로 계속 수용. 즉 이 열의 정본 이름 흐름은 type(원래) → db_or_file(D-041) → **type(D-046)**.
+> ↺ **D-048 개편**: 채우는 사람 직관성 위해 As-Is/To-Be 짝 + io 흐름으로 통일(별칭 없이 신 이름).
+> `file`→**`input`**(입력행)/**`to_be_output`**(출력행) 분리, `expected_output`→**`as_is_output`**,
+> `src_dir`→**`input_dir`**, `expected_dir`→**`as_is_dir`**, `tobe_dir`→**`to_be_dir`**.
+> `dest_dir`/`dest_name`(To-Be 입력 스테이징)은 매핑 CSV에서 **제거**(코어 InputSpec엔 유지, config.tobe_input_dir 폴백).
+> 매핑도구는 신 칼럼을 읽어 **기존 YAML 필드(csv·file·expected·src_dir·expected_dir·tobe_dir)로 방출** → 코어 무수정·비교 0변경.
+> **정본 20칼럼 순서**: checklist·shell·shell_group·io·type·table·input·as_is_output·to_be_output·
+> input_dir·as_is_dir·to_be_dir·compare_mode·key_columns·fixed_layout·ignore_columns·normalize_rules·has_header·encoding·timeout.
 - **삭제**: `test_name`, `name`. (폴더가 못 줌=손작업인데 비교에 불필요. 이름은 번호로 원본 체크리스트에서 찾음)
 - **전역 기본값으로 이동**(행별 칸에서 제거, config 1곳): `encoding`(=shift_jis), `has_header`(=true), `delimiter`(=,).
   → 예외만 해당 행에서 override.

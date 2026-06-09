@@ -24,11 +24,11 @@ import re
 import sys
 from pathlib import Path
 
-# 헤더 = 매핑 CSV(Long)와 동일(그대로 mapping_to_definition.py에 먹임).
-# 뒤쪽 격납 패스 열(src_dir~tobe_dir)은 **선택**(비우면 config 공통 디렉토리) — 사장님 규격 11항목 대응.
+# 헤더 = 매핑 CSV(Long)와 동일(그대로 mapping_to_definition.py에 먹임). As-Is/To-Be 통일 이름.
+# 뒤쪽 격납 디렉토리 열(input_dir/as_is_dir/to_be_dir)은 **선택**(비우면 config 공통). test_name=항목명 추적용.
 _HEADER = [
-    "checklist", "kind", "type", "shell", "table", "file", "expected", "name", "test_name", "timeout",
-    "src_dir", "dest_dir", "dest_name", "expected_dir", "tobe_dir",
+    "checklist", "io", "type", "shell", "table", "input", "to_be_output", "as_is_output", "test_name", "timeout",
+    "input_dir", "as_is_dir", "to_be_dir",
 ]
 # 줄 앞 번호/불릿: "1)" "1." "①~⑳" "-" "・" "*" "•" 등.
 _BULLET = re.compile(r"^\s*(?:\d+\s*[\)\.\:]|[①-⑳]|[-・*•‣◦])\s*")
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         Path(args.output).write_text(csv_text, encoding="utf-8-sig")  # 고객이 Excel로 열 것 → BOM
         print(f"기입 템플릿 생성: {args.output}（{n} 項目）", file=sys.stderr)
-        print("→ 빈 칸(type·program·table·file·expected)을 채운 뒤 "
+        print("→ 빈 칸(type·shell·table·input·to_be_output·as_is_output)을 채운 뒤 "
               "tools/mapping_to_definition.py 로 변환하세요.", file=sys.stderr)
     else:
         sys.stdout.write(csv_text)

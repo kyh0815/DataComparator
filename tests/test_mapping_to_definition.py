@@ -12,14 +12,14 @@ import tools.mapping_to_definition as m
 from src.config.definition import load_definitions
 
 _MULTI = (
-    "shell_id,kind,type,program,table,file,expected,name\n"
+    "shell_id,kind,type,program,table,input,to_be_output,as_is_output\n"
     "001,input,database,/opt/job1,transaction_log,取引.csv,,\n"
     "001,input,database,,customer_master,顧客.csv,,\n"
     "001,input,file,,,夜間.csv,,\n"
-    "001,output,database,,result_a,出A.csv,正A.csv,結果A\n"
-    "001,output,file,,,出B.sam,正B.sam,\n"
+    "001,output,database,,result_a,,出A.csv,正A.csv\n"
+    "001,output,file,,,,出B.sam,正B.sam\n"
     "002,input,file,/opt/job2,,002.csv,,\n"
-    "002,output,database,,tobe_result,002.csv,002.csv,\n"
+    "002,output,database,,tobe_result,,002.csv,002.csv\n"
 )
 
 
@@ -46,12 +46,15 @@ def test_generated_yaml_round_trips_through_loader(tmp_path):
 
 
 def test_per_item_path_columns_flow_into_definition(tmp_path):
-    """격납 패스 열(src_dir·dest_dir·dest_name·expected_dir·tobe_dir)이 yaml→로더로 실린다 (D-036)."""
+    """격납 디렉토리 열(input_dir·as_is_dir·to_be_dir)이 yaml→로더로 실린다 (D-036).
+
+    dest_dir/dest_name(To-Be 입력 스테이징, #7-3/#7-4)은 매핑 CSV에서 제거(A) → 항상 None(config 폴백).
+    """
     csv = (
-        "shell_id,kind,type,program,table,file,expected,src_dir,dest_dir,dest_name,"
-        "expected_dir,tobe_dir\n"
-        "001,input,file,/opt/j,,in.csv,,/mnt/asis/in,/mnt/tobe/in,staged.csv,,\n"
-        "001,output,file,,,out.dat,gold.dat,,,,/mnt/asis/out,/mnt/tobe/out\n"
+        "shell_id,kind,type,program,table,input,to_be_output,as_is_output,"
+        "input_dir,as_is_dir,to_be_dir\n"
+        "001,input,file,/opt/j,,in.csv,,,/mnt/asis/in,,\n"
+        "001,output,file,,,,out.dat,gold.dat,,/mnt/asis/out,/mnt/tobe/out\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"]
@@ -59,7 +62,8 @@ def test_per_item_path_columns_flow_into_definition(tmp_path):
     p.write_text(r["yaml"], encoding="utf-8")
     d = load_definitions(p)[0]
     i = d.inputs[0]
-    assert (i.src_dir, i.dest_dir, i.dest_name) == ("/mnt/asis/in", "/mnt/tobe/in", "staged.csv")
+    assert i.src_dir == "/mnt/asis/in"
+    assert (i.dest_dir, i.dest_name) == (None, None)  # 매핑 CSV 표면 제거(A) — 코어는 유지하나 행별 미지정
     o = d.outputs[0]
     assert (o.expected_dir, o.tobe_dir) == ("/mnt/asis/out", "/mnt/tobe/out")
 
@@ -67,10 +71,10 @@ def test_per_item_path_columns_flow_into_definition(tmp_path):
 def test_checklist_key_with_multi_input_merge():
     """checklist를 1차 키로, 한 체크리스트가 입력 여러 개(A·B 병합)→출력 1개를 가질 수 있다 (사용자 시나리오)."""
     csv = (
-        "checklist,kind,type,shell,file,table,expected\n"
-        "001,input,database,/opt/job1,A.csv,table_a,\n"
-        "001,input,database,,B.csv,table_b,\n"
-        "001,output,database,,C.csv,table_c,正解C.csv\n"
+        "checklist,kind,type,shell,input,to_be_output,as_is_output,table\n"
+        "001,input,database,/opt/job1,A.csv,,,table_a\n"
+        "001,input,database,,B.csv,,,table_b\n"
+        "001,output,database,,,C.csv,正解C.csv,table_c\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"] and r["count"] == 1
@@ -89,9 +93,9 @@ def test_checklist_column_required():
 
 def test_blank_program_uses_stub_by_first_input_type():
     csv = (
-        "shell_id,kind,type,program,table,file,expected\n"
-        "001,input,file,,,a.csv,\n"
-        "001,output,file,,,a.csv,gold.csv\n"
+        "shell_id,kind,type,program,table,input,to_be_output,as_is_output\n"
+        "001,input,file,,,a.csv,,\n"
+        "001,output,file,,,,a.csv,gold.csv\n"
     )
     r = m.mapping_to_definition(csv)
     doc = yaml.safe_load(r["yaml"])
@@ -106,20 +110,20 @@ def test_missing_required_column_rejected():
 def test_bad_kind_and_type_rejected():
     # 구 이름(kind/db_or_file) 입력도 별칭으로 읽되, 에러 문구는 신 이름(io/type)으로 안내.
     r = m.mapping_to_definition(
-        "shell_id,kind,db_or_file,file\n001,sideways,file,a.csv\n001,input,ftp,a.csv\n"
+        "shell_id,kind,db_or_file,input\n001,sideways,file,a.csv\n001,input,ftp,a.csv\n"
     )
     assert r["ok"] is False
     assert any("io" in e for e in r["errors"]) and any("type" in e for e in r["errors"])
 
 
 def test_new_column_names_map_to_yaml(tmp_path):
-    """신 컬럼명(io/type/expected_output/key_columns/ignore_columns/normalize_rules/fixed_layout)이
+    """신 컬럼명(io/type/as_is_output/key_columns/ignore_columns/normalize_rules/fixed_layout)이
     compare 블록 YAML 키(key/mask/normalize/layout)로 매핑된다."""
     csv = (
-        "checklist,shell,shell_group,io,type,table,file,expected_output,"
+        "checklist,shell,shell_group,io,type,table,input,to_be_output,as_is_output,"
         "compare_mode,key_columns,encoding,ignore_columns,normalize_rules,has_header,fixed_layout\n"
-        "CK1,b.sh,業務A,input,file,,in.csv,,,,,,,,\n"
-        "CK1,,,output,file,,out.csv,gold.csv,record,KEY,shift_jis,UPD,COL:zeropad:4,true,0:6\n"
+        "CK1,b.sh,業務A,input,file,,in.csv,,,,,,,,,\n"
+        "CK1,,,output,file,,,out.csv,gold.csv,record,KEY,shift_jis,UPD,COL:zeropad:4,true,0:6\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
@@ -134,9 +138,9 @@ def test_new_column_names_map_to_yaml(tmp_path):
 def test_db_or_file_alias_still_accepted(tmp_path):
     """하위호환 가드: 구 컬럼명 db_or_file(=type의 옛 이름, D-046)도 그대로 읽힌다."""
     csv = (
-        "checklist,io,db_or_file,file,expected_output\n"
-        "CK1,input,file,in.csv,\n"
-        "CK1,output,file,out.csv,gold.csv\n"
+        "checklist,io,db_or_file,input,to_be_output,as_is_output\n"
+        "CK1,input,file,in.csv,,\n"
+        "CK1,output,file,,out.csv,gold.csv\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
@@ -156,9 +160,9 @@ def _out0(csv: str):
 def test_sam_default_is_byte():
     """sam은 기본 byte 통짜(순차파일·순서 의미). storage=file로 컴파일, layout은 byte라 운반 안 함(D-039)."""
     t, w = _out0(
-        "checklist,io,type,file,expected_output,fixed_layout\n"
-        "C1,input,sam,in.dat,,\n"
-        "C1,output,sam,out.dat,gold.dat,0:6;6:22\n"
+        "checklist,io,type,input,to_be_output,as_is_output,fixed_layout\n"
+        "C1,input,sam,in.dat,,,\n"
+        "C1,output,sam,,out.dat,gold.dat,0:6;6:22\n"
     )
     out = t["outputs"][0]
     assert out["type"] == "file"               # sam → 저장은 file
@@ -170,9 +174,9 @@ def test_sam_default_is_byte():
 def test_sam_with_mask_becomes_record_with_layout():
     """sam에 ignore_columns(mask)가 있으면 record+layout 필드비교로 승격, has_header=false."""
     t, w = _out0(
-        "checklist,io,type,file,expected_output,ignore_columns,fixed_layout\n"
-        "C1,input,sam,in.dat,,,\n"
-        "C1,output,sam,out.dat,gold.dat,2,0:6;6:22\n"
+        "checklist,io,type,input,to_be_output,as_is_output,ignore_columns,fixed_layout\n"
+        "C1,input,sam,in.dat,,,,\n"
+        "C1,output,sam,,out.dat,gold.dat,2,0:6;6:22\n"
     )
     cmp = t["outputs"][0]["compare"]
     assert cmp["mode"] == "record" and cmp["layout"] == "0:6;6:22"
@@ -183,9 +187,9 @@ def test_sam_with_mask_becomes_record_with_layout():
 def test_vsam_record_layout_key_headerless():
     """vsam은 record+layout+key 필수(키순 저장). storage=file, has_header=false."""
     t, w = _out0(
-        "checklist,io,type,file,expected_output,key_columns,fixed_layout\n"
-        "C1,input,vsam,in.dat,,,\n"
-        "C1,output,vsam,out.dat,gold.dat,0,0:6;6:22\n"
+        "checklist,io,type,input,to_be_output,as_is_output,key_columns,fixed_layout\n"
+        "C1,input,vsam,in.dat,,,,\n"
+        "C1,output,vsam,,out.dat,gold.dat,0,0:6;6:22\n"
     )
     out = t["outputs"][0]
     assert out["type"] == "file"
@@ -198,9 +202,9 @@ def test_vsam_record_layout_key_headerless():
 def test_vsam_without_key_warns():
     """vsam인데 key_columns 비면 경고(생성은 됨) — 키순 저장이라 정렬키 없으면 false-NG."""
     r = m.mapping_to_definition(
-        "checklist,io,type,file,expected_output,fixed_layout\n"
-        "C1,input,vsam,in.dat,,\n"
-        "C1,output,vsam,out.dat,gold.dat,0:6\n"
+        "checklist,io,type,input,to_be_output,as_is_output,fixed_layout\n"
+        "C1,input,vsam,in.dat,,,\n"
+        "C1,output,vsam,,out.dat,gold.dat,0:6\n"
     )
     assert r["ok"]
     assert any("vsam" in w and "key_columns" in w for w in r["warnings"])
@@ -209,9 +213,9 @@ def test_vsam_without_key_warns():
 def test_vsam_without_layout_warns():
     """vsam/sam(필드비교)인데 fixed_layout 비면 경고(분할 기준 없음)."""
     r = m.mapping_to_definition(
-        "checklist,io,type,file,expected_output,key_columns\n"
-        "C1,input,vsam,in.dat,,\n"
-        "C1,output,vsam,out.dat,gold.dat,0\n"
+        "checklist,io,type,input,to_be_output,as_is_output,key_columns\n"
+        "C1,input,vsam,in.dat,,,\n"
+        "C1,output,vsam,,out.dat,gold.dat,0\n"
     )
     assert r["ok"]
     assert any("vsam" in w and "fixed_layout" in w for w in r["warnings"])
@@ -220,9 +224,9 @@ def test_vsam_without_layout_warns():
 def test_sam_vsam_input_storage_is_file():
     """sam/vsam 입력 행도 저장은 file로 컴파일 → 동봉 stub(run_batch_file) 라우팅과 정합."""
     t, _ = _out0(
-        "checklist,io,type,file,expected_output\n"
-        "C1,input,sam,in.dat,\n"
-        "C1,output,sam,out.dat,gold.dat\n"
+        "checklist,io,type,input,to_be_output,as_is_output\n"
+        "C1,input,sam,in.dat,,\n"
+        "C1,output,sam,,out.dat,gold.dat\n"
     )
     assert t["input"]["tables"][0]["type"] == "file"
     assert t["execution"]["shell_program"] == "stub_batch/run_batch_file.py"
@@ -263,9 +267,9 @@ def test_autofill_multi_io_uses_table_name():
 def test_provided_filenames_are_respected():
     """이미 적힌 파일명/정답은 그대로 둔다(자동은 빈 칸만)."""
     csv = (
-        "shell_id,kind,type,table,file,expected\n"
-        "001,input,database,trans,my_in.csv,\n"
-        "001,output,database,res,my_out.csv,my_gold.csv\n"
+        "shell_id,kind,type,table,input,to_be_output,as_is_output\n"
+        "001,input,database,trans,my_in.csv,,\n"
+        "001,output,database,res,,my_out.csv,my_gold.csv\n"
     )
     r = m.mapping_to_definition(csv)
     t = yaml.safe_load(r["yaml"])["tests"][0]
@@ -276,25 +280,25 @@ def test_provided_filenames_are_respected():
 
 def test_db_input_requires_table():
     csv = (
-        "shell_id,kind,type,table,file,expected\n"
-        "001,input,database,,a.csv,\n"   # database인데 table 없음
-        "001,output,file,,a.csv,g.csv\n"
+        "shell_id,kind,type,table,input,to_be_output,as_is_output\n"
+        "001,input,database,,a.csv,,\n"   # database인데 table 없음
+        "001,output,file,,,a.csv,g.csv\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"] is False and any("table" in e for e in r["errors"])
 
 
 def test_shell_without_output_rejected():
-    csv = "shell_id,kind,type,file,expected\n001,input,file,a.csv,\n"
+    csv = "shell_id,kind,type,input,to_be_output,as_is_output\n001,input,file,a.csv,,\n"
     r = m.mapping_to_definition(csv)
     assert r["ok"] is False and any("出力" in e for e in r["errors"])
 
 
 def test_conflicting_program_within_shell_rejected():
     csv = (
-        "shell_id,kind,type,program,file,expected\n"
-        "001,input,file,/opt/x,a.csv,\n"
-        "001,output,file,/opt/y,a.csv,g.csv\n"
+        "shell_id,kind,type,program,input,to_be_output,as_is_output\n"
+        "001,input,file,/opt/x,a.csv,,\n"
+        "001,output,file,/opt/y,,a.csv,g.csv\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"] is False and any("program" in e for e in r["errors"])
@@ -325,10 +329,10 @@ def test_bundled_example_is_valid(tmp_path):
 # --- P0: compare 옵션 / setup / in_encoding 컬럼 운반 (HANDOFF §2·§3) -------------
 
 _P0_CSV = (
-    "checklist,test_name,shell,timeout,setup,kind,type,table,file,expected,name,"
+    "checklist,test_name,shell,timeout,setup,kind,type,table,input,to_be_output,as_is_output,"
     "in_encoding,compare_mode,key,encoding,mask,tolerance,normalize,has_header\n"
     "CK1,merge,batch/m.sh,120,db/reset.sql,input,database,TBL_A,a.csv,,,shift_jis,,,,,,,\n"
-    "CK1,,,,,output,database,TBL_C,c.csv,c_exp.dat,C,,record,CUST_ID,utf-8,UPD_TS,0.001,"
+    "CK1,,,,,output,database,TBL_C,,c.csv,c_exp.dat,,record,CUST_ID,utf-8,UPD_TS,0.001,"
     "DT:date;BAL:num:2,true\n"
 )
 
@@ -360,9 +364,9 @@ def test_p0_invalid_compare_mode_csv_coordinate_error():
 def test_p0_no_compare_columns_still_byte():
     """비교 컬럼이 비면 compare 블록 없이 byte 기본(현 동작 보존)."""
     csv = (
-        "checklist,kind,type,table,file,expected\n"
-        "CK9,input,database,TBL,a.csv,\n"
-        "CK9,output,file,,o.dat,e.dat\n"
+        "checklist,kind,type,table,input,to_be_output,as_is_output\n"
+        "CK9,input,database,TBL,a.csv,,\n"
+        "CK9,output,file,,,o.dat,e.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
@@ -376,9 +380,9 @@ def test_p0_no_compare_columns_still_byte():
 def test_shell_group_carried_into_execution(tmp_path):
     """shell_group 열이 execution.shell_group으로 운반되고 로더가 읽는다(B)."""
     csv = (
-        "checklist,kind,type,shell,shell_group,file,expected\n"
-        "001,input,file,mock/A/ck1.sh,業務A,in.csv,\n"
-        "001,output,file,,,out.dat,gold.dat\n"
+        "checklist,kind,type,shell,shell_group,input,to_be_output,as_is_output\n"
+        "001,input,file,mock/A/ck1.sh,業務A,in.csv,,\n"
+        "001,output,file,,,,out.dat,gold.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
@@ -391,9 +395,9 @@ def test_shell_group_carried_into_execution(tmp_path):
 def test_shell_group_differs_across_rows_is_error():
     """한 체크리스트가 두 업무에 걸치면 에러(program 일관성과 동일 정책, B-Q3)."""
     csv = (
-        "checklist,kind,type,shell_group,file,expected\n"
-        "001,input,file,業務A,in.csv,\n"
-        "001,output,file,業務B,out.dat,gold.dat\n"
+        "checklist,kind,type,shell_group,input,to_be_output,as_is_output\n"
+        "001,input,file,業務A,in.csv,,\n"
+        "001,output,file,業務B,,out.dat,gold.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"] is False and any("shell_group" in e for e in r["errors"])
@@ -402,9 +406,9 @@ def test_shell_group_differs_across_rows_is_error():
 def test_shell_group_absent_is_backward_compatible(tmp_path):
     """shell_group 열이 없으면 execution에 키 없음·로더 None(하위호환)."""
     csv = (
-        "checklist,kind,type,file,expected\n"
-        "001,input,file,in.csv,\n"
-        "001,output,file,out.dat,gold.dat\n"
+        "checklist,kind,type,input,to_be_output,as_is_output\n"
+        "001,input,file,in.csv,,\n"
+        "001,output,file,,out.dat,gold.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
@@ -420,9 +424,9 @@ def test_shell_group_absent_is_backward_compatible(tmp_path):
 def test_shell_semicolon_sequence_rejected():
     """shell 칸에 ';'(1:N 시퀀스)면 CSV 좌표 에러로 거부(실연결 보류, Q1=a). 실행 아님."""
     csv = (
-        "checklist,kind,type,shell,file,expected\n"
-        "010,input,file,a.sh;b.sh,in.csv,\n"
-        "010,output,file,,out.dat,gold.dat\n"
+        "checklist,kind,type,shell,input,to_be_output,as_is_output\n"
+        "010,input,file,a.sh;b.sh,in.csv,,\n"
+        "010,output,file,,,out.dat,gold.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert not r["ok"]
@@ -431,7 +435,7 @@ def test_shell_semicolon_sequence_rejected():
 
 def test_bom_prefixed_csv_parses():
     """UTF-8 BOM(엑셀 저장본) 붙은 CSV도 헤더로 인식한다(BOM 제거)."""
-    csv = "﻿checklist,io,type,file,expected_output\n001,input,file,in.csv,\n001,output,file,out.csv,gold.csv\n"
+    csv = "﻿checklist,io,type,input,to_be_output,as_is_output\n001,input,file,in.csv,,\n001,output,file,,out.csv,gold.csv\n"
     r = m.mapping_to_definition(csv)
     assert r["ok"] and r["count"] == 1
 
@@ -441,9 +445,9 @@ def test_leading_comment_lines_skipped():
     csv = (
         "# SAMPLE — 실데이터 아님. normalize/mask는 형식 예시일 뿐.\n"
         "#\n"
-        "checklist,kind,type,file,expected\n"
-        "001,input,file,in.csv,\n"
-        "001,output,file,out.dat,gold.dat\n"
+        "checklist,kind,type,input,to_be_output,as_is_output\n"
+        "001,input,file,in.csv,,\n"
+        "001,output,file,,out.dat,gold.dat\n"
     )
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]

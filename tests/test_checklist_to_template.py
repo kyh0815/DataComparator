@@ -52,11 +52,11 @@ def test_blank_template_is_rejected_by_mapping():
 def test_filled_template_converts_to_yaml():
     """템플릿을 채우면 변환기를 통과하고 체크리스트 순서·이름이 유지된다."""
     filled = (
-        "shell_id,kind,type,program,table,file,expected,name,test_name,timeout\n"
+        "shell_id,io,type,shell,table,input,to_be_output,as_is_output,test_name,timeout\n"
         "001,input,file,/opt/job001.sh,,zenkaku_in.csv,,,전각체크,\n"
-        "001,output,file,,,zenkaku_out.csv,正解_zenkaku.csv,,,\n"
+        "001,output,file,,,,zenkaku_out.csv,正解_zenkaku.csv,,\n"
         "002,input,file,/opt/job001.sh,,max_in.csv,,,맥시멈체크,\n"
-        "002,output,file,,,max_out.csv,正解_max.csv,,,\n"
+        "002,output,file,,,,max_out.csv,正解_max.csv,,\n"
     )
     r = m.mapping_to_definition(filled)
     assert r["ok"] and r["count"] == 2
