@@ -12,6 +12,12 @@ CFG="samples/complete/config.yaml"
 PGHOST="${PGHOST:-localhost}"
 PGPORT="${PGPORT:-5433}"
 
+# config.yaml은 .gitignore(자격 보호) — 없으면 커밋된 완전판 example에서 자동 provisioning(fresh clone 대응).
+if [ ! -f "$CFG" ]; then
+  cp "samples/complete/config.yaml.example" "$CFG"
+  echo "[complete] config.yaml 생성(example 복사). DB값은 자기 환경에 맞게 수정 가능 — 비번은 POSTGRES_PASSWORD env."
+fi
+
 echo "[complete] ① 데이터·mock 셸 생성"
 python3 samples/complete/make_complete_data.py
 

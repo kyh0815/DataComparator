@@ -9,7 +9,8 @@
 ## 구성
 ```
 complete_sample.csv      정의(사람이 채우는 Long CSV) — 정본 24 체크리스트. shell_group·전 칼럼·SAM/VSAM·N:M 시연.
-config.yaml              실행 설정(파일흐름 18 + DB 2). batch.groups=業務A/B/C(lint 태그).
+config.yaml.example      ★커밋되는 완전판 설정 예시(업무A~D 그룹·데모 경로·DB placeholder+env). cp→config.yaml.
+config.yaml              실행 설정(.gitignore=자격 보호). 없으면 run_demo.sh가 example에서 자동 생성.
 test_definition.yaml     complete_sample.csv → mapping_to_definition 변환물(비노출 중간물).
 make_complete_data.py    asis/input·asis/output(파일 골든)·tobe_src·mock_linux 셸 생성기(결정론).
 make_db_golden.py        DB CK(019/020) 골든만 clean 경로로 생성(파일 골든은 안 건드림). DB 필요.

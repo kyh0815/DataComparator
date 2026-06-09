@@ -103,10 +103,13 @@ GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
 ```
 
 ### (C) 동봉 데모셋으로 먼저 감 잡기 (선택)
-자기 데이터 전에 정본 데모셋(20 CK)으로 흐름만 확인:
+자기 데이터 전에 정본 데모셋(24 CK — 파일/DB·byte/text/record·SAM/VSAM·N:M)으로 흐름만 확인:
 ```bash
 POSTGRES_PASSWORD=devpw PGPORT=5433 ./samples/complete/run_demo.sh
 ```
+데모 config(`samples/complete/config.yaml`)는 `.gitignore`라 clone 직후엔 없지만, `run_demo.sh`가
+커밋된 `samples/complete/config.yaml.example`에서 **자동 생성**한다(DB값은 자기 환경에 맞게 수정 가능).
+기대 결과: 출력 27건 / OK 22 · NG 4 · MISSING 1.
 
 **완료 기준**: 프리플라이트 통과 → 실행 → 試験成績書가 `report_dir`에 생성. 그게 보이면 셋업 성공.
 
