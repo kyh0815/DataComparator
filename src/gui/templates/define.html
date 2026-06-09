@@ -80,9 +80,9 @@
     <div class="panel-head"><h2><span class="step">1</span>マッピング表（CSV）から定義を生成</h2></div>
     <div class="panel-body">
       <div class="field">
-        <label class="lab">マッピング表（Long形式 CSV）</label>
-        <input type="file" id="csv" accept=".csv,text/csv">
-        <div class="hint">checklist を1次キーに、kind(input/output)・type(database/file)・shell・table・file・expected … を行で（多重入力は行追加）
+        <label class="lab">マッピング表（Long形式 CSV / Excel .xlsx）</label>
+        <input type="file" id="csv" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <div class="hint">checklist を1次キーに、io(input/output)・type(database/file/sam/vsam)・input・as_is_output・to_be_output … を行で（多重入出力は行追加）。Excelテンプレート(definition_template.xlsx)をそのまま提出可。
           <a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
       </div>
       <div class="actions">

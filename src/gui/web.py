@@ -42,7 +42,7 @@ from src.config.settings import load_config, parse_shell_selector
 from src.core import run_full_comparison, store
 from src.core.evidence import generate_evidence
 from src.core.preflight import preflight
-from tools.mapping_to_definition import mapping_to_definition
+from tools.mapping_to_definition import mapping_to_definition, read_mapping_bytes
 
 from . import connection
 from .serialize import event_to_dict, summary_to_dict
@@ -283,8 +283,8 @@ def definition_from_csv():
     """
     file = request.files.get("csv")
     if file is None or not file.filename:
-        return jsonify({"ok": False, "errors": ["CSVファイルを選択してください。"]})
-    return jsonify(mapping_to_definition(_decode(file.read())))
+        return jsonify({"ok": False, "errors": ["マッピング表(CSV/xlsx)を選択してください。"]})
+    return jsonify(mapping_to_definition(read_mapping_bytes(file.read())))  # CSV·xlsx 모두 수용
 
 
 @app.route("/definition/sample-csv")

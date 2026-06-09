@@ -868,3 +868,9 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 
 **이유**: 이름은 사람용(매핑 표)·YAML 필드는 코어 계약 — 두 층 분리로 직관성 개선과 동작 보존을 양립.
 별칭 미유지: 정본 데모셋 외 구 이름 정의가 레포에 없음을 grep으로 확인(테스트는 신 이름으로 갱신).
+
+**엑셀(.xlsx) 지원(동반)**: 팀원 공유 마찰을 줄이려 — ① `tools/make_xlsx_template.py`가 정본 CSV →
+`definition_template.xlsx`(★전 셀 텍스트 서식 잠금: 선두0 `00100`·layout `0:6`·normalize가 Excel 자동변환에
+안 깨짐). ② `mapping_to_definition.read_mapping_bytes`가 **.xlsx를 직접 읽음**(zip 시그니처 감지 → 첫 시트
+→ CSV 텍스트, openpyxl 지연 import=試験成績書와 동일 의존). CLI·GUI(定義作成 화면·`/definition/from-csv`)
+모두 CSV/xlsx 수용 → 팀원은 엑셀로 채워 **CSV 저장 단계 없이** 제출. 코어 무수정(도구·표시계층만).

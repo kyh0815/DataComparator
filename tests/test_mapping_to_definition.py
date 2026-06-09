@@ -319,6 +319,31 @@ def test_cli_reports_errors_and_exits_nonzero(tmp_path):
     assert m.main([str(src)]) == 1
 
 
+def test_xlsx_input_read_directly():
+    """공유용 엑셀(.xlsx)을 CSV 저장 없이 직접 읽어 변환한다(read_mapping_bytes). 텍스트 셀=선두0·layout 보존."""
+    import io as _io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["checklist", "io", "type", "input", "to_be_output", "as_is_output",
+               "compare_mode", "key_columns", "fixed_layout", "has_header"])
+    ws.append(["CK1", "input", "file", "in.dat", "", "", "", "", "", ""])
+    ws.append(["CK1", "output", "vsam", "", "out.dat", "gold.dat", "record", "0010", "0:6;6:14", "false"])
+    for row in ws.iter_rows():
+        for c in row:
+            c.number_format = "@"  # 텍스트 서식(선두0·layout 보존)
+    buf = _io.BytesIO()
+    wb.save(buf)
+
+    r = m.mapping_to_definition(m.read_mapping_bytes(buf.getvalue()))
+    assert r["ok"], r["errors"]
+    cmp = yaml.safe_load(r["yaml"])["tests"][0]["outputs"][0]["compare"]
+    assert cmp["key"] == "0010"          # 선두0 보존(Excel 자동변환 안 됨)
+    assert cmp["layout"] == "0:6;6:14"   # 시간으로 오인 안 됨
+
+
 def test_bundled_example_is_valid(tmp_path):
     """정본 데모셋(samples/complete/complete_sample.csv)이 그대로 변환·round-trip된다(24 CK: +VSAM 021/022, +N:M 023/024)."""
     example = Path(__file__).resolve().parents[1] / "samples" / "complete" / "complete_sample.csv"

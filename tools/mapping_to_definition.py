@@ -403,7 +403,7 @@ def _fail(errors: list[str]) -> dict:
 
 
 def _decode(data: bytes) -> str:
-    """Excel 저장 대비: utf-8-sig 우선, 실패 시 cp932(일본어 Excel)."""
+    """Excel 저장(CSV) 대비: utf-8-sig 우선, 실패 시 cp932(일본어 Excel)."""
     for enc in ("utf-8-sig", "cp932"):
         try:
             return data.decode(enc)
@@ -412,19 +412,49 @@ def _decode(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _xlsx_to_csv_text(data: bytes) -> str:
+    """.xlsx(첫 시트) → CSV 텍스트. 공유용 엑셀 템플릿을 CSV 변환 단계 없이 그대로 수용.
+
+    셀은 텍스트 서식 전제(make_xlsx_template가 잠가둠 — 선두 0·layout·normalize 보존). openpyxl 지연 import
+    (試験成績書와 동일 의존, 없으면 명시 에러). None→빈칸, 숫자는 str화, 완전 빈 행은 스킵.
+    """
+    import io as _io
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise ValueError("xlsx 입력에는 openpyxl이 필요합니다(pip install openpyxl).") from exc
+    wb = load_workbook(_io.BytesIO(data), read_only=True, data_only=True)
+    ws = wb.active
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    for row in ws.iter_rows(values_only=True):
+        cells = ["" if v is None else str(v) for v in row]
+        if any(c.strip() for c in cells):  # 엑셀 잉여(완전 빈) 행 제외
+            w.writerow(cells)
+    return buf.getvalue()
+
+
+def read_mapping_bytes(data: bytes) -> str:
+    """매핑 입력(CSV 또는 .xlsx) 바이트 → CSV 텍스트. .xlsx(zip 시그니처)면 첫 시트를 변환, 아니면 디코드.
+
+    CLI·GUI 공통 진입 — 팀원이 엑셀 템플릿을 채워 그대로 제출해도(CSV 저장 단계 없이) 받는다.
+    """
+    return _xlsx_to_csv_text(data) if data[:4] == b"PK\x03\x04" else _decode(data)
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: 매핑 CSV → yaml. 오류면 stderr에 행별 메시지 출력 + 종료코드 1."""
-    parser = argparse.ArgumentParser(description="Long形式マッピング表(CSV) → test_definition.yaml 生成")
-    parser.add_argument("csv", help="入力マッピング表(CSV, Long形式)")
+    parser = argparse.ArgumentParser(description="Long形式マッピング表(CSV/xlsx) → test_definition.yaml 生成")
+    parser.add_argument("csv", help="入力マッピング表(CSV または .xlsx, Long形式)")
     parser.add_argument("-o", "--output", help="出力 yaml パス（省略時は標準出力）")
     args = parser.parse_args(argv)
 
     csv_path = Path(args.csv)
     if not csv_path.is_file():
-        print(f"CSVが見つかりません: {csv_path}", file=sys.stderr)
+        print(f"入力ファイルが見つかりません: {csv_path}", file=sys.stderr)
         return 1
 
-    result = mapping_to_definition(_decode(csv_path.read_bytes()))
+    result = mapping_to_definition(read_mapping_bytes(csv_path.read_bytes()))
     if not result["ok"]:
         print("変換に失敗しました:", file=sys.stderr)
         for e in result["errors"]:
