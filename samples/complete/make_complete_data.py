@@ -7,10 +7,10 @@
   tobe_src/     To-Be 원본(플랫폼차·결함 심음). mock 셸이 이걸 출력으로 복사.
   mock_linux/opt/migsys/<業務>/sh/<shell>.sh  실행되는 mock 셸(파일흐름=복사 / MISSING=무출력 / DB=래퍼)
 
-파일흐름 20건(CK001~018 + VSAM CK021~022) + DB 2건(CK019~020, 래퍼 셸이 repo stub_batch/ 호출)을 시연한다.
+파일흐름 22건(CK001~018 + VSAM 021~022 + N:M 023~024) + DB 2건(CK019~020, 래퍼 셸이 repo stub_batch/ 호출)을 시연한다.
 의도된 결과: OK / NG 4건(003·005·009·022) / MISSING_TOBE 1건(013). 모드 byte/text/record·정규화·mask·
 셔플+key·SAM(고정길이 byte)·VSAM(고정길이 키순 record+key: 021 셔플OK / 022 값차NG)·다중입력(002)·
-N:1 공유셸(015·016)을 한 셋으로 덮는다(realtest+rehearsal+realistic 흡수).
+N:M 다입력다출력(023=3in→2out · 024=2in→2out, 멀티복사 셸)·N:1 공유셸(015·016)을 한 셋으로 덮는다.
 
 ★SAMPLE — 실데이터 아님. normalize/mask 값은 형식 예시일 뿐 실제 마이그레이션 판단이 아니다.
 이 값들을 검증된 기본값으로 신뢰하지 말 것(과한 mask/normalize = false-PASS 경로).
@@ -157,6 +157,31 @@ CHECKS = [
      # NG: 셔플 + 000001 금액 실차이(...50000→...50001) — key로 짝지어 진짜 값차를 검출(정렬이 가려주지 않음).
      "vsam_golden": ["00000100150000", "00000200089000"],
      "vsam_tobe":   ["00000200089000", "00000100150001"]},
+
+    # ── 業務D: 현실형 N:M(다입력·다출력) — 실무 배치는 마스터+트랜잭션 여러 입력→명세+집계 여러 출력 ──
+    # 다출력 파일은 mock 멀티복사 셸이 자기 출력들을 tobe_src에서 복사(런너는 outputs[0] 경로만 전달, D-033 제약).
+    {"id": "CK023", "group": "業務D", "shell": "ck023.sh", "kind": RECORD, "inputs": 3,  # 口座M+取引+支店M
+     "outs": [
+         {"out": "ck023_meisai.csv", "kind": RECORD,
+          "header": ["KOKYAKU_ID", "SHITEN_CD", "KINGAKU"],
+          "asis": [["0001", "0007", "5000"], ["0002", "0007", "12000"], ["0003", "0012", "300"]],
+          "tobe": [["0002", "0007", "12000"], ["0001", "0007", "5000"], ["0003", "0012", "300"]]},  # 셔플+key OK
+         {"out": "ck023_shukei.csv", "kind": RECORD,
+          "header": ["SHITEN_CD", "GOKEI"],
+          "asis": [["0007", "17000"], ["0012", "300"]],
+          "tobe": [["0012", "300"], ["0007", "17000"]]},  # 셔플+key OK
+     ]},
+
+    {"id": "CK024", "group": "業務D", "shell": "ck024.sh", "kind": RECORD, "inputs": 2,  # 前日残高+当日取引
+     "outs": [
+         {"out": "ck024_zandaka.csv", "kind": RECORD,
+          "header": ["KOKYAKU_ID", "ZANDAKA"],
+          "asis": [["0001", "100000"], ["0002", "50000"]],
+          "tobe": [["0001", "100000"], ["0002", "50000"]]},  # record OK
+         {"out": "ck024_error.txt", "kind": RAW,
+          "asis": "エラー件数: 0\n対象日: 2026-06-09\n",
+          "tobe": "エラー件数: 0\n対象日: 2026-06-09\n"},  # byte OK
+     ]},
 ]
 
 # mock 복사 셸(파일흐름): --output-path를 받아 tobe_src/<출력명>을 복사한다(realtest 패턴).
@@ -192,6 +217,49 @@ def _write_sh(rel: str, content: str) -> None:
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _write_output(o: dict) -> None:
+    """출력 1건의 골든(asis/output) + To-Be 원본(tobe_src)을 종류별로 쓴다(단일·다출력 공용)."""
+    kind, out = o["kind"], o["out"]
+    if kind == RECORD:
+        _write(f"asis/output/{out}", _csv(o["header"], o["asis"]))
+        _write(f"tobe_src/{out}", _csv(o["header"], o["tobe"]))
+    elif kind == SAM:
+        body = ("\n".join(o["sam"]) + "\n").encode("ascii")  # 고정길이(ASCII)
+        _write(f"asis/output/{out}", body)
+        _write(f"tobe_src/{out}", body)  # byte 완전일치 → OK
+    elif kind == VSAM:
+        # 골든=키순(정답), To-Be=물리 셔플(+값차). record+layout+key가 키로 정합.
+        _write(f"asis/output/{out}", ("\n".join(o["vsam_golden"]) + "\n").encode("ascii"))
+        _write(f"tobe_src/{out}", ("\n".join(o["vsam_tobe"]) + "\n").encode("ascii"))
+    elif kind == MISSING:
+        _write(f"asis/output/{out}", _csv(o["header"], o["asis"]))  # 정답만, tobe_src 없음
+    else:  # RAW(byte/text)
+        _write(f"asis/output/{out}", o["asis"].encode(_ENC))
+        _write(f"tobe_src/{out}", o["tobe"].encode(_ENC))
+
+
+def _multi_copy_sh(names: list[str]) -> str:
+    """다출력 mock 셸 — 자기 출력들(baked)을 tobe_src에서 --output-path 디렉토리로 복사한다.
+
+    런너는 outputs[0] 경로만 --output-path로 넘기므로(D-033 계약), 나머지 출력은 셸이 같은
+    디렉토리에 만든다(실 배치는 자기 I/O 위치가 고정이라는 가정과 일치). NG/MISSING엔 미사용.
+    """
+    return (
+        "#!/bin/sh\n"
+        "# mock 멀티출력 셸 — 자기 출력들을 tobe_src에서 --output-path 디렉토리로 복사(실 배치는 자기 I/O 고정).\n"
+        'OUT=""\n'
+        'while [ $# -gt 0 ]; do case "$1" in --output-path) OUT="$2"; shift 2 ;; *) shift ;; esac; done\n'
+        '[ -n "$OUT" ] || { echo "no --output-path" >&2; exit 2; }\n'
+        'DIR="$(dirname "$OUT")"\n'
+        'SRC="$(cd "$(dirname "$0")/../../../../../tobe_src" && pwd)"\n'
+        'mkdir -p "$DIR"\n'
+        "for f in " + " ".join(names) + "; do\n"
+        '  [ -f "$SRC/$f" ] || { echo "tobe_src なし: $SRC/$f" >&2; exit 1; }\n'
+        '  cp "$SRC/$f" "$DIR/$f"\n'
+        "done\n"
+    )
+
+
 def main() -> int:
     shells: dict[str, str] = {}  # (group/shell) → 종류(copy/noop). 같은 값 공유=N:1.
     for c in CHECKS:
@@ -202,26 +270,17 @@ def main() -> int:
             _write(f"asis/input/{cid}{suffix}.csv",
                    _csv(["IN_KEY", "IN_DATA"], [["1", f"{c['id']}-入力{i}"]]))
 
-        kind = c["kind"]
-        if kind == RECORD:
-            _write(f"asis/output/{c['out']}", _csv(c["header"], c["asis"]))
-            _write(f"tobe_src/{c['out']}", _csv(c["header"], c["tobe"]))
-        elif kind == SAM:
-            body = ("\n".join(c["sam"]) + "\n").encode("ascii")  # 고정길이(ASCII)
-            _write(f"asis/output/{c['out']}", body)
-            _write(f"tobe_src/{c['out']}", body)  # byte 완전일치 → OK
-        elif kind == VSAM:
-            # 골든=키순(정답), To-Be=물리 셔플(+CK022는 값차). record+layout+key가 키로 정합.
-            _write(f"asis/output/{c['out']}", ("\n".join(c["vsam_golden"]) + "\n").encode("ascii"))
-            _write(f"tobe_src/{c['out']}", ("\n".join(c["vsam_tobe"]) + "\n").encode("ascii"))
-        elif kind == MISSING:
-            _write(f"asis/output/{c['out']}", _csv(c["header"], c["asis"]))  # 정답만, tobe_src 없음
-        else:  # RAW(byte/text)
-            _write(f"asis/output/{c['out']}", c["asis"].encode(_ENC))
-            _write(f"tobe_src/{c['out']}", c["tobe"].encode(_ENC))
+        outs = c.get("outs") or [c]   # 단일출력 항목은 항목 자신이 그 1개 출력(하위호환)
+        for o in outs:
+            _write_output(o)
 
         rel_sh = f"mock_linux/opt/migsys/{c['group']}/sh/{c['shell']}"
-        shells[rel_sh] = _NOOP_SH if kind == MISSING else _COPY_SH
+        if any(o["kind"] == MISSING for o in outs):
+            shells[rel_sh] = _NOOP_SH
+        elif len(outs) > 1:
+            shells[rel_sh] = _multi_copy_sh([o["out"] for o in outs])  # 다출력=멀티복사 셸(baked)
+        else:
+            shells[rel_sh] = _COPY_SH
 
     for rel_sh, content in shells.items():
         _write_sh(rel_sh, content)

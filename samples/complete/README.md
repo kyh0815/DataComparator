@@ -8,7 +8,7 @@
 
 ## 구성
 ```
-complete_sample.csv      정의(사람이 채우는 Long CSV) — 정본 22 체크리스트. shell_group·전 칼럼·SAM/VSAM 시연.
+complete_sample.csv      정의(사람이 채우는 Long CSV) — 정본 24 체크리스트. shell_group·전 칼럼·SAM/VSAM·N:M 시연.
 config.yaml              실행 설정(파일흐름 18 + DB 2). batch.groups=業務A/B/C(lint 태그).
 test_definition.yaml     complete_sample.csv → mapping_to_definition 변환물(비노출 중간물).
 make_complete_data.py    asis/input·asis/output(파일 골든)·tobe_src·mock_linux 셸 생성기(결정론).
@@ -29,10 +29,10 @@ POSTGRES_PASSWORD=devpw python3 -m src.cli.main           --config samples/compl
 POSTGRES_PASSWORD=devpw python3 -m src.cli.main --evidence --config samples/complete/config.yaml
 ```
 DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부**(C3 게이트가 DB 유무로 올바르게 갈라줌).
-파일흐름 18건만 보려면 DB를 띄우지 않고 프리플라이트 거부를 확인하거나, DB를 띄워 22건 완주한다.
+파일흐름 22건만 보려면 DB를 띄우지 않고 프리플라이트 거부를 확인하거나, DB를 띄워 24건 완주한다.
 
-## 의도된 결과 (출력단위 23건 = 22 CK, CK020 다중출력 2)
-- **OK 18 / NG 4 / MISSING_TOBE 1 / ERROR 0**
+## 의도된 결과 (출력단위 27건 = 24 CK, 다중출력: CK020·CK023·CK024)
+- **OK 22 / NG 4 / MISSING_TOBE 1 / ERROR 0**
 - NG 4: CK003(残高 값변경) · CK005(承認 済→未) · CK009(区分 B→C) · CK022(VSAM 金額 값차) — 진짜 결함.
 - MISSING_TOBE 1: CK013(정답 有·To-Be 미생성). MISSING_ASIS는 프리플라이트가 사전 차단(증적 미표기가 정상).
 
@@ -61,6 +61,8 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 | 020 | C | **DB-export 다중출력** | 한 배치→파일 明細 + DB 集計(rt_summary export) (OK×2) |
 | 021 | B | **VSAM** record+key | type=vsam → 고정길이 키순·물리 셔플을 key 정렬이 흡수 (OK) |
 | 022 | B | **VSAM** record+key | type=vsam → 셔플+金額 실차이를 key로 짝지어 **NG** 검출 |
+| 023 | D | **N:M** 3입력→2출력 | 현실형 다입력·다출력(明細 record + 集計 record), 멀티복사 셸 (OK×2) |
+| 024 | D | **N:M** 2입력→2출력 | 残高 record + エラー byte, 다출력 (OK×2) |
 
 > **★VSAM(CK021/022)은 "가정 모양" 데모다.** 코드변환은 형식 보존이라 VSAM은 VSAM(고정길이)으로 온다.
 > **현재 VSAM→record+layout+key는 KSDS(키순 저장) 가정**이다 — KSDS는 키순 저장이라 물리 행순서가 As-Is/To-Be 간

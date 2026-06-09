@@ -376,3 +376,56 @@ tests:
       layout: 0:6;6:14
       mode: record
       has_header: false
+- test_id: CK023
+  input:
+    tables:
+    - csv: ck023_in1.csv
+      type: file
+    - csv: ck023_in2.csv
+      type: file
+    - csv: ck023_in3.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck023.sh
+    shell_group: 業務D
+  outputs:
+  - type: file
+    expected: ck023_meisai.csv
+    file: ck023_meisai.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+  - type: file
+    expected: ck023_shukei.csv
+    file: ck023_shukei.csv
+    compare:
+      mode: record
+      key: SHITEN_CD
+      encoding: shift_jis
+      has_header: true
+- test_id: CK024
+  input:
+    tables:
+    - csv: ck024_in1.csv
+      type: file
+    - csv: ck024_in2.csv
+      type: file
+  execution:
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck024.sh
+    shell_group: 業務D
+  outputs:
+  - type: file
+    expected: ck024_zandaka.csv
+    file: ck024_zandaka.csv
+    compare:
+      mode: record
+      key: KOKYAKU_ID
+      encoding: shift_jis
+      has_header: true
+  - type: file
+    expected: ck024_error.txt
+    file: ck024_error.txt
+    compare:
+      mode: byte
