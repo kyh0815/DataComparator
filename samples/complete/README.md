@@ -16,7 +16,14 @@ make_complete_data.py    asis/input·asis/output(파일 골든)·tobe_src·mock_
 make_db_golden.py        DB CK(019/020) 골든만 clean 경로로 생성(파일 골든은 안 건드림). DB 필요.
 mock_linux/opt/migsys/<業務>/sh/*.sh   실행되는 mock 셸(파일=복사 / MISSING=무출력 / DB=repo stub 래퍼).
 asis/input, asis/output, tobe_src      입력·정답·To-Be 원본(생성물, 커밋). tobe/·reports/는 런타임(gitignore).
+業務D_io/asis_in, 業務D_io/asis_out    ★dir override 시연 — 業務D 데이터가 config 공통 경로가 아닌 전용 트리에.
+                                       정의가 src_dir/expected_dir로 명시(없으면 config 폴백). To-Be는 tobe/ 하위(런타임).
 ```
+
+> **★디렉토리 override 시연(D-036)**: 디렉토리는 보통 config 공통이지만, 업무·항목마다 흩어질 수 있다.
+> 정의(매핑 CSV)의 `src_dir·dest_dir·dest_name·expected_dir·tobe_dir`에 적으면 **그 행이 config보다 우선**,
+> 비우면 config 폴백(항목 > 업무그룹 > 전역). CK023/024=전체 override(業務D_io 전용트리), CK001=tobe_dir 한 칸만(부분).
+> 적은 경로가 전역 config 경로를 실제로 덮어 e2e가 도는 걸로 우선순위를 증명(override 미사용이면 파일 못 찾아 MISSING).
 
 ## 실행 (repo 루트)
 ```sh
@@ -40,7 +47,7 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 ## 체크리스트 맵
 | CK | 業務 | 흐름·모드 | 시연 |
 |---|---|---|---|
-| 001 | A | record | zeropad·num·date·nullblank·**mask**·셔플+key (OK) |
+| 001 | A | record | zeropad·num·date·nullblank·**mask**·셔플+key + **tobe_dir 부분 override**(한 칸만) (OK) |
 | 002 | A | record | **다중입력(2)**·num (OK) |
 | 003 | A | record | **NG**(残高 값변경) |
 | 004 | A | byte(.txt) | 완전일치 (OK) |
@@ -62,8 +69,8 @@ DB가 없으면 프리플라이트가 019/020 DB접속불가로 **전건 거부*
 | 020 | C | **DB-export 다중출력** | 한 배치→파일 明細 + DB 集計(rt_summary export) (OK×2) |
 | 021 | B | **VSAM** record+key | type=vsam → 고정길이 키순·물리 셔플을 key 정렬이 흡수 (OK) |
 | 022 | B | **VSAM** record+key | type=vsam → 셔플+金額 실차이를 key로 짝지어 **NG** 검출 |
-| 023 | D | **N:M** 3입력→2출력 | 현실형 다입력·다출력(明細 record + 集計 record), 멀티복사 셸 (OK×2) |
-| 024 | D | **N:M** 2입력→2출력 | 残高 record + エラー byte, 다출력 (OK×2) |
+| 023 | D | **N:M** 3입력→2출력 | 현실형 다입력·다출력(明細+集計)·멀티복사 셸 + **dir override**(業務D_io 전용트리) (OK×2) |
+| 024 | D | **N:M** 2입력→2출력 | 残高 record + エラー byte·다출력 + **dir override** (OK×2) |
 
 > **★VSAM(CK021/022)은 "가정 모양" 데모다.** 코드변환은 형식 보존이라 VSAM은 VSAM(고정길이)으로 온다.
 > **현재 VSAM→record+layout+key는 KSDS(키순 저장) 가정**이다 — KSDS는 키순 저장이라 물리 행순서가 As-Is/To-Be 간

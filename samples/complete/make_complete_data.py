@@ -217,24 +217,28 @@ def _write_sh(rel: str, content: str) -> None:
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _write_output(o: dict) -> None:
-    """출력 1건의 골든(asis/output) + To-Be 원본(tobe_src)을 종류별로 쓴다(단일·다출력 공용)."""
+def _write_output(o: dict, asis_out_dir: str = "asis/output") -> None:
+    """출력 1건의 골든(asis_out_dir) + To-Be 원본(tobe_src)을 종류별로 쓴다(단일·다출력 공용).
+
+    asis_out_dir은 expected_dir override 시연용(業務D는 전용 트리). tobe_src는 항상 전역 —
+    mock 셸이 tobe_src→tobe_dir(override)로 복사하므로 원본 위치는 안 바뀐다.
+    """
     kind, out = o["kind"], o["out"]
     if kind == RECORD:
-        _write(f"asis/output/{out}", _csv(o["header"], o["asis"]))
+        _write(f"{asis_out_dir}/{out}", _csv(o["header"], o["asis"]))
         _write(f"tobe_src/{out}", _csv(o["header"], o["tobe"]))
     elif kind == SAM:
         body = ("\n".join(o["sam"]) + "\n").encode("ascii")  # 고정길이(ASCII)
-        _write(f"asis/output/{out}", body)
+        _write(f"{asis_out_dir}/{out}", body)
         _write(f"tobe_src/{out}", body)  # byte 완전일치 → OK
     elif kind == VSAM:
         # 골든=키순(정답), To-Be=물리 셔플(+값차). record+layout+key가 키로 정합.
-        _write(f"asis/output/{out}", ("\n".join(o["vsam_golden"]) + "\n").encode("ascii"))
+        _write(f"{asis_out_dir}/{out}", ("\n".join(o["vsam_golden"]) + "\n").encode("ascii"))
         _write(f"tobe_src/{out}", ("\n".join(o["vsam_tobe"]) + "\n").encode("ascii"))
     elif kind == MISSING:
-        _write(f"asis/output/{out}", _csv(o["header"], o["asis"]))  # 정답만, tobe_src 없음
+        _write(f"{asis_out_dir}/{out}", _csv(o["header"], o["asis"]))  # 정답만, tobe_src 없음
     else:  # RAW(byte/text)
-        _write(f"asis/output/{out}", o["asis"].encode(_ENC))
+        _write(f"{asis_out_dir}/{out}", o["asis"].encode(_ENC))
         _write(f"tobe_src/{out}", o["tobe"].encode(_ENC))
 
 
@@ -264,15 +268,21 @@ def main() -> int:
     shells: dict[str, str] = {}  # (group/shell) → 종류(copy/noop). 같은 값 공유=N:1.
     for c in CHECKS:
         cid = c["id"].lower()
+        # 業務D는 데이터가 전용 트리(業務D_io/)에 산다 — 정의 파일이 src_dir/expected_dir로 명시(override 시연).
+        # 그 외는 전역 config 경로(asis/input·asis/output). tobe_src는 항상 전역(셸 복사 원본).
+        io_dir = "業務D_io" if c["group"] == "業務D" else None
+        in_dir = f"{io_dir}/asis_in" if io_dir else "asis/input"
+        out_dir = f"{io_dir}/asis_out" if io_dir else "asis/output"
+
         n_in = c.get("inputs", 1)
         for i in range(1, n_in + 1):
             suffix = f"_in{i}" if n_in > 1 else "_in"
-            _write(f"asis/input/{cid}{suffix}.csv",
+            _write(f"{in_dir}/{cid}{suffix}.csv",
                    _csv(["IN_KEY", "IN_DATA"], [["1", f"{c['id']}-入力{i}"]]))
 
         outs = c.get("outs") or [c]   # 단일출력 항목은 항목 자신이 그 1개 출력(하위호환)
         for o in outs:
-            _write_output(o)
+            _write_output(o, out_dir)
 
         rel_sh = f"mock_linux/opt/migsys/{c['group']}/sh/{c['shell']}"
         if any(o["kind"] == MISSING for o in outs):

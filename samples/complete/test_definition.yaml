@@ -11,6 +11,7 @@ tests:
   - type: file
     expected: ck001_zandaka.csv
     file: ck001_zandaka.csv
+    tobe_dir: tobe/ck001_alt
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -381,10 +382,13 @@ tests:
     tables:
     - csv: ck023_in1.csv
       type: file
+      src_dir: 業務D_io/asis_in
     - csv: ck023_in2.csv
       type: file
+      src_dir: 業務D_io/asis_in
     - csv: ck023_in3.csv
       type: file
+      src_dir: 業務D_io/asis_in
   execution:
     shell_program: mock_linux/opt/migsys/業務D/sh/ck023.sh
     shell_group: 業務D
@@ -392,6 +396,8 @@ tests:
   - type: file
     expected: ck023_meisai.csv
     file: ck023_meisai.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -400,6 +406,8 @@ tests:
   - type: file
     expected: ck023_shukei.csv
     file: ck023_shukei.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
     compare:
       mode: record
       key: SHITEN_CD
@@ -410,8 +418,10 @@ tests:
     tables:
     - csv: ck024_in1.csv
       type: file
+      src_dir: 業務D_io/asis_in
     - csv: ck024_in2.csv
       type: file
+      src_dir: 業務D_io/asis_in
   execution:
     shell_program: mock_linux/opt/migsys/業務D/sh/ck024.sh
     shell_group: 業務D
@@ -419,6 +429,8 @@ tests:
   - type: file
     expected: ck024_zandaka.csv
     file: ck024_zandaka.csv
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
     compare:
       mode: record
       key: KOKYAKU_ID
@@ -427,5 +439,7 @@ tests:
   - type: file
     expected: ck024_error.txt
     file: ck024_error.txt
+    expected_dir: 業務D_io/asis_out
+    tobe_dir: tobe/業務D_out
     compare:
       mode: byte
