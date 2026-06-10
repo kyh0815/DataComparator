@@ -196,8 +196,6 @@
   .filename.has { color:var(--ink-2); font-weight:600; font-family:var(--mono); }
   .chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); cursor:pointer; user-select:none; }
   .chk input { width:15px; height:15px; accent-color:var(--c-primary); cursor:pointer; }
-  .run-gate { font-size:12px; color:var(--muted); }
-  .run-gate.hide { display:none; }
 
   details.adv { margin-top:14px; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
   details.adv > summary { list-style:none; cursor:pointer; padding:10px 14px; font-size:12.5px; font-weight:600; color:var(--ink-2); background:var(--c-surface-2); }
@@ -420,18 +418,15 @@
 
             <!-- ② 点検 + ③ 実行 + ④ 結果 — 同じ「検証フロー」画面で続く -->
             <div class="actions" id="runall-bar">
-              <button class="run big primary" id="runall">▶ 一括実行（点検 → 実行 → 試験成績書）</button>
-              <span class="muted">点検でエラー0なら、そのまま全件実行します（点検は安全ゲートとして残ります）。</span>
+              <button class="run big primary" id="runall">▶ 検証実行（点検 → 実行 → 試験成績書）</button>
+              <span class="muted">点検 → 全件実行 → 試験成績書まで自動で進みます（点検エラー時は停止）。</span>
             </div>
 
             <section class="step" id="step-pre">
               <div class="step-head" data-step="pre"><span class="num">2</span><h2>事前点検</h2><span class="sum"></span><span class="chev">▶</span></div>
               <div class="step-body">
                 <div class="callout info">
-                  <div>夜間1000件の空振りを防ぐため、実行前に <b>定義・正解/入力ファイル存在・接続・出力先権限</b> を点検します。エラーがあると検証実行は無効のままです。</div>
-                </div>
-                <div class="actions">
-                  <button class="ghost" id="preflight">✓ 事前点検を実行</button>
+                  <div>検証実行の最初に<b>自動で点検</b>します（<b>定義・正解/入力ファイル存在・接続・出力先権限</b>）。エラーがあると実行は始まりません（夜間の空振り防止）。</div>
                 </div>
                 <div class="checks show" id="preflight-out" style="display:none"></div>
               </div>
@@ -440,15 +435,13 @@
             <section class="step" id="step-run">
               <div class="step-head" data-step="run"><span class="num">3</span><h2>検証実行</h2><span class="sum"></span><span class="chev">▶</span></div>
               <div class="step-body">
-                <div class="actions">
-                  <button class="run big" id="run" disabled>▶ 検証実行（全件）</button>
-                  <span class="run-gate" id="run-gate">先に「事前点検」を通過してください（エラー0）</span>
-                </div>
+                <div class="callout info"><div>通常は上の <b>検証実行</b> ボタンで全件を実行します。範囲を絞りたいときだけ下を使ってください。</div></div>
                 <details class="adv">
-                  <summary>詳細指定（範囲・一部のみ実行）</summary>
+                  <summary>詳細実行（範囲・一部のみ）</summary>
                   <div class="panel-body">
-                    <div class="field"><label class="lab">シェル指定 <span class="opt">(任意 · 例: 1-10 / CK001 / 001,003)</span></label><input type="text" id="shells" placeholder="全件"></div>
-                    <div class="hint">空欄＝全件。NG分だけの再実行は、実行後に結果欄の「NG分のみ再実行」が簡単です。</div>
+                    <div class="field"><label class="lab">シェル指定 <span class="opt">(例: 1-10 / CK001 / 001,003)</span></label><input type="text" id="shells" placeholder="全件"></div>
+                    <div class="hint">指定して実行すると、その範囲だけ点検→実行します。空欄＝全件（上のボタンと同じ）。NG分だけの再実行は結果欄の「NG分のみ再実行」。</div>
+                    <div class="actions"><button class="run" id="run">▶ 指定範囲で実行</button></div>
                   </div>
                 </details>
               </div>
@@ -870,12 +863,10 @@ function renderPreflight(d){
   box.innerHTML=html;
 }
 function setRunGate(){
-  $("run").disabled = !preflightOK;
-  $("run-gate").classList.toggle("hide", preflightOK);
+  // 点検は検証実行/詳細実行が自動で先に돌리므로 별도 게이트 버튼 없음. 단계 잠금 표시만 갱신.
   $("step-run").classList.toggle("locked", !preflightOK);
 }
 async function runPreflight(){
-  const btn=$("preflight"); btn.disabled=true; const old=btn.textContent; btn.textContent="点検中…";
   try {
     const d=await (await fetch("/preflight?config="+encodeURIComponent(activeConfig()))).json();
     renderPreflight(d);
@@ -889,11 +880,9 @@ async function runPreflight(){
     }
     return preflightOK;
   } catch(e){ renderPreflight({ok:false, errors:[{coordinate:"通信", message:String(e)}], warnings:[]}); preflightOK=false; setRunGate(); return false; }
-  finally { btn.disabled=false; btn.textContent=old; }
 }
-$("preflight").addEventListener("click", runPreflight);
 
-/* ───────── 一括実行: 点検 → (エラー0なら) 実行 → 結果/試験成績書 を1ボタンで ───────── */
+/* ───────── 検証実行: 点検 → (エラー0なら) 実行 → 結果/試験成績書 を1ボタンで ───────── */
 async function runAll(){
   if (running) return;
   showTab("verify");
@@ -1136,7 +1125,7 @@ function handleMsg(m){
   else if (m.type==="warning") showBanner("warnbar", escapeHtml(m.message));
   else if (m.type==="error") showBanner("banner", escapeHtml(m.message));
 }
-function setRunning(on){ running=on; $("run").disabled = on || !preflightOK; $("rerun-ng").disabled=on; }
+function setRunning(on){ running=on; $("runall").disabled=on; $("run").disabled=on; $("rerun-ng").disabled=on; }
 
 /* ───────── ③ 検証実行（実 /run, SSE） ───────── */
 function finishRun(){ if(es){ es.close(); es=null; } $("live").classList.remove("show"); setRunning(false); }
@@ -1154,7 +1143,7 @@ function startRun(){
   es.onmessage=(e)=>{ const m=JSON.parse(e.data); if(m.type==="done") finishRun(); else handleMsg(m); };
   es.onerror=()=> finishRun();
 }
-$("run").addEventListener("click", startRun);
+$("run").addEventListener("click", runAll);  // 詳細実行(범위 지정)도 점검→실행 자동(runAll이 #shells 존중)
 
 $("rerun-ng").addEventListener("click", () => {
   const bad=[...document.querySelectorAll('#results .shell')]
