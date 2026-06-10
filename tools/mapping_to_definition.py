@@ -231,6 +231,7 @@ def mapping_to_definition(csv_text: str) -> dict:
             errors.append(f"[{sid}]: shell_group が行ごとに異なります: {sorted(sh['groups'])}")
         if sh["inputs"] and sh["outputs"]:
             _autofill_names(sid, sh)
+            errors.extend(_output_target_collisions(sid, sh))
 
     if not order and not errors:
         errors.append("有効なシェル行がありません。")
@@ -301,7 +302,8 @@ def _apply_format_compare(itype: str, block: dict, sid: str, n: int, warnings: l
         if not has_layout:
             warnings.append(f"{n}行目[{sid}]: vsam に fixed_layout がありません — 固定長レコードの分割基準が必要です。")
     else:  # sam
-        if block.get("mode") == "record" or field_opts:
+        requested = block.get("mode")
+        if requested == "record" or field_opts:
             block["mode"] = "record"
             block.setdefault("has_header", False)
             if not has_layout:
@@ -309,6 +311,11 @@ def _apply_format_compare(itype: str, block: dict, sid: str, n: int, warnings: l
                     f"{n}行目[{sid}]: sam でフィールド比較(record/ignore_columns/normalize_rules)には fixed_layout が必要です。"
                 )
         else:
+            if requested and requested != "byte":  # 명시 모드가 byte로 덮어써짐 → silent-drop 방지(vsam과 동일 경고)
+                warnings.append(
+                    f"{n}行目[{sid}]: sam は既定で byte 比較です（compare_mode='{requested}' は無視）。"
+                    "フィールド比較は record + ignore_columns/normalize_rules/fixed_layout で指定してください。"
+                )
             block["mode"] = "byte"        # 기본: 순차 고정길이 통짜 바이트(D-039 — layout은 mask/normalize 시에만)
             block.pop("layout", None)     # byte는 layout 미사용 → 死데이터 방지
     return block
@@ -344,6 +351,27 @@ def _autofill_names(sid: str, sh: dict) -> None:
             tobe = sp["file"]
         if not sp.get("expected"):
             sp["expected"] = tobe            # 정답은 To-Be와 같은 이름(폴더가 달라 충돌 없음)
+
+
+def _output_target_collisions(sid: str, sh: dict) -> list[str]:
+    """한 셸의 두 출력이 동일 To-Be 출력 경로(to_be_dir + 파일명)로 떨어지면 오류.
+
+    같은 테이블/같은 파일명 출력이 빈 칸 자동채움으로 동일 이름이 되면 런타임에 서로 덮어써
+    한쪽 검증이 조용히 사라진다(검증 손실). 디렉토리가 다르면 충돌 아님 → (dir, name)로 본다.
+    """
+    seen: dict[tuple, int] = {}
+    errs: list[str] = []
+    for k, sp in enumerate(sh["outputs"], start=1):
+        name = sp.get("export_as") if sp["type"] == "database" else sp.get("file")
+        target = (sp.get("tobe_dir", ""), name)
+        if target in seen:
+            errs.append(
+                f"[{sid}]: 出力{seen[target]}と出力{k}のTo-Be出力先が重複します（{name}）"
+                " — 上書きで検証が失われます。to_be_output か to_be_dir を分けてください。"
+            )
+        else:
+            seen[target] = k
+    return errs
 
 
 def _emit_shell(sid: str, sh: dict) -> dict:
@@ -413,10 +441,12 @@ def _decode(data: bytes) -> str:
 
 
 def _xlsx_to_csv_text(data: bytes) -> str:
-    """.xlsx(첫 시트) → CSV 텍스트. 공유용 엑셀 템플릿을 CSV 변환 단계 없이 그대로 수용.
+    """.xlsx(데이터 시트 1장) → CSV 텍스트. 공유용 엑셀 템플릿을 CSV 변환 단계 없이 그대로 수용.
 
     셀은 텍스트 서식 전제(make_xlsx_template가 잠가둠 — 선두 0·layout·normalize 보존). openpyxl 지연 import
     (試験成績書와 동일 의존, 없으면 명시 에러). None→빈칸, 숫자는 str화, 완전 빈 행은 스킵.
+    ★시트 선택: 데이터 있는 시트가 1개면 그것(비활성 시트 데이터도 포착), 2개 이상이면 loud 에러
+      (검증 누락 방지 — D-049). 빈 시트(Excel 자동 생성)는 무시.
     """
     import io as _io
     try:
@@ -424,18 +454,35 @@ def _xlsx_to_csv_text(data: bytes) -> str:
     except ImportError as exc:
         raise ValueError("xlsx 입력에는 openpyxl이 필요합니다(pip install openpyxl).") from exc
     wb = load_workbook(_io.BytesIO(data), read_only=True, data_only=True)
-    ws = wb.active
+    # ★데이터가 있는 시트만 고른다. wb.active만 읽으면 (a) 데이터가 비활성 시트에 있을 때 빈 결과,
+    #   (b) 매핑이 여러 시트에 흩어져 있으면 검증 대상 셸이 통째로 silent-drop된다(검증 누락 = 최악).
+    #   1개면 그 시트를, 여러 개면 loud 에러(1시트로 통합 요구). 빈 시트(Excel 자동 생성)는 무시.
+    data_sheets: list[tuple[str, list[list[str]]]] = []
+    for ws in wb.worksheets:
+        rows = []
+        for row in ws.iter_rows(values_only=True):
+            cells = ["" if v is None else str(v) for v in row]
+            if any(c.strip() for c in cells):  # 엑셀 잉여(완전 빈) 행 제외
+                rows.append(cells)
+        if rows:
+            data_sheets.append((ws.title, rows))
+    if not data_sheets:
+        return ""  # 빈 워크북 → 상위에서 "CSVが空です" 처리
+    if len(data_sheets) > 1:
+        names = "、".join(t for t, _ in data_sheets)
+        raise ValueError(
+            f"xlsx に複数のデータシートがあります（{names}）。"
+            "マッピングは1つのシートにまとめてください（他シートは読み込まれず検証漏れになります）。"
+        )
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    for row in ws.iter_rows(values_only=True):
-        cells = ["" if v is None else str(v) for v in row]
-        if any(c.strip() for c in cells):  # 엑셀 잉여(완전 빈) 행 제외
-            w.writerow(cells)
+    for cells in data_sheets[0][1]:
+        w.writerow(cells)
     return buf.getvalue()
 
 
 def read_mapping_bytes(data: bytes) -> str:
-    """매핑 입력(CSV 또는 .xlsx) 바이트 → CSV 텍스트. .xlsx(zip 시그니처)면 첫 시트를 변환, 아니면 디코드.
+    """매핑 입력(CSV 또는 .xlsx) 바이트 → CSV 텍스트. .xlsx(zip 시그니처)면 데이터 시트를 변환, 아니면 디코드.
 
     CLI·GUI 공통 진입 — 팀원이 엑셀 템플릿을 채워 그대로 제출해도(CSV 저장 단계 없이) 받는다.
     """
