@@ -240,6 +240,17 @@ def test_run_resumable_false_without_checkpoint(client, monkeypatch):
     assert client.get("/run/resumable").get_json()["resumable"] is False
 
 
+def test_index_has_new_flow_state_machine(client):
+    """新検証フロー(β) 상태머신 패널 + 7화면 + 핵심 배선이 렌더된다(회귀 가드)."""
+    body = client.get("/").get_data(as_text=True)
+    assert 'data-tab="flow2"' in body and 'data-panel="flow2"' in body
+    for sc in ("select", "prep", "resumable", "ready", "blocked", "running", "done"):
+        assert f'data-screen="{sc}"' in body, sc
+    assert 'id="nf-start"' in body and 'id="nf-csv"' in body
+    assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body
+    assert 'data-panel="verify"' in body  # 기존 検証フロー 패널과 병존(아직 미제거)
+
+
 def test_report_download_ok(client, monkeypatch, tmp_path):
     (tmp_path / "report_ok.csv").write_text("shell_id,status\n001,OK\n", encoding="utf-8")
     monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=tmp_path))
