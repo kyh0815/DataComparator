@@ -1005,3 +1005,23 @@ GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
 **다음 단계(설계 2~6)**: 프론트 상태머신(고정 뷰포트·in-place) → 자동 연쇄(SELECT→READY) → RUNNING 폴링/
 DONE/재접속 복원 → RESUMABLE(중단 checkpoint 감지 + resume) → 구 아코디언/SSE 정리.
 **단일 프로세스 전제**(app.run threaded) — 다중 워커 WSGI면 RunState 깨짐(배포 가이드 명시 필요, 리스크).
+
+## D-055. 検証フロー 재설계 2단계 — 고정 뷰포트 상태머신(新検証フロー β, 병존) (코어 무수정)
+
+**배경**: 1단계(D-054) 백엔드 위에서, "긴 세로 스크롤 아코디언"을 "한 화면에서 단계 자동 전진"하는
+상태머신 UI로. 기존 동작을 깨지 않으려고(로드시 dangling 참조=스크립트 전체 사망) **별도 세그먼트로 병존**.
+
+**결정(인터페이스 계층만)**:
+- 백엔드 `GET /run/resumable`(2-a): 미완 checkpoint 감지(store 재사용) → RESUMABLE 화면용.
+- 프론트(2-b): 새 세그먼트 `新検証フロー(β)` + 상태머신 패널(고정 뷰포트, 단일 컨테이너 in-place 전환,
+  스테퍼). 화면: SELECT→PREP(생성·저장·점검 자동 연쇄)→READY(경고 모음+検証開始)→RUNNING(폴링
+  /run/status, 진행바+집계)→DONE(요약+다운로드) + BLOCKED(에러+재시도) + RESUMABLE(이어하기) +
+  재접속 복원(로드 시 /run/status·/run/resumable로 적절 화면 복귀).
+- 자기완결 IIFE(`nf-*` ID), 기존 `$`/`activeConfig`/`escapeHtml` 재사용. **node --check JS 문법 검증**.
+- 셸 개별 리스트업 없음(PM 확정), NG 상세는 Quarantine/Artifacts·리포트 위임. 진행률 분모=출력(from-csv).
+
+**병존 이유**: 기존 検証フ로ー(아코디언) 패널·JS를 손대지 않아 회귀 0. **다음 단계(3)**: β를 기본으로 승격 +
+구 아코디언/`/run` SSE/결과 리스트 JS 제거 + (선택) Web Notification + 에러별 해결책 문구 정교화.
+
+**검증**: 정적 가드 테스트, dc-pg 기동·렌더·엔드포인트 확인. 302 passed/10 skipped. **사용자 브라우저 QA 권장**
+(β 탭에서 매핑표 업로드→自動進行→検証開始→진행/결과, 새로고침 복원, 중단 후 재개).
