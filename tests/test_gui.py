@@ -469,8 +469,10 @@ def test_definition_save_normalizes_crlf(client, monkeypatch, tmp_path):
 
 
 def test_index_has_runall_one_button_flow(client):
-    """一括実行(点検→実行→結果) 단일 버튼 흐름이 렌더된다(Mapping→Execution 자동, 회귀 가드)."""
+    """검証フロー 한 화면에 一括実行(点検→実行→結果) 단일 버튼 흐름이 렌더된다(회귀 가드)."""
     body = client.get("/").get_data(as_text=True)
-    assert 'id="runall"' in body              # Execution 탭 一括実行 버튼
+    assert 'data-tab="verify"' in body and 'data-panel="verify"' in body  # Mapping+Execution 병합 세그먼트
+    assert 'data-tab="execution"' not in body and 'data-panel="execution"' not in body  # 옛 분리 탭 제거
+    assert 'id="runall"' in body              # 一括実行 버튼
     assert "async function runAll(" in body   # 점검→0에러면 실행 연쇄
-    assert "goto-runall" in body              # Mapping 저장 직후 '그대로 一括実行' CTA
+    assert 'scrollToEl("runall-bar"' in body  # 정의 저장 후 자동 전진(같은 화면 스크롤)

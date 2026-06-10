@@ -386,8 +386,7 @@
     <!-- ===== 본문(상단 탭=기능) ===== -->
     <div class="content">
       <nav class="tabbar">
-        <button class="tab active" data-tab="mapping">Mapping</button>
-        <button class="tab" data-tab="execution">Execution</button>
+        <button class="tab active" data-tab="verify">検証フロー</button>
         <button class="tab" data-tab="artifacts">Artifacts</button>
         <button class="tab" data-tab="quarantine">Quarantine</button>
         <button class="tab" data-tab="settings">Project Settings</button>
@@ -395,9 +394,9 @@
       <div class="scroll">
         <div class="wrap">
 
-          <!-- ===== Mapping 탭 = ① 定義ファイル ===== -->
-          <section class="tabpanel show" data-panel="mapping">
-            <h1 class="page-title">Mapping <span class="muted">マッピング表（CSV）→ 検証定義</span></h1>
+          <!-- ===== 検証フロー = ① 定義 → 一括実行(② 点検 ③ 実行) → ④ 結果 (한 화면 자동 전진) ===== -->
+          <section class="tabpanel show" data-panel="verify">
+            <h1 class="page-title">検証フロー <span class="muted">定義 → 点検 → 実行 → 結果（マッピング表を選ぶと自動で進みます）</span></h1>
             <section class="step" id="step-def">
               <div class="step-head" data-step="def"><span class="num">1</span><h2>定義ファイル</h2><span class="sum"></span><span class="chev">▶</span></div>
               <div class="step-body">
@@ -418,12 +417,8 @@
                 <div id="result"></div>
               </div>
             </section>
-          </section>
 
-          <!-- ===== Execution 탭 = ② 点検 + ③ 実行 + ④ 結果 ===== -->
-          <section class="tabpanel" data-panel="execution">
-            <h1 class="page-title">Execution <span class="muted">事前点検 → 検証実行 → 結果</span></h1>
-
+            <!-- ② 点検 + ③ 実行 + ④ 結果 — 同じ「検証フロー」画面で続く -->
             <div class="actions" id="runall-bar">
               <button class="run big primary" id="runall">▶ 一括実行（点検 → 実行 → 試験成績書）</button>
               <span class="muted">点検でエラー0なら、そのまま全件実行します（点検は安全ゲートとして残ります）。</span>
@@ -508,7 +503,7 @@
           <section class="tabpanel" data-panel="artifacts">
             <h1 class="page-title">Artifacts <span class="muted">試験成績書・レポート</span></h1>
             <div id="art-empty" class="placeholder"><div class="big">実行後に成果物がここに表示されます</div>
-              <div>Execution タブで検証実行すると、試験成績書(Excel)・レポート(CSV)が生成されます。</div></div>
+              <div>「検証フロー」で検証実行すると、試験成績書(Excel)・レポート(CSV)が生成されます。</div></div>
             <div id="art-body" style="display:none">
               <div class="panel">
                 <div class="panel-head"><h2>成果物</h2></div>
@@ -852,10 +847,9 @@ async function applyDefinition(){
     const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", activeConfig());
     const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
     if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
-    // 셸 목록 나열은 제거(대량 셸=수천 건일 때 화면을 덮음). 건수 요약 + 그대로 一括実行 CTA.
-    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div>`
-      +`<div class="actions" style="margin-top:12px"><button class="run primary" id="goto-runall">▶ このまま一括実行（点検 → 実行）</button></div>`;
-    $("goto-runall").addEventListener("click", runAll);
+    // 셸 목록 나열은 제거(대량 셸=수천 건일 때 화면을 덮음). 건수 요약만 + 一括実行 영역으로 자동 전진.
+    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div>`;
+    scrollToEl("runall-bar","center");   // 같은 화면에서 바로 아래 一括実行 버튼으로 자동 스크롤
     await refreshDefPreview();
     markStepDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
   }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
@@ -902,7 +896,7 @@ $("preflight").addEventListener("click", runPreflight);
 /* ───────── 一括実行: 点検 → (エラー0なら) 実行 → 結果/試験成績書 を1ボタンで ───────── */
 async function runAll(){
   if (running) return;
-  showTab("execution");
+  showTab("verify");
   $("step-pre").classList.remove("collapsed");
   $("step-run").classList.remove("collapsed");
   scrollToEl("step-pre","start");
