@@ -979,14 +979,16 @@ syncEnv();
       const f=mc.dataset.filter; applyFailFilter((f==="OK"||f==="")?"":f);
     }));
     NF.reportName = s.report_name || null;
+    NF.runConfig = st.config || activeConfig();  // ★실행이 실제로 쓴 config(재접속 시 셀렉터와 달라도 일치)
     if(bad>0){ $("nf-failsec").style.display=""; loadFailures(); }
     else { $("nf-failsec").style.display="none"; }
     screen('done');
   }
+  function rcfg(){ return encodeURIComponent(NF.runConfig || activeConfig()); }  // 결과 화면 공통 config
   async function loadFailures(){
     const box=$("nf-fail"); box.innerHTML='<div class="nf-more">読み込み中…</div>';
     try{
-      const r=await (await fetch("/run/results?config="+encodeURIComponent(activeConfig()))).json();
+      const r=await (await fetch("/run/results?config="+rcfg())).json();
       NF.failItems = r.items||[];
       NF.failTrunc = r.truncated ? {total:r.total_bad, shown:r.shown} : null;
       renderChips(); applyFailFilter("");
@@ -1047,7 +1049,7 @@ syncEnv();
     if(!box.dataset.loaded){
       box.innerHTML='<div class="nf-more">読み込み中…</div>';
       try{
-        const d=await (await fetch("/run/results/diff?config="+encodeURIComponent(activeConfig())+"&idx="+idx)).json();
+        const d=await (await fetch("/run/results/diff?config="+rcfg()+"&idx="+idx)).json();
         box.innerHTML = (d.diff_lines||[]).length ? diffLinesHtml(d.diff_lines, d.diff_truncated) : '<div class="nf-more">差分なし</div>';
         box.dataset.loaded="1";
       }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
@@ -1088,8 +1090,8 @@ syncEnv();
     $("nf-restart").addEventListener("click", ()=> start(false));
     $("nf-again").addEventListener("click", ()=>{ clearInterval(NF.poll); screen('select'); });
     $("nf-fail").addEventListener("click", e=>{ const b=e.target.closest(".nf-exp"); if(b) toggleDiff(b.dataset.idx, b); });  // diff 펼침(위임)
-    $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+encodeURIComponent(activeConfig()); });
-    $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName); });
+    $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+rcfg(); });
+    $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName)+"?config="+rcfg(); });
     init();
   }
 })();
