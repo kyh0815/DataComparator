@@ -940,3 +940,23 @@ GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
 (완전한 JS 실행 검증은 아니지만 이 부류 회귀는 차단). 향후 JS 흐름은 수동 QA/별도 E2E가 필요.
 
 **범위**: `src/gui/templates/index.html` 1줄 + `tests/test_gui.py` 가드 1건. 294 passed/10 skipped.
+
+## D-052. GUI 一括実行 단일버튼 — Mapping→Execution→결과 자동 흐름 복원 (코어 무수정)
+
+**배경**: 원래 비전(시연 시나리오·Phase7 "버튼+모니터+결과")은 **정의만 준비되면 한 흐름으로
+점검→실행→결과/성적서**. 그런데 GUI(D-044 ModernizePro 탭 셸)가 점검·실행을 **별도 탭의 수동 2버튼**으로
+쪼개 노출 중이었다. 엔진은 이미 자동 E2E(`/run` SSE = 전 셸 적재→배치→비교→리포트).
+
+**결정**: **단일 `一括実行` 버튼** 추가(인터페이스 계층만, 코어/엔드포인트 무수정 — 기존 `/preflight`·`/run` wiring).
+- `runPreflight()`를 await 가능 함수로 추출 → `runAll()`이 **점검 자동 실행 → 에러0이면 그대로 `startRun()`**.
+  **점검은 안전 게이트로 유지**(에러 있으면 멈추고 preflight-out에 표시 — 야간 수천 건 헛실행 방지 C3).
+- 배치: Execution 탭 상단 `#runall`(주버튼) + **Mapping 저장 직후 `goto-runall` CTA**("このまま一括実行")로
+  탭 이동 없이 업로드→버튼→모니터 한 흐름.
+- 동반 버그(수동 QA 발견): `/definition/save`가 **브라우저 폼 왕복 CRLF**(HTTP 폼 줄바꿈 정규화)를 그대로
+  기록해 정의파일이 CRLF가 됐다(tracked 샘플 spurious diff). 저장 직전 `\r\n→\n` 정규화로 수정.
+
+**범위**: `src/gui/templates/index.html`·`src/gui/web.py`(CRLF 1줄)·`tests/test_gui.py`(정적 가드 2 + CRLF 1).
+코어·스키마·엔드포인트 계약 무변경. 296 passed/10 skipped. **D-034(경량 자동 흐름)·D-044(탭 셸) 양립**(탭 유지 +
+단일버튼으로 자동 흐름 복원).
+
+**deferred**: 더 깊은 경량화(탭→단일 화면 통합)는 별도 UX 결정 필요(지금은 탭 유지 + 자동 흐름만). i18n(G)·실 배치 연동(A) 무관.

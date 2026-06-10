@@ -16,8 +16,11 @@
 > - **수동 QA 회귀 발견·수정(D-051)**: GUI `/`에 complete_sample 업로드 시 `RangeError: Maximum call stack`
 >   — `index.html`의 `activeConfig`가 자기호출 무한재귀(b1bf0a7 혼입)로 **2026-06-08 이후 메인 화면 config 의존
 >   동작 전부 깨져 있었음**. `#config` 셀렉터 값 반환으로 수정 + 정적 가드 테스트(서버 test_gui는 JS 미실행이라 놓침).
-> - 커밋 8개(브랜치): 매핑 fix·docs(D-049)·gitignore·repr fix·docs hygiene·D-050·**GUI 회귀 fix**·D-051.
->   **다음**: F(에러/엣지) 또는 J 잔여(DB 필요한 데모 e2e). GUI는 8080에서 수정본 기동 중(사용자 재시험 가능).
+> - **GUI 자동 흐름 복원(D-052)**: 원래 비전(Mapping→Execution→결과 자동 E2E) — 점검·실행이 별도 탭 수동 2버튼
+>   이던 것을 **단일 `一括実行` 버튼**(점검 자동→0에러면 실행→결과/성적서 연쇄, 점검은 안전게이트 유지)으로.
+>   Mapping 저장 직후 'このまま一括実行' CTA로 한 흐름. 코어/엔드포인트 무수정(인터페이스 wiring). 동반: 저장 CRLF 정규화.
+> - 커밋 10개(브랜치): J·docs·gitignore·repr·hygiene·D-050·GUI회귀fix·D-051·칩제거·**一括実行+CRLF**·D-052.
+>   **다음**: F(에러/엣지) 또는 J 잔여(DB 데모 e2e). GUI는 8080에서 기동 중(`POSTGRES_PASSWORD=devpw`).
 
 > **2026-06-08 갱신(요지 — 아래 2026-06-07·§0~§7은 과거 스냅샷)**
 > - 테스트 **278 passed / 10 skipped**(회귀 0). 코어(비교/실행/exporter/정의 스키마/checkpoint) **0수정** 유지.
