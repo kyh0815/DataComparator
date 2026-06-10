@@ -426,6 +426,9 @@
   .nf-chips { display:flex; gap:6px; flex-wrap:wrap; }
   .nf-chip { border:1px solid var(--c-border); border-radius:999px; padding:4px 12px; font-size:12.5px; background:var(--c-surface); cursor:pointer; font:inherit; }
   .nf-chip.active { border-color:var(--c-primary); background:var(--c-primary); color:var(--c-primary-fg); font-weight:700; }
+  .nf-dl { min-width:210px; justify-content:center; }   /* 成果物 버튼 동일 형태·사이즈 */
+  .nf-exp { margin-top:6px; border:1px solid var(--c-border); background:var(--c-surface-2); border-radius:7px; padding:4px 10px; font-size:12.5px; cursor:pointer; font:inherit; color:var(--c-primary); font-weight:600; }
+  .nf-exp:hover { border-color:var(--c-primary); }
 </style>
 </head>
 <body>
@@ -534,8 +537,8 @@
                 <div class="nf-metrics" id="nf-metrics"></div>
                 <div class="nf-arts">
                   <span class="nf-arts-l">成果物</span>
-                  <button class="primary" id="nf-dl-evidence">⬇ 試験成績書(Excel)</button>
-                  <button class="ghost" id="nf-dl-report">⬇ レポート(CSV)</button>
+                  <button class="ghost nf-dl" id="nf-dl-evidence">⬇ 試験成績書(Excel)</button>
+                  <button class="ghost nf-dl" id="nf-dl-report">⬇ レポート(CSV)</button>
                 </div>
                 <div class="nf-failsec" id="nf-failsec" style="display:none">
                   <div class="nf-failhead">
@@ -1023,16 +1026,33 @@ syncEnv();
     const head = `<div class="nf-fhead"><span class="nf-fid">${name}</span><span class="nf-fbadge ${cls}">${it.status}</span></div>`;
     let body="";
     if(it.status==="NG"){
-      body = '<div class="nf-diff">' + (it.diff_lines||[]).map(d=>{
-        const [a,b]=diffMark(d.asis_content,d.tobe_content);
-        return `<div class="nf-dl"><div class="nf-ln">${d.line_number}行目</div><div class="nf-da"><b>As-Is</b>${a}</div><div class="nf-db"><b>To-Be</b>${b}</div></div>`;
-      }).join("") + (it.diff_truncated ? '<div class="nf-more">… 以降は試験成績書/レポートで</div>' : "") + '</div>';
+      // 경량 행 + 항목별 diff는 펼칠 때 지연 로드(대용량에도 전건 확인 가능)
+      body = `<button class="nf-exp" data-idx="${it.idx}">▸ 差分 ${(it.diff_count||0).toLocaleString()}行</button>`
+           + `<div class="nf-diff" id="nf-d-${it.idx}" style="display:none"></div>`;
     } else if(it.status==="ERROR"){
       body = `<div class="nf-fmsg">エラー: ${escapeHtml(it.error_message||"")}</div>`;
     } else {
       body = `<div class="nf-fmsg">${_MISS[it.status]||it.status}</div>`;
     }
     return `<div class="nf-fitem">${head}${body}</div>`;
+  }
+  function diffLinesHtml(diffs, truncated){
+    return diffs.map(d=>{ const [a,b]=diffMark(d.asis_content,d.tobe_content);
+      return `<div class="nf-dl"><div class="nf-ln">${d.line_number}行目</div><div class="nf-da"><b>As-Is</b>${a}</div><div class="nf-db"><b>To-Be</b>${b}</div></div>`;
+    }).join("") + (truncated ? '<div class="nf-more">… 以降は試験成績書/レポートで</div>' : "");
+  }
+  async function toggleDiff(idx, btn){
+    const box=$("nf-d-"+idx);
+    if(box.style.display!=="none"){ box.style.display="none"; btn.textContent=btn.textContent.replace("▾","▸"); return; }
+    if(!box.dataset.loaded){
+      box.innerHTML='<div class="nf-more">読み込み中…</div>';
+      try{
+        const d=await (await fetch("/run/results/diff?config="+encodeURIComponent(activeConfig())+"&idx="+idx)).json();
+        box.innerHTML = (d.diff_lines||[]).length ? diffLinesHtml(d.diff_lines, d.diff_truncated) : '<div class="nf-more">差分なし</div>';
+        box.dataset.loaded="1";
+      }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
+    }
+    box.style.display=""; btn.textContent=btn.textContent.replace("▸","▾");
   }
   function poll(){
     clearInterval(NF.poll);
@@ -1067,6 +1087,7 @@ syncEnv();
     $("nf-resume").addEventListener("click", ()=> start(true));
     $("nf-restart").addEventListener("click", ()=> start(false));
     $("nf-again").addEventListener("click", ()=>{ clearInterval(NF.poll); screen('select'); });
+    $("nf-fail").addEventListener("click", e=>{ const b=e.target.closest(".nf-exp"); if(b) toggleDiff(b.dataset.idx, b); });  // diff 펼침(위임)
     $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+encodeURIComponent(activeConfig()); });
     $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName); });
     init();

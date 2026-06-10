@@ -227,12 +227,15 @@ def test_run_resumable_false_without_checkpoint(client, monkeypatch):
     assert client.get("/run/resumable").get_json()["resumable"] is False
 
 
-def test_run_results_returns_only_bad_with_diff(client, monkeypatch, tmp_path):
-    """불일치(NG/MISSING/ERROR)만 diff 포함해 반환(OK 제외) — 브라우저 결과 보기용."""
-    cp = tmp_path / "checkpoint.jsonl"
+def _patch_results(web, monkeypatch, tmp_path, results):
     monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=tmp_path))
-    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: cp)
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: tmp_path / "checkpoint.jsonl")
     monkeypatch.setattr(web.store, "has_checkpoint", lambda p: True)
+    monkeypatch.setattr(web.store, "latest_results", lambda p: results)
+
+
+def test_run_results_lists_all_bad_lightweight(client, monkeypatch, tmp_path):
+    """불일치(NG/MISSING/ERROR) 전 항목을 경량 목록(diff 제외, diff_count 포함)으로 — OK 제외."""
     results = [
         ComparisonResult("001", ComparisonStatus.OK),
         ComparisonResult("002", ComparisonStatus.NG,
@@ -240,12 +243,25 @@ def test_run_results_returns_only_bad_with_diff(client, monkeypatch, tmp_path):
         ComparisonResult("003", ComparisonStatus.MISSING_TOBE),
         ComparisonResult("004", ComparisonStatus.ERROR, error_message="배치 실패"),
     ]
-    monkeypatch.setattr(web.store, "latest_results", lambda p: results)
+    _patch_results(web, monkeypatch, tmp_path, results)
     r = client.get("/run/results").get_json()
-    assert r["total_bad"] == 3 and r["shown"] == 3          # OK 제외
+    assert r["total_bad"] == 3 and r["shown"] == 3 and r["truncated"] is False
     assert {it["status"] for it in r["items"]} == {"NG", "MISSING_TOBE", "ERROR"}
     ng = next(it for it in r["items"] if it["status"] == "NG")
-    assert ng["output_name"] == "明細" and ng["diff_lines"][0]["asis_content"] == "abc"
+    assert ng["output_name"] == "明細" and ng["diff_count"] == 1 and "diff_lines" not in ng
+
+
+def test_run_result_diff_lazy_by_idx(client, monkeypatch, tmp_path):
+    """/run/results/diff?idx=는 해당 불일치의 diff(As-Is↔To-Be)를 지연 로드. 범위 밖이면 빈 diff."""
+    results = [
+        ComparisonResult("001", ComparisonStatus.OK),  # bad 목록에서 제외됨
+        ComparisonResult("002", ComparisonStatus.NG,
+                         diff_lines=[DiffLine(3, "abc", "abd")], output_name="明細"),
+    ]
+    _patch_results(web, monkeypatch, tmp_path, results)
+    d = client.get("/run/results/diff?idx=0").get_json()  # bad[0] = NG(002)
+    assert d["diff_lines"][0]["asis_content"] == "abc" and d["diff_truncated"] is False
+    assert client.get("/run/results/diff?idx=9").get_json()["diff_lines"] == []  # 범위 밖
 
 
 def test_run_results_empty_without_checkpoint(client, monkeypatch):
