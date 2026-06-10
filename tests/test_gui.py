@@ -82,6 +82,18 @@ def test_index_serves_japanese_page(client):
     assert "事前点検" in body and "試験成績書" in body  # 4단계 동선이 한 화면에
 
 
+def test_index_active_config_accessor_not_self_recursive(client):
+    """activeConfig()가 자기 자신을 호출하면 모든 config 의존 동작이 콜스택 초과로 깨진다(회귀 가드).
+
+    b1bf0a7에서 `const activeConfig = () => activeConfig();`(무한재귀)로 들어가 메인 화면의
+    정의 저장·preflight·실행이 RangeError로 전부 실패했었다. JS는 서버 테스트로 실행되지 않아
+    렌더 본문에서 자기재귀 패턴 부재 + #config 셀렉터 참조를 정적으로 확인한다.
+    """
+    body = client.get("/").get_data(as_text=True)
+    assert "activeConfig = () => activeConfig()" not in body  # 자기재귀 금지
+    assert 'const activeConfig =' in body and '$("config")' in body  # #config 값을 읽는 accessor
+
+
 def test_index_embeds_definition_preview(client, monkeypatch):
     """index가 config 정의 파일을 요약해 JSON으로 임베드한다(실행 전 미리보기)."""
     monkeypatch.setattr(

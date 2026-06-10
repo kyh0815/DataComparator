@@ -601,8 +601,9 @@
 <script>
 const $ = (id) => document.getElementById(id);
 /* 활성 config(=선택된 프로젝트)를 읽는 단일 accessor. 서버 _active_config()와 짝.
-   config을 읽는 모든 곳이 여기로 모인다 — 멀티프로젝트 확장 시 이 함수만 바꾼다(B 확장 지점). */
-const activeConfig = () => activeConfig();
+   config을 읽는 모든 곳이 여기로 모인다 — 멀티프로젝트 확장 시 이 함수만 바꾼다(B 확장 지점).
+   #config 셀렉터(option value=config 경로)의 선택값을 반환. 없으면 default_config로 폴백. */
+const activeConfig = () => { const s=$("config"); return (s && s.value) || lastConfig; };
 function scrollToEl(id, block){ const el=$(id); if(el) el.scrollIntoView({behavior:"smooth", block:block||"start"}); }
 const STEP_ORDER = ["load","run","compare"];
 let verboseFlag = false;
