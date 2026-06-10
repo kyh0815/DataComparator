@@ -455,3 +455,22 @@ def test_evidence_endpoint_downloads_xlsx(client, monkeypatch, tmp_path):
     resp = client.get("/evidence?config=c.yaml")
     assert resp.status_code == 200
     assert resp.data == b"xlsxdata"
+
+
+def test_definition_save_normalizes_crlf(client, monkeypatch, tmp_path):
+    """브라우저 폼 왕복으로 들어온 CRLF yaml을 LF로 정규화해 기록한다(CRLF 정의파일 산출 방지)."""
+    target = tmp_path / "def.yaml"
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(definition_file=str(target)))
+    r = client.post("/definition/save", data={"yaml": "tests:\r\n- test_id: '001'\r\n", "config": "x"})
+    assert r.get_json()["ok"]
+    raw = target.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw == b"tests:\n- test_id: '001'\n"
+
+
+def test_index_has_runall_one_button_flow(client):
+    """一括実行(点検→実行→結果) 단일 버튼 흐름이 렌더된다(Mapping→Execution 자동, 회귀 가드)."""
+    body = client.get("/").get_data(as_text=True)
+    assert 'id="runall"' in body              # Execution 탭 一括実行 버튼
+    assert "async function runAll(" in body   # 점검→0에러면 실행 연쇄
+    assert "goto-runall" in body              # Mapping 저장 직후 '그대로 一括実行' CTA

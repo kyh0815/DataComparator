@@ -303,6 +303,8 @@ def definition_sample_csv():
 def definition_save():
     """생성된 정의 yaml을 config의 definition_file 경로에 저장한다(다음 단계: 그대로 検証実行)."""
     yaml_text = request.form.get("yaml", "")
+    # 브라우저 폼 왕복에서 줄바꿈이 \r\n으로 정규화돼 들어온다(HTTP 폼 규약) → LF로 되돌려 CRLF 파일 산출 방지.
+    yaml_text = yaml_text.replace("\r\n", "\n").replace("\r", "\n")
     config_path = _active_config()
     if not yaml_text.strip():
         return jsonify({"ok": False, "message": "保存する定義がありません（先に生成してください）。"})

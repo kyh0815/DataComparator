@@ -424,6 +424,11 @@
           <section class="tabpanel" data-panel="execution">
             <h1 class="page-title">Execution <span class="muted">事前点検 → 検証実行 → 結果</span></h1>
 
+            <div class="actions" id="runall-bar">
+              <button class="run big primary" id="runall">▶ 一括実行（点検 → 実行 → 試験成績書）</button>
+              <span class="muted">点検でエラー0なら、そのまま全件実行します（点検は安全ゲートとして残ります）。</span>
+            </div>
+
             <section class="step" id="step-pre">
               <div class="step-head" data-step="pre"><span class="num">2</span><h2>事前点検</h2><span class="sum"></span><span class="chev">▶</span></div>
               <div class="step-body">
@@ -847,8 +852,10 @@ async function applyDefinition(){
     const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", activeConfig());
     const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
     if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
-    // 셸 목록 나열은 제거(대량 셸=수천 건일 때 화면을 덮음). 건수 요약만 표시.
-    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div>`;
+    // 셸 목록 나열은 제거(대량 셸=수천 건일 때 화면을 덮음). 건수 요약 + 그대로 一括実行 CTA.
+    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div>`
+      +`<div class="actions" style="margin-top:12px"><button class="run primary" id="goto-runall">▶ このまま一括実行（点検 → 実行）</button></div>`;
+    $("goto-runall").addEventListener("click", runAll);
     await refreshDefPreview();
     markStepDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
   }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
@@ -873,7 +880,7 @@ function setRunGate(){
   $("run-gate").classList.toggle("hide", preflightOK);
   $("step-run").classList.toggle("locked", !preflightOK);
 }
-$("preflight").addEventListener("click", async () => {
+async function runPreflight(){
   const btn=$("preflight"); btn.disabled=true; const old=btn.textContent; btn.textContent="点検中…";
   try {
     const d=await (await fetch("/preflight?config="+encodeURIComponent(activeConfig()))).json();
@@ -886,9 +893,24 @@ $("preflight").addEventListener("click", async () => {
     } else {
       setStepSummary("step-pre", `<span class="ng">✖ エラー ${(d.errors||[]).length}件</span>`);
     }
-  } catch(e){ renderPreflight({ok:false, errors:[{coordinate:"通信", message:String(e)}], warnings:[]}); preflightOK=false; setRunGate(); }
+    return preflightOK;
+  } catch(e){ renderPreflight({ok:false, errors:[{coordinate:"通信", message:String(e)}], warnings:[]}); preflightOK=false; setRunGate(); return false; }
   finally { btn.disabled=false; btn.textContent=old; }
-});
+}
+$("preflight").addEventListener("click", runPreflight);
+
+/* ───────── 一括実行: 点検 → (エラー0なら) 実行 → 結果/試験成績書 を1ボタンで ───────── */
+async function runAll(){
+  if (running) return;
+  showTab("execution");
+  $("step-pre").classList.remove("collapsed");
+  $("step-run").classList.remove("collapsed");
+  scrollToEl("step-pre","start");
+  const ok = await runPreflight();   // 安全ゲート: 点検は必ず通す
+  if (!ok) return;                   // エラーあり → 停止（内容は preflight-out に表示）
+  startRun();                        // エラー0 → そのまま全件実行（SSEモニタ → 結果 → 試験成績書）
+}
+$("runall").addEventListener("click", runAll);
 
 /* ───────── 結果レンダリング（イベント駆動） ───────── */
 function reset(){
