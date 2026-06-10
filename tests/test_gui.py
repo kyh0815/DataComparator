@@ -227,14 +227,43 @@ def test_run_resumable_false_without_checkpoint(client, monkeypatch):
     assert client.get("/run/resumable").get_json()["resumable"] is False
 
 
+def test_run_results_returns_only_bad_with_diff(client, monkeypatch, tmp_path):
+    """불일치(NG/MISSING/ERROR)만 diff 포함해 반환(OK 제외) — 브라우저 결과 보기용."""
+    cp = tmp_path / "checkpoint.jsonl"
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=tmp_path))
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: cp)
+    monkeypatch.setattr(web.store, "has_checkpoint", lambda p: True)
+    results = [
+        ComparisonResult("001", ComparisonStatus.OK),
+        ComparisonResult("002", ComparisonStatus.NG,
+                         diff_lines=[DiffLine(3, "abc", "abd")], output_name="明細"),
+        ComparisonResult("003", ComparisonStatus.MISSING_TOBE),
+        ComparisonResult("004", ComparisonStatus.ERROR, error_message="배치 실패"),
+    ]
+    monkeypatch.setattr(web.store, "latest_results", lambda p: results)
+    r = client.get("/run/results").get_json()
+    assert r["total_bad"] == 3 and r["shown"] == 3          # OK 제외
+    assert {it["status"] for it in r["items"]} == {"NG", "MISSING_TOBE", "ERROR"}
+    ng = next(it for it in r["items"] if it["status"] == "NG")
+    assert ng["output_name"] == "明細" and ng["diff_lines"][0]["asis_content"] == "abc"
+
+
+def test_run_results_empty_without_checkpoint(client, monkeypatch):
+    """checkpoint 없으면 빈 목록(화면이 깨지지 않게)."""
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=Path(".")))
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: Path("nope.jsonl"))
+    monkeypatch.setattr(web.store, "has_checkpoint", lambda p: False)
+    assert client.get("/run/results").get_json()["items"] == []
+
+
 def test_index_is_state_machine_flow(client):
     """검証フロー = 상태머신 패널(기본 활성) + 7화면 + 핵심 배선. 구 아코디언은 제거됨(회귀 가드)."""
     body = client.get("/").get_data(as_text=True)
     assert 'data-tab="flow2"' in body and 'class="tabpanel show" data-panel="flow2"' in body
     for sc in ("select", "prep", "resumable", "ready", "blocked", "running", "done"):
         assert f'data-screen="{sc}"' in body, sc
-    assert 'id="nf-start"' in body and 'id="nf-csv"' in body
-    assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body
+    assert 'id="nf-start"' in body and 'id="nf-csv"' in body and 'id="nf-show-fail"' in body
+    assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body and "/run/results" in body
     # 구 검証フロー(아코디언)·Artifacts·Quarantine 패널·옛 실행 버튼 제거 확인
     assert 'data-panel="verify"' not in body and 'data-panel="quarantine"' not in body
     assert 'id="runall"' not in body and 'id="results"' not in body

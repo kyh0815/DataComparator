@@ -381,6 +381,24 @@
   .nf-warns { background:var(--c-warn-soft, #fff8e1); border:1px solid #ffe0a3; }
   .nf-errs { background:var(--c-ng-soft); border:1px solid #f3c6c6; }
   .nf-warns ul, .nf-errs ul { margin:6px 0 0; padding-left:18px; }
+  /* 不一致 표시(브라우저 결과 보기) */
+  .nf-fail { text-align:left; margin-top:18px; max-height:46vh; overflow:auto; border:1px solid var(--c-border); border-radius:10px; padding:6px; background:var(--c-surface-2); }
+  .nf-fitem { background:var(--c-surface); border:1px solid var(--c-border); border-radius:8px; padding:10px 12px; margin:6px; }
+  .nf-fhead { display:flex; align-items:center; gap:10px; font-size:13.5px; }
+  .nf-fid { font-family:var(--mono); font-weight:700; }
+  .nf-fbadge { margin-left:auto; padding:2px 9px; border-radius:6px; font-size:12px; font-weight:700; }
+  .nf-fbadge.ng { background:var(--c-ng-soft); color:var(--c-ng); }
+  .nf-fbadge.miss, .nf-fbadge.err { background:var(--c-surface-2); color:var(--muted); border:1px solid var(--c-border); }
+  .nf-fmsg { margin-top:7px; font-size:13px; color:var(--c-ng); }
+  .nf-diff { margin-top:8px; font-family:var(--mono); font-size:12.5px; }
+  .nf-dl { padding:6px 0; border-top:1px dashed var(--c-border); }
+  .nf-dl:first-child { border-top:0; }
+  .nf-ln { color:var(--muted); font-size:11.5px; }
+  .nf-da, .nf-db { white-space:pre-wrap; word-break:break-all; }
+  .nf-da b, .nf-db b { font-family:var(--font, inherit); font-size:11px; margin-right:6px; color:var(--muted); }
+  .nf-diff mark.a { background:#ffd8d8; }
+  .nf-diff mark.b { background:#d8f0d8; }
+  .nf-more { color:var(--muted); font-size:12px; padding:8px 6px; }
 </style>
 </head>
 <body>
@@ -485,11 +503,12 @@
                 <div class="nf-when" id="nf-when"></div>
                 <div class="nf-tally nf-tally-lg" id="nf-done-tally"></div>
                 <div class="nf-actions">
+                  <button class="run primary" id="nf-show-fail" style="display:none">不一致を表示</button>
                   <button class="primary" id="nf-dl-evidence">⬇ 試験成績書(Excel)</button>
                   <button class="ghost" id="nf-dl-report">⬇ レポート(CSV)</button>
                   <button class="ghost" id="nf-again">もう一度（最初から）</button>
                 </div>
-                <div class="nf-hint">不一致(NG/MISSING/ERROR)の詳細は <b>Quarantine</b>・<b>Artifacts</b> タブ。</div>
+                <div class="nf-fail" id="nf-fail" style="display:none"></div>
               </div>
             </div>
           </section>
@@ -900,8 +919,53 @@ syncEnv();
     t.className = "nf-big"+(bad>0?" nf-bad":"");
     $("nf-when").textContent = st.finished_at ? "実行日時: "+new Date(st.finished_at*1000).toLocaleString() : "";
     $("nf-done-tally").innerHTML=tallyHtml(c);
+    const fb=$("nf-show-fail");
+    if(bad>0){ fb.style.display=""; fb.textContent=`不一致を表示（${bad.toLocaleString()}件）`; }
+    else fb.style.display="none";
+    $("nf-fail").style.display="none"; $("nf-fail").innerHTML="";  // 토글 초기화
     NF.reportName=(st.summary && st.summary.report_name) || null;
     screen('done');
+  }
+  // 문자 단위 diff 하이라이트(공통 prefix/suffix 제외 후 가운데만 mark)
+  function diffMark(a,b){
+    a=String(a==null?"":a); b=String(b==null?"":b);
+    let s=0; const n=Math.min(a.length,b.length);
+    while(s<n && a[s]===b[s]) s++;
+    let ea=a.length, eb=b.length;
+    while(ea>s && eb>s && a[ea-1]===b[eb-1]){ ea--; eb--; }
+    const wrap=(t,cls)=> t ? `<mark class="${cls}">${escapeHtml(t)}</mark>` : "";
+    return [ escapeHtml(a.slice(0,s))+wrap(a.slice(s,ea),"a")+escapeHtml(a.slice(ea)),
+             escapeHtml(b.slice(0,s))+wrap(b.slice(s,eb),"b")+escapeHtml(b.slice(eb)) ];
+  }
+  const _MISS = { MISSING_TOBE:"To-Be 出力がありません（新環境バッチが結果を生成しませんでした）",
+                  MISSING_ASIS:"As-Is 正解がありません（対応する正解ファイルが見つかりません）" };
+  function failItemHtml(it){
+    const cls = it.status==="NG" ? "ng" : (it.status==="ERROR" ? "err" : "miss");
+    const name = escapeHtml(it.shell_id) + (it.output_name ? " / "+escapeHtml(it.output_name) : "");
+    const head = `<div class="nf-fhead"><span class="nf-fid">${name}</span><span class="nf-fbadge ${cls}">${it.status}</span></div>`;
+    let body="";
+    if(it.status==="NG"){
+      body = '<div class="nf-diff">' + (it.diff_lines||[]).map(d=>{
+        const [a,b]=diffMark(d.asis_content,d.tobe_content);
+        return `<div class="nf-dl"><div class="nf-ln">${d.line_number}行目</div><div class="nf-da"><b>As-Is</b>${a}</div><div class="nf-db"><b>To-Be</b>${b}</div></div>`;
+      }).join("") + (it.diff_truncated ? '<div class="nf-more">… 以降は試験成績書/レポートで</div>' : "") + '</div>';
+    } else if(it.status==="ERROR"){
+      body = `<div class="nf-fmsg">エラー: ${escapeHtml(it.error_message||"")}</div>`;
+    } else {
+      body = `<div class="nf-fmsg">${_MISS[it.status]||it.status}</div>`;
+    }
+    return `<div class="nf-fitem">${head}${body}</div>`;
+  }
+  async function showFailures(){
+    const box=$("nf-fail");
+    if(box.style.display!=="none"){ box.style.display="none"; return; }  // 토글
+    box.style.display=""; box.innerHTML='<div class="nf-more">読み込み中…</div>';
+    try{
+      const r=await (await fetch("/run/results?config="+encodeURIComponent(activeConfig()))).json();
+      if(!r.items || !r.items.length){ box.innerHTML='<div class="nf-more">不一致はありません。</div>'; return; }
+      const note = r.truncated ? `<div class="nf-more">${r.total_bad.toLocaleString()}件中 先頭${r.shown}件を表示（残りは試験成績書/レポートで）</div>` : "";
+      box.innerHTML = note + r.items.map(failItemHtml).join("");
+    }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
   }
   function poll(){
     clearInterval(NF.poll);
@@ -936,6 +1000,7 @@ syncEnv();
     $("nf-resume").addEventListener("click", ()=> start(true));
     $("nf-restart").addEventListener("click", ()=> start(false));
     $("nf-again").addEventListener("click", ()=>{ clearInterval(NF.poll); screen('select'); });
+    $("nf-show-fail").addEventListener("click", showFailures);
     $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+encodeURIComponent(activeConfig()); });
     $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName); });
     init();

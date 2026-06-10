@@ -293,6 +293,46 @@ def run_resumable():
         return jsonify({"resumable": False})
 
 
+# 결과 표시(브라우저) — 불일치만, 대용량 화면 보호용 캡.
+_BAD_STATUSES = {"NG", "MISSING_TOBE", "MISSING_ASIS", "ERROR"}
+_RESULTS_CAP = 500   # 표시 항목(출력) 수 상한
+_DIFF_CAP = 200      # 결과당 diff 줄 상한
+
+
+@app.route("/run/results")
+def run_results():
+    """직전 검증의 불일치(NG/MISSING/ERROR)를 브라우저 표시용 JSON으로 — 체크포인트 재사용, 코어 무수정.
+
+    NG는 diff_lines(As-Is↔To-Be) 포함. 대용량 보호로 결과당 _DIFF_CAP 줄·총 _RESULTS_CAP 건 캡
+    (나머지는 試験成績書/レポートで). config·checkpoint 미비면 빈 목록.
+    """
+    try:
+        config = load_config(_active_config())
+        cp = store.checkpoint_path(config.report_dir)
+        if not store.has_checkpoint(cp):
+            return jsonify({"items": [], "total_bad": 0, "shown": 0, "truncated": False})
+        bad = [r for r in store.latest_results(cp) if r.status.value in _BAD_STATUSES]
+        items = []
+        for r in bad[:_RESULTS_CAP]:
+            items.append({
+                "shell_id": r.shell_id,
+                "output_name": r.output_name,
+                "status": r.status.value,
+                "error_message": r.error_message,
+                "diff_lines": [
+                    {"line_number": d.line_number, "asis_content": d.asis_content, "tobe_content": d.tobe_content}
+                    for d in r.diff_lines[:_DIFF_CAP]
+                ],
+                "diff_truncated": len(r.diff_lines) > _DIFF_CAP,
+            })
+        return jsonify({
+            "items": items, "total_bad": len(bad), "shown": len(items),
+            "truncated": len(bad) > _RESULTS_CAP,
+        })
+    except Exception:  # noqa: BLE001 — 미비·오류면 빈 목록(화면이 깨지지 않게)
+        return jsonify({"items": [], "total_bad": 0, "shown": 0, "truncated": False})
+
+
 @app.route("/preflight")
 def preflight_check():
     """C3 프리플라이트(dry-run) — 실행 없이 점검만. 문제를 모두 모아 JSON으로 돌려준다(C3 재사용).
