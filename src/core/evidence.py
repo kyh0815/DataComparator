@@ -1,9 +1,11 @@
 """C4 試験成績書(Excel) — 정의(계획) + store 최신 머지 상태로 元請け 납품물을 만든다 (HANDOFF_V3 C4).
 
-2시트: 要約(全件/OK/NG/ERROR/MISSING/未実行/消化率) + 明細(全件: 체크리스트·항목·状態·結果時刻·차이).
+3시트: 要約(全件/OK/NG/ERROR/MISSING/未実行/消化率) + 明細(全件: 체크리스트·항목·状態·結果時刻·차이)
+       + 差分明細(NG의 全差分: 어느 行이 어떻게 — As-Is↔To-Be, 납품·감사용).
 - 全件 = **정의 기준 전체 항목**(未実行 가시화), 消化率 = 実施/全件(실시율).
 - 明細은 全件 — 행마다 결과 출처(run_id)를 박아 **낡은 OK가 최신으로 위장하지 못하게**(req2). NG 행은
   状態=NG로 구분되어 NG明細을 겸한다. MISSING_ASIS/MISSING_TOBE는 NG와 별도 状態(정답없음 vs 값틀림, req4).
+- 差分明細은 NG 줄별 차이를 전부 펼쳐 "어느 行이 現→新으로 어떻게 틀렸는지"를 단일 문서로 보인다(감사 설득력).
 
 openpyxl은 C4 전용 의존 — 함수 안에서 지연 import(없으면 명시 에러). print 금지(Core는 파일만 생성).
 """
@@ -69,6 +71,31 @@ def build_rows(
     return rows
 
 
+def build_diff_rows(
+    definitions: list[ShellDefinition], records: list[ShellRecord]
+) -> list[tuple[str, str, str, int, str, str]]:
+    """NG 항목의 줄별 차이를 전부 펼친 행(감사용: 어느 行이 어떻게 틀렸는지).
+
+    반환 튜플 = (test_id, test_name, 항목라벨, 行번호, As-Is, To-Be). NG가 아니거나 diff_lines가
+    없으면 행을 만들지 않는다(차분 없음). 키 규약은 build_rows와 동일((test_id, output_name)).
+    """
+    index: dict[tuple[str, str | None], ComparisonResult] = {}
+    for rec in records:
+        for r in rec.results:
+            index[(r.shell_id, r.output_name)] = r
+
+    rows: list[tuple[str, str, str, int, str, str]] = []
+    for d in definitions:
+        multi = len(d.outputs) > 1
+        for out in d.outputs:
+            r = index.get((d.test_id, out.label if multi else None))
+            if r is not None and r.status == ComparisonStatus.NG:
+                for line in r.diff_lines:
+                    rows.append((d.test_id, d.test_name, out.label,
+                                 line.line_number, line.asis_content, line.tobe_content))
+    return rows
+
+
 def _detail(r: ComparisonResult) -> str:
     """状態별 차이/사유 요약(明細 셀). NG는 건수+첫 차이, 그 외는 사유."""
     if r.status == ComparisonStatus.NG:
@@ -106,7 +133,7 @@ def summarize(rows: list[_Row]) -> dict:
 def generate_evidence(
     definitions: list[ShellDefinition], records: list[ShellRecord], output_path: Path
 ) -> Path:
-    """試験成績書 .xlsx를 output_path에 생성하고 경로를 반환한다(要約 + 明細 2시트)."""
+    """試験成績書 .xlsx를 output_path에 생성하고 경로를 반환한다(要約 + 明細 + 差分明細 3시트)."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font
@@ -151,6 +178,17 @@ def generate_evidence(
         c.font = bold
     for row in rows:
         ws2.append([row.test_id, row.test_name, row.item, row.status, row.run_id, row.detail])
+
+    # --- 差分明細 시트(NG 全差分: 어느 行이 現→新으로 어떻게 — 납품·감사용) ---
+    ws3 = wb.create_sheet("差分明細")
+    ws3.append(["チェックリスト", "試験名", "項目", "行", "As-Is(現)", "To-Be(新)"])
+    for c in ws3[1]:
+        c.font = bold
+    diff_rows = build_diff_rows(definitions, records)
+    for (tid, tname, item, ln, asis, tobe) in diff_rows:
+        ws3.append([tid, tname, item, f"L{ln}", asis, tobe])
+    if not diff_rows:
+        ws3.append(["（差分なし）"])
 
     wb.save(output_path)
     return output_path
