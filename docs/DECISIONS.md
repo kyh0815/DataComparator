@@ -977,3 +977,31 @@ GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
 
 **이유**: 원래 비전(한 흐름 자동 E2E)에 맞춰 화면 분절을 제거. D-044(ModernizePro 탭 셸)의 세그먼트 개념은
 유지하되, 핵심 검증 흐름만 단일 세그먼트로 합쳐 마찰 제거(D-034 경량화 정신과 합치).
+
+## D-054. 検証フロー 재설계 1단계 — 백그라운드 실행(RunManager) + 상태 엔드포인트 (코어 무수정)
+
+**배경**: GUI를 "긴 세로 스크롤 아코디언"에서 "한 화면 자동 전환 + 실행 후 자리 비워도 복귀"로
+재설계(설계 승인됨). §0 조사: `/run`(SSE)은 데몬 워커라 실행은 끊겨도 계속 도나 **진행을 되읽을
+서버 상태가 없고**, `_run_lock`을 generator finally가 조기 해제하는 **버그1**(실행 중 2차 기동 가능)이
+있었다. 단 코어가 셸 종료 직후 **checkpoint.jsonl에 fsync**(영속)하므로 상태 복원의 토대는 이미 있음.
+
+**결정(1단계, 인터페이스 계층만 — 코어/기존 엔드포인트 무수정)**:
+- `src/gui/run_manager.py` 신설: 전역 단일 `RunManager`(락 + RunState). `run_full_comparison`을
+  백그라운드 데몬 스레드로 감싸 진행/결과를 서버에 보존. 락은 **워커 생명주기 전체** 보유·워커
+  finally에서만 해제(버그1 수정 — 연결 종속 제거).
+- `POST /run/start`(즉시 반환, 진행 중 409, resume 플래그=코어 통과) + `GET /run/status`(폴링·재접속
+  복원용 스냅샷: state·total(셸)·counts(출력)·current·started_at/finished_at·summary·error).
+- **락 단일화(조건1)**: 구 `/run` SSE도 `run_manager` 락을 거치게 일원화 → 동시 기동 구멍 제거.
+  구 SSE 기능(실시간 push)은 유지. (신규 UI는 폴링 기반으로 이행 후 구 SSE 정리 — 후속 단계)
+- **예외 안전(조건2)**: 워커 크래시도 finally `end()`로 락 해제 + 상태 `failed` 보존(테스트 포함).
+- **타임스탬프(조건3)**: started_at/finished_at — "이 결과가 언제 것인가"(어제 결과를 방금처럼 보이지 않게).
+
+**단위 주의**: `total`=셸 수(ProgressEvent.total), `counts`/`done`=출력 수(N:M라 셸≠출력). 진행률 분모는
+프론트가 from-csv의 output_count 합(출력)을 보존해 `done`과 짝짓는다(설계대로). 백엔드는 둘 다 제공.
+
+**검증**: 단위 테스트 +3 + 격리 fixture, 구 SSE 테스트 2건 유지. dc-pg 실 데모를 `/run/start`로 백그라운드
+실행 → `/run/status`가 done/OK22·NG4·MISSING1/타임스탬프/summary 정확 반영(curl). 299 passed/10 skipped.
+
+**다음 단계(설계 2~6)**: 프론트 상태머신(고정 뷰포트·in-place) → 자동 연쇄(SELECT→READY) → RUNNING 폴링/
+DONE/재접속 복원 → RESUMABLE(중단 checkpoint 감지 + resume) → 구 아코디언/SSE 정리.
+**단일 프로세스 전제**(app.run threaded) — 다중 워커 WSGI면 RunState 깨짐(배포 가이드 명시 필요, 리스크).

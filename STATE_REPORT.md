@@ -16,6 +16,10 @@
 > - **수동 QA 회귀 발견·수정(D-051)**: GUI `/`에 complete_sample 업로드 시 `RangeError: Maximum call stack`
 >   — `index.html`의 `activeConfig`가 자기호출 무한재귀(b1bf0a7 혼입)로 **2026-06-08 이후 메인 화면 config 의존
 >   동작 전부 깨져 있었음**. `#config` 셀렉터 값 반환으로 수정 + 정적 가드 테스트(서버 test_gui는 JS 미실행이라 놓침).
+> - **検証フロー 재설계 1단계(D-054)**: "실행 후 자리 비워도 와서 보면 끝나있다"를 위한 백엔드. `src/gui/run_manager.py`
+>   (전역 RunManager=락+RunState, run_full_comparison을 백그라운드 데몬 스레드로 감쌈) + `POST /run/start`·`GET /run/status`.
+>   §0 버그1(락 조기해제) 수정·구 /run SSE 락 단일화(조건1)·워커 예외 안전(조건2)·started/finished_at(조건3).
+>   코어/기존 엔드포인트 무수정. 단위테스트+3, dc-pg 실데모 백그라운드 curl 검증. **다음=프론트 상태머신(2~6단계)**.
 > - **GUI 자동 흐름 복원(D-052)**: 원래 비전(Mapping→Execution→결과 자동 E2E) — 점검·실행이 별도 탭 수동 2버튼
 >   이던 것을 **단일 `一括実行` 버튼**(점검 자동→0에러면 실행→결과/성적서 연쇄, 점검은 안전게이트 유지)으로.
 >   Mapping 저장 직후 'このまま一括実行' CTA로 한 흐름. 코어/엔드포인트 무수정(인터페이스 wiring). 동반: 저장 CRLF 정규화.
