@@ -96,12 +96,12 @@ def _sse_messages(raw: bytes) -> list[dict]:
 
 
 def test_index_serves_japanese_page(client):
-    """単一画面(縦アコーディオン): 接続設定 + ①定義 ②事前点検 ③検証実行 ④結果(GUI 재구성)."""
+    """검証フロー(상태머신) + Project Settings 단일 화면. 일본어 핵심 문구가 렌더된다."""
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "現新比較" in body and "検証実行" in body and "接続設定" in body
-    assert "事前点検" in body and "試験成績書" in body  # 4단계 동선이 한 화면에
+    assert "現新比較" in body and "検証フロー" in body and "接続設定" in body
+    assert "検証開始" in body and "試験成績書" in body  # 상태머신 핵심 화면 문구
 
 
 def test_index_active_config_accessor_not_self_recursive(client):
@@ -114,19 +114,6 @@ def test_index_active_config_accessor_not_self_recursive(client):
     body = client.get("/").get_data(as_text=True)
     assert "activeConfig = () => activeConfig()" not in body  # 자기재귀 금지
     assert 'const activeConfig =' in body and '$("config")' in body  # #config 값을 읽는 accessor
-
-
-def test_index_embeds_definition_preview(client, monkeypatch):
-    """index가 config 정의 파일을 요약해 JSON으로 임베드한다(실행 전 미리보기)."""
-    monkeypatch.setattr(
-        web, "_definition_preview",
-        lambda p: {"ok": True, "count": 2,
-                   "shells": [{"test_id": "001", "input_type": "database",
-                               "output_type": "file", "input_count": 2, "output_count": 1}],
-                   "message": "2 シェル"},
-    )
-    body = client.get("/").get_data(as_text=True)
-    assert "2 シェル" in body and '"input_count": 2' in body
 
 
 def test_run_streams_progress_then_summary(client, monkeypatch):
@@ -240,15 +227,17 @@ def test_run_resumable_false_without_checkpoint(client, monkeypatch):
     assert client.get("/run/resumable").get_json()["resumable"] is False
 
 
-def test_index_has_new_flow_state_machine(client):
-    """新検証フロー(β) 상태머신 패널 + 7화면 + 핵심 배선이 렌더된다(회귀 가드)."""
+def test_index_is_state_machine_flow(client):
+    """검証フロー = 상태머신 패널(기본 활성) + 7화면 + 핵심 배선. 구 아코디언은 제거됨(회귀 가드)."""
     body = client.get("/").get_data(as_text=True)
-    assert 'data-tab="flow2"' in body and 'data-panel="flow2"' in body
+    assert 'data-tab="flow2"' in body and 'class="tabpanel show" data-panel="flow2"' in body
     for sc in ("select", "prep", "resumable", "ready", "blocked", "running", "done"):
         assert f'data-screen="{sc}"' in body, sc
     assert 'id="nf-start"' in body and 'id="nf-csv"' in body
     assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body
-    assert 'data-panel="verify"' in body  # 기존 検証フロー 패널과 병존(아직 미제거)
+    # 구 검証フロー(아코디언)·Artifacts·Quarantine 패널·옛 실행 버튼 제거 확인
+    assert 'data-panel="verify"' not in body and 'data-panel="quarantine"' not in body
+    assert 'id="runall"' not in body and 'id="results"' not in body
 
 
 def test_report_download_ok(client, monkeypatch, tmp_path):
@@ -582,13 +571,3 @@ def test_definition_save_normalizes_crlf(client, monkeypatch, tmp_path):
     raw = target.read_bytes()
     assert b"\r\n" not in raw
     assert raw == b"tests:\n- test_id: '001'\n"
-
-
-def test_index_has_runall_one_button_flow(client):
-    """검証フロー 한 화면에 一括実行(点検→実行→結果) 단일 버튼 흐름이 렌더된다(회귀 가드)."""
-    body = client.get("/").get_data(as_text=True)
-    assert 'data-tab="verify"' in body and 'data-panel="verify"' in body  # Mapping+Execution 병합 세그먼트
-    assert 'data-tab="execution"' not in body and 'data-panel="execution"' not in body  # 옛 분리 탭 제거
-    assert 'id="runall"' in body              # 一括実行 버튼
-    assert "async function runAll(" in body   # 점검→0에러면 실행 연쇄
-    assert 'scrollToEl("runall-bar"' in body  # 정의 저장 후 자동 전진(같은 화면 스크롤)
