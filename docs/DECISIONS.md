@@ -897,3 +897,26 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 
 **이유**: 자가검증 6항의 **silent drop** 원칙 — 사용자 의도·검증 대상이 경고/에러 없이 사라지면 안 된다.
 세 건 모두 "조용히 잘못"을 "loud 실패 또는 경고"로 바꾼 것(동작 보존, 가시성 강화).
+
+## D-050. 보안/온프레미스 감사 — H 1차(코어 repr 차단 + 위생 3건)
+
+**배경**: HANDOFF_7 H(보안/온프레미스). 일본 엔터프라이즈 온프레미스 배포 차단요건
+(자격=env만·데이터 비반출·로그 비밀 0·config 평문 0·오프라인)을 코드 정독으로 감사.
+
+**감사 결과 — 핵심은 견고(✅)**: 외부 네트워크 호출 0(localhost webbrowser/flask/psycopg2만),
+`shell=True`/eval/os.system 0, GUI 기본 바인드 127.0.0.1, GUI는 폼에서 비번 미수령(env만)·
+클라엔 password_env 이름만 반환, `save_connection`이 `db.pop("password")`로 config에 평문 비번 미기록.
+
+**수정(3건)**:
+1. **코어 repr 차단(사용자 승인 — 코어 무수정 예외)**: `DatabaseConfig`(dataclass) 자동 repr이
+   password를 평문 출력 → repr/로그/예외로 누출될 지뢰(활성 누출은 0). `password` 필드에 `field(repr=False)`.
+   값 보관·접속 동작 불변. `models.py` 1줄 + 가드 테스트 1건.
+2. **devpw 평문 제거**: `HANDOFF_6/7.md`의 데모 DB 비번 `devpw` → 환경변수 참조로 리다이렉트
+   (레포 자체 '★평문 금지' 정책 일치).
+3. **공개 레포 위생 .gitignore**: 원자적 저장 산출물 `config.yaml.bak`/`.tmp`(고객 DB host/user 포함) +
+   `ui_screenshot/`(형제 제품 디자인 참조) 무시.
+
+**deferred/참고**: preflight DB 접속 에러는 psycopg2 예외를 그대로 노출하나 표준 접속 에러 메시지에
+비번은 미포함(인증실패=user명만). 실데이터 운영에서 예외 문자열 점검은 F(운영 엣지)에서 재확인.
+
+**범위**: 코어 `models.py` 1줄(승인)·문서·.gitignore. 293 passed/10 skipped.

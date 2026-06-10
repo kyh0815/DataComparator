@@ -4,14 +4,16 @@
 > 코드 수정 없음. 불확실한 것은 "불확실"로 명시.
 
 > **2026-06-10 갱신(요지 — 이 블록이 최현행. 아래는 과거 스냅샷)**
-> - 테스트 **292 passed / 10 skipped**(회귀 0). 코어 무수정 유지. main=`195dc1d` 기준 워킹트리에 미커밋 변경(아래 D-049).
-> - **HANDOFF_7 J(직전 변경분 D-046~048 적대적 검토)** 1차 수행 → 매핑도구 **silent-drop/collision 3건**을
->   발견·수정(**D-049**, 코어 밖 `tools/mapping_to_definition.py`만 + 테스트 6건, 35→41).
->   ① sam+명시 compare_mode 강등 시 vsam과 동일 경고(무경고였음) ② xlsx 다중/비활성 시트 silent-drop →
->   데이터 시트 탐색+다중시 loud 에러 ③ 셸 내 동일 To-Be 출력경로 충돌 → 에러(덮어쓰기 검증손실 방지).
+> - 테스트 **293 passed / 10 skipped**(회귀 0). 브랜치 `feat/qa-mapping-guards`(미푸시), base=main `195dc1d`. 코어=models.py repr 1줄만(승인).
+> - **HANDOFF_7 J(직전 변경분 D-046~048 적대적 검토)** → 매핑도구 **silent-drop/collision 3건** 발견·수정
+>   (**D-049**, 코어 밖 `tools/mapping_to_definition.py`만 + 테스트 6건). ① sam+명시 compare_mode 강등 시 vsam과 동일
+>   경고(무경고였음) ② xlsx 다중/비활성 시트 silent-drop → 데이터 시트 탐색+다중시 loud 에러 ③ 셸 내 동일 To-Be
+>   출력경로 충돌 → 에러(덮어쓰기 검증손실 방지).
+> - **HANDOFF_7 H(보안/온프레미스 감사)** 1차(**D-050**): 핵심 견고 확인(외부 네트워크 0·shell=True 0·GUI 비번 env만·
+>   config 평문 비번 미기록). 수정 3건 — ① 코어 `DatabaseConfig.repr` 비번 차단(`field(repr=False)`, 사용자 승인)
+>   ② docs `devpw` 평문 → env 참조 ③ `config.yaml.bak`/`.tmp`·`ui_screenshot/` .gitignore.
 > - **정상 확인(발견 아님)**: io/kind 별칭 우선순위, in_encoding·setup 로더 도달, 빈 xlsx 거부, `;`시퀀스 거부, 파일출력 idx 분리.
-> - 위생(미수정·보고만): `config.yaml.bak`(원자적저장 산출물)·`ui_screenshot/`가 .gitignore 미보호(평문 비밀은 없음 ✅).
-> - **다음**: J 잔여(N:M·config단일진실 데모 e2e 재현은 DB 필요) → H(보안 감사) → F(에러/엣지).
+> - 커밋 6개(브랜치): 매핑 fix·docs(D-049)·gitignore·repr fix·docs hygiene. **다음**: F(에러/엣지) 또는 J 잔여(DB 필요한 데모 e2e).
 
 > **2026-06-08 갱신(요지 — 아래 2026-06-07·§0~§7은 과거 스냅샷)**
 > - 테스트 **278 passed / 10 skipped**(회귀 0). 코어(비교/실행/exporter/정의 스키마/checkpoint) **0수정** 유지.
