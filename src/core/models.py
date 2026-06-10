@@ -107,7 +107,9 @@ class DatabaseConfig:
     port: int
     dbname: str
     user: str
-    password: str | None = None  # password_env가 가리키는 환경변수에서 해석된 값
+    # repr=False: 비밀번호가 repr/로그/예외 문자열에 평문 노출되지 않게 차단(방어심층, D-049 H).
+    # 값 자체는 정상 보관·접속에 사용. 동작 불변 — repr 출력만 'password=...'를 생략한다.
+    password: str | None = field(default=None, repr=False)  # password_env 환경변수에서 해석된 값
     password_env: str = "POSTGRES_PASSWORD"
 
 
