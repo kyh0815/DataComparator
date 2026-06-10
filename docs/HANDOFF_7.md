@@ -69,11 +69,12 @@
 
 ## 6. 참고 — 자주 쓰는 명령
 ```bash
-python3 -m pytest -q                                              # 회귀(286 passed/10 skipped)
-POSTGRES_PASSWORD=devpw ./samples/complete/run_demo.sh           # 데모 e2e(dc-pg, config의 port로 접속)
+python3 -m pytest -q                                              # 회귀(292 passed/10 skipped)
+export POSTGRES_PASSWORD=…   # dc-pg 생성 시 정한 비번(레포에 평문 금지). 먼저 1회 export.
+POSTGRES_PASSWORD="$POSTGRES_PASSWORD" ./samples/complete/run_demo.sh   # 데모 e2e(dc-pg, config의 port로 접속)
 python3 tools/mapping_to_definition.py 매핑.xlsx -o def.yaml      # 매핑표(CSV/xlsx) → 정의 yaml
 python3 tools/make_xlsx_template.py                              # 공유용 엑셀 템플릿 재생성
-lsof -ti tcp:8000 | xargs -r kill; POSTGRES_PASSWORD=devpw GUI_PORT=8000 ./run_gui.sh   # GUI
+lsof -ti tcp:8000 | xargs -r kill; GUI_PORT=8000 ./run_gui.sh    # GUI(POSTGRES_PASSWORD은 위 export 사용)
 ```
-- 데모 DB: docker `dc-pg`(port 5433, user postgres, db compare_proto, password devpw). 죽었으면 `docker start dc-pg`.
+- 데모 DB: docker `dc-pg`(port 5433, user postgres, db compare_proto, 비번=환경변수 `POSTGRES_PASSWORD` 참조). 죽었으면 `docker start dc-pg`.
 - 팀원/실환경은 config의 `database` 값이 단일 진실(port 등 자기 환경에 맞춤).

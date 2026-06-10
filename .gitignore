@@ -22,5 +22,8 @@ config.yaml.tmp
 # 비밀
 .env
 
+# 형제 제품(ModernizePro) 디자인 참조 스크린샷 — 로컬 참조용, 공개 레포 미커밋(IP/기밀)
+ui_screenshot/
+
 # 현실형 환경 실효 설정(런타임 생성, host/port 덮어씀)
 .config.realistic.effective.yaml

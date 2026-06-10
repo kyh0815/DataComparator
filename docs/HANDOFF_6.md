@@ -105,13 +105,13 @@ python3 -m pytest -q
 
 # GUI 띄우기 (Flask non-debug → 템플릿 수정 후 반드시 서버 재시작)
 lsof -ti tcp:8000 | xargs -r kill
-POSTGRES_PASSWORD=devpw GUI_PORT=8000 nohup ./run_gui.sh >/tmp/dc_gui.log 2>&1 &
+POSTGRES_PASSWORD="$POSTGRES_PASSWORD" GUI_PORT=8000 nohup ./run_gui.sh >/tmp/dc_gui.log 2>&1 &  # 비번은 먼저 export(레포 평문 금지)
 # → http://127.0.0.1:8000/  (브라우저 ⌘+Shift+R로 캐시 무시)
 
 # 데모 e2e
 cd samples/complete && ./run_demo.sh
 ```
-- **데모 DB**: docker `dc-pg`(port 5433, user=postgres, **password=devpw**, db=compare_proto). 죽었으면 `docker start dc-pg`.
+- **데모 DB**: docker `dc-pg`(port 5433, user=postgres, **비번=환경변수 `POSTGRES_PASSWORD` 참조**, db=compare_proto). 죽었으면 `docker start dc-pg`.
 - **정본 샘플**: `samples/complete/`(20 CK, OK17/NG3/MISSING1). 빈 템플릿 `definition_template.csv`(UTF-8 BOM).
 
 ---
