@@ -45,6 +45,7 @@ from src.core.preflight import preflight
 from tools.mapping_to_definition import mapping_to_definition, read_mapping_bytes
 
 from . import connection
+from .run_manager import run_manager
 from .serialize import event_to_dict, summary_to_dict
 from .upload import summarize_definition_path
 
@@ -63,8 +64,7 @@ def _active_config() -> str:
     """
     return request.values.get("config") or _DEFAULT_CONFIG
 
-# 동시 실행 1건 제한. 해제는 스트림 제너레이터의 finally에서.
-_run_lock = threading.Lock()
+# 동시 실행 1건 제한·진행 상태는 run_manager가 단일 소스로 보유(구 /run·신 /run/start 공유).
 
 
 @app.route("/")
@@ -194,40 +194,79 @@ def run():
     shells = request.args.get("shells") or None
 
     def stream():
-        if not _run_lock.acquire(blocking=False):
+        # ★락은 run_manager가 소유하고 워커 finally에서만 해제한다(클라 끊김에 종속되지 않음 — bug1 수정).
+        if not run_manager.try_begin(config_path, shells):
             yield _sse({"type": "error", "message": "他の実行が進行中です。"})
             yield _sse({"type": "done"})
             return
-        try:
-            events: queue.Queue = queue.Queue()
+        events: queue.Queue = queue.Queue()
 
-            def worker():
-                start = time.perf_counter()
-                try:
-                    config = load_config(config_path)
-                    shell_ids = parse_shell_selector(shells) if shells else None
-                    summary = run_full_comparison(
-                        config,
-                        on_progress=lambda e: events.put({"type": "progress", **event_to_dict(e)}),
-                        shell_ids=shell_ids,
-                    )
-                    elapsed = time.perf_counter() - start
-                    events.put({"type": "summary", **summary_to_dict(summary, elapsed)})
-                except Exception as exc:  # noqa: BLE001 — 어떤 실패든 브라우저에 메시지로
-                    events.put({"type": "error", "message": str(exc)})
-                finally:
-                    events.put({"type": "done"})
+        def worker():
+            start = time.perf_counter()
+            try:
+                config = load_config(config_path)
+                shell_ids = parse_shell_selector(shells) if shells else None
 
-            threading.Thread(target=worker, daemon=True).start()
-            while True:
-                msg = events.get()
-                yield _sse(msg)
-                if msg["type"] == "done":
-                    break
-        finally:
-            _run_lock.release()  # 클라 끊김·예외에도 반드시 해제
+                def on_prog(e):
+                    run_manager.apply_progress(e)  # 폴링(/run/status)용 상태 갱신
+                    events.put({"type": "progress", **event_to_dict(e)})
+
+                summary = run_full_comparison(config, on_progress=on_prog, shell_ids=shell_ids)
+                elapsed = time.perf_counter() - start
+                run_manager.finish_done(summary, elapsed)
+                events.put({"type": "summary", **summary_to_dict(summary, elapsed)})
+            except Exception as exc:  # noqa: BLE001 — 어떤 실패든 브라우저에 메시지로 + 상태 failed
+                run_manager.finish_failed(str(exc))
+                events.put({"type": "error", "message": str(exc)})
+            finally:
+                run_manager.end()  # 먼저 락 해제 → 그 다음 done(소비자가 done을 본 시점엔 락 free 보장)
+                events.put({"type": "done"})
+
+        threading.Thread(target=worker, daemon=True).start()
+        while True:
+            msg = events.get()
+            yield _sse(msg)
+            if msg["type"] == "done":
+                break
 
     return Response(stream(), mimetype="text/event-stream")
+
+
+@app.route("/run/start", methods=["POST"])
+def run_start():
+    """검증을 백그라운드로 시작한다(즉시 반환). 진행/결과는 /run/status 폴링으로 본다.
+
+    이미 실행 중이면 409. resume=1이면 코어 resume(이어하기 — 미실행+ERROR만)로 통과(코어 파라미터).
+    워커는 데몬 스레드라 브라우저가 닫혀도 끝까지 돈다(상태는 서버 RunState/체크포인트에 보존).
+    """
+    config_path = _active_config()
+    shells = request.values.get("shells") or None
+    resume = request.values.get("resume") in ("1", "true", "yes", "on")
+    if not run_manager.try_begin(config_path, shells, resume=resume):
+        return jsonify({"ok": False, "message": "他の実行が進行中です。"}), 409
+
+    def worker():
+        start = time.perf_counter()
+        try:
+            config = load_config(config_path)
+            shell_ids = parse_shell_selector(shells) if shells else None
+            summary = run_full_comparison(
+                config, on_progress=run_manager.apply_progress, shell_ids=shell_ids, resume=resume,
+            )
+            run_manager.finish_done(summary, time.perf_counter() - start)
+        except Exception as exc:  # noqa: BLE001 — 워커 크래시도 락 해제 + failed 상태(조건2)
+            run_manager.finish_failed(str(exc))
+        finally:
+            run_manager.end()  # 예외 포함 반드시 락 해제
+
+    threading.Thread(target=worker, daemon=True).start()
+    return jsonify({"ok": True, "run_id": run_manager.snapshot()["run_id"]})
+
+
+@app.route("/run/status")
+def run_status():
+    """현재(또는 직전) 실행 상태 스냅샷(폴링용). 연결과 무관하게 서버 RunState를 반영 → 재접속 복원."""
+    return jsonify(run_manager.snapshot())
 
 
 @app.route("/preflight")
