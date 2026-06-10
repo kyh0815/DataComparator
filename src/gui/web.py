@@ -269,6 +269,30 @@ def run_status():
     return jsonify(run_manager.snapshot())
 
 
+@app.route("/run/resumable")
+def run_resumable():
+    """중단된 검증(미완 checkpoint)이 있으면 알려준다 — RESUMABLE 화면용(코어 store 재사용, 무수정).
+
+    서버 재시작 등으로 RunState가 비어도 디스크 checkpoint로 "9,000/10,000 完了" 같은 중단을 감지한다.
+    미비·오류면 그냥 재개 불가(resumable=False).
+    """
+    try:
+        config = load_config(_active_config())
+        cp = store.checkpoint_path(config.report_dir)
+        if not store.has_checkpoint(cp):
+            return jsonify({"resumable": False})
+        all_ids = [d.test_id for d in load_definitions(config.definition_file)]
+        total = len(all_ids)
+        done = len(store.load_records(cp))
+        remaining = len(store.shells_to_resume(cp, all_ids))
+        return jsonify({
+            "resumable": done > 0 and remaining > 0,
+            "total": total, "done": done, "remaining": remaining,
+        })
+    except Exception:  # noqa: BLE001 — 설정/정의/checkpoint 미비면 재개 불가로 처리
+        return jsonify({"resumable": False})
+
+
 @app.route("/preflight")
 def preflight_check():
     """C3 프리플라이트(dry-run) — 실행 없이 점검만. 문제를 모두 모아 JSON으로 돌려준다(C3 재사용).

@@ -216,6 +216,30 @@ def test_run_start_rejects_concurrent_with_409(client, monkeypatch):
     _poll_status(client, lambda s: s["state"] in ("done", "failed"))
 
 
+def test_run_resumable_detects_interrupted(client, monkeypatch, tmp_path):
+    """미완 checkpoint(9/10)면 resumable=True + done/total/remaining(서버 재시작 후 RESUMABLE 화면용)."""
+    cp = tmp_path / "checkpoint.jsonl"
+    monkeypatch.setattr(web, "load_config",
+                        lambda p: SimpleNamespace(report_dir=tmp_path, definition_file=tmp_path / "d.yaml"))
+    monkeypatch.setattr(web, "load_definitions",
+                        lambda p: [SimpleNamespace(test_id=f"{i:03d}") for i in range(1, 11)])
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: cp)
+    monkeypatch.setattr(web.store, "has_checkpoint", lambda p: True)
+    monkeypatch.setattr(web.store, "load_records", lambda p: {f"{i:03d}": object() for i in range(1, 10)})
+    monkeypatch.setattr(web.store, "shells_to_resume", lambda p, ids: ["010"])
+    r = client.get("/run/resumable").get_json()
+    assert r["resumable"] is True and r["total"] == 10 and r["done"] == 9 and r["remaining"] == 1
+
+
+def test_run_resumable_false_without_checkpoint(client, monkeypatch):
+    """checkpoint 없으면 resumable=False(미비·오류는 재개 불가로 안전 처리)."""
+    monkeypatch.setattr(web, "load_config",
+                        lambda p: SimpleNamespace(report_dir=Path("."), definition_file=Path("d.yaml")))
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: Path("nope.jsonl"))
+    monkeypatch.setattr(web.store, "has_checkpoint", lambda p: False)
+    assert client.get("/run/resumable").get_json()["resumable"] is False
+
+
 def test_report_download_ok(client, monkeypatch, tmp_path):
     (tmp_path / "report_ok.csv").write_text("shell_id,status\n001,OK\n", encoding="utf-8")
     monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=tmp_path))
