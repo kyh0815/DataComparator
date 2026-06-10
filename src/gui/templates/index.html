@@ -359,8 +359,9 @@
   .nf-big.nf-bad { color:var(--c-ng); }
   .nf-sub { color:var(--muted); font-size:14px; margin-bottom:20px; line-height:1.6; }
   .nf-hint { color:var(--c-text-faint); font-size:12.5px; margin-top:14px; }
-  .nf-hint a { color:#86b4ec; text-decoration:none; }
-  .nf-hint a:hover { color:#6c9ee0; text-decoration:underline; }
+  .nf-sample { display:inline-flex; align-items:center; gap:7px; color:var(--muted); text-decoration:none; font-size:12.5px; font-weight:600; padding:7px 15px; border:1px solid var(--c-border); border-radius:999px; background:var(--c-surface); transition:border-color .15s, color .15s, background .15s; }
+  .nf-sample:hover { color:var(--ink); border-color:var(--c-border-strong); background:var(--c-surface-2); }
+  .nf-sample .ic { opacity:.6; font-size:11px; }
   .nf-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:6px; }
   .nf-badge { font-size:13px; font-weight:700; color:var(--c-primary); margin-left:6px; }
   .nf-spin { width:42px; height:42px; margin:0 auto 18px; border:4px solid var(--c-surface-2); border-top-color:var(--c-primary); border-radius:50%; animation:nf-spin 0.8s linear infinite; }
@@ -491,7 +492,7 @@
                 <div class="nf-sub">マッピング表（CSV/xlsx）を選ぶと、定義生成 → 保存 → 点検まで自動で進みます。</div>
                 <input type="file" id="nf-csv" accept=".csv,.xlsx,text/csv" style="display:none">
                 <div class="nf-actions"><button class="run big primary" id="nf-pick">▶ マッピング表を選択</button></div>
-                <div class="nf-hint"><a href="/definition/sample-csv">サンプルCSVをダウンロード</a></div>
+                <div style="margin-top:18px"><a class="nf-sample" href="/definition/sample-csv"><span class="ic">⬇</span>サンプルCSV テンプレート</a></div>
               </div>
               <div class="nf-screen" data-screen="prep">
                 <div class="nf-spin"></div>
