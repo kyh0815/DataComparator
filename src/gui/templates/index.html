@@ -238,10 +238,6 @@
   .errbox { background:var(--ng-bg); border:1px solid var(--ng-bd); border-radius:var(--radius-sm); padding:11px 13px; margin-top:12px; font-size:13px; color:var(--c-ng); }
   .errbox ul { margin:6px 0 0; padding-left:18px; }
   .okline { color:var(--ok); font-weight:600; margin-top:12px; display:flex; align-items:center; gap:8px; }
-  .slist { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .schip { border:1px solid var(--line); border-radius:7px; padding:4px 9px; background:var(--c-surface); font-size:12px; }
-  .schip .sid { font-family:var(--mono); font-weight:600; }
-  .schip .io { color:var(--muted); margin-left:6px; }
 
   /* ---------- banners ---------- */
   .banner { display:none; padding:13px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; margin-bottom:14px; border:1px solid; align-items:flex-start; gap:10px; }
@@ -851,8 +847,8 @@ async function applyDefinition(){
     const sfd=new FormData(); sfd.append("yaml", gen.yaml); sfd.append("config", activeConfig());
     const sv=await (await fetch("/definition/save",{method:"POST",body:sfd})).json();
     if(!sv.ok){ res.innerHTML=`<div class="errbox">${escapeHtml(sv.message||"保存に失敗しました。")}</div>`; return; }
-    const chips=(gen.shells||[]).map(s=>`<span class="schip"><span class="sid">${escapeHtml(s.test_id)}</span><span class="io">入力×${s.input_count}・出力×${s.output_count}</span></span>`).join("");
-    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div><div class="slist">${chips}</div>`;
+    // 셸 목록 나열은 제거(대량 셸=수천 건일 때 화면을 덮음). 건수 요약만 표시.
+    res.innerHTML=`<div class="okline">✓ <span>${gen.count} シェルの定義を保存しました</span></div>`;
     await refreshDefPreview();
     markStepDone("step-def", `✓ 定義を保存しました（${gen.count} シェル）`);
   }catch(e){ res.innerHTML=`<div class="errbox">通信エラー: ${escapeHtml(e)}</div>`; }
