@@ -399,6 +399,33 @@
   .nf-diff mark.a { background:#ffd8d8; }
   .nf-diff mark.b { background:#d8f0d8; }
   .nf-more { color:var(--muted); font-size:12px; padding:8px 6px; }
+  /* 결과 리포트(DONE) — 풀폭·상단정렬 */
+  .nf-flow--report { align-items:flex-start !important; }
+  .nf-result { max-width:960px; text-align:left; }
+  .nf-rhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .nf-rhead .nf-big { margin:0; }
+  .nf-verdict { border-radius:12px; padding:16px 18px; margin-bottom:16px; border:1px solid; }
+  .nf-verdict.ok { background:var(--c-ok-soft, #e8f5e9); border-color:#c8e6c9; }
+  .nf-verdict.bad { background:var(--c-ng-soft); border-color:#f3c6c6; }
+  .nf-vmain { font-size:20px; font-weight:800; display:flex; align-items:baseline; gap:12px; }
+  .nf-verdict.ok .nf-vmain { color:var(--c-ok, #2e7d32); } .nf-verdict.bad .nf-vmain { color:var(--c-ng); }
+  .nf-vsub { font-size:14px; font-weight:600; color:var(--ink); }
+  .nf-vmeta { color:var(--muted); font-size:12.5px; margin-top:6px; }
+  .nf-metrics { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:stretch; }
+  .nf-mc, .nf-rate { border:1px solid var(--c-border); border-radius:10px; padding:12px 16px; min-width:84px; text-align:center; background:var(--c-surface); cursor:pointer; font:inherit; }
+  .nf-rate { cursor:default; background:var(--c-surface-2); margin-left:auto; }
+  .nf-mc:hover { border-color:var(--c-border-strong); box-shadow:var(--shadow-pop); }
+  .nf-mc-n { font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .nf-mc-l { font-size:11px; color:var(--muted); margin-top:5px; font-weight:700; letter-spacing:.3px; }
+  .nf-mc.ok .nf-mc-n { color:var(--c-ok, #2e7d32); } .nf-mc.ng .nf-mc-n { color:var(--c-ng); }
+  .nf-mc.err .nf-mc-n { color:var(--c-error, #b8860b); } .nf-mc.miss .nf-mc-n { color:var(--muted); }
+  .nf-arts { display:flex; align-items:center; gap:10px; padding:12px 0; border-top:1px solid var(--c-border); border-bottom:1px solid var(--c-border); margin-bottom:16px; }
+  .nf-arts-l { font-size:13px; font-weight:700; color:var(--muted); margin-right:4px; }
+  .nf-failhead { display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+  .nf-failhead h3 { margin:0; font-size:15px; }
+  .nf-chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .nf-chip { border:1px solid var(--c-border); border-radius:999px; padding:4px 12px; font-size:12.5px; background:var(--c-surface); cursor:pointer; font:inherit; }
+  .nf-chip.active { border-color:var(--c-primary); background:var(--c-primary); color:var(--c-primary-fg); font-weight:700; }
 </style>
 </head>
 <body>
@@ -498,17 +525,25 @@
                 <div class="nf-tally" id="nf-tally"></div>
                 <div class="nf-meta"><span id="nf-current"></span><span id="nf-elapsed"></span></div>
               </div>
-              <div class="nf-screen" data-screen="done">
-                <div class="nf-big" id="nf-done-title">検証完了</div>
-                <div class="nf-when" id="nf-when"></div>
-                <div class="nf-tally nf-tally-lg" id="nf-done-tally"></div>
-                <div class="nf-actions">
-                  <button class="run primary" id="nf-show-fail" style="display:none">不一致を表示</button>
+              <div class="nf-screen nf-result" data-screen="done">
+                <div class="nf-rhead">
+                  <div class="nf-big" id="nf-done-title">検証結果</div>
+                  <button class="ghost" id="nf-again">↻ もう一度</button>
+                </div>
+                <div class="nf-verdict" id="nf-verdict"></div>
+                <div class="nf-metrics" id="nf-metrics"></div>
+                <div class="nf-arts">
+                  <span class="nf-arts-l">成果物</span>
                   <button class="primary" id="nf-dl-evidence">⬇ 試験成績書(Excel)</button>
                   <button class="ghost" id="nf-dl-report">⬇ レポート(CSV)</button>
-                  <button class="ghost" id="nf-again">もう一度（最初から）</button>
                 </div>
-                <div class="nf-fail" id="nf-fail" style="display:none"></div>
+                <div class="nf-failsec" id="nf-failsec" style="display:none">
+                  <div class="nf-failhead">
+                    <h3>不一致の詳細</h3>
+                    <div class="nf-chips" id="nf-chips"></div>
+                  </div>
+                  <div class="nf-fail" id="nf-fail"></div>
+                </div>
               </div>
             </div>
           </section>
@@ -839,6 +874,7 @@ syncEnv();
   const STAGE = { select:1, prep:1, resumable:1, ready:2, blocked:2, running:3, done:4 };
   function screen(name){
     document.querySelectorAll('#nf-flow .nf-screen').forEach(s=> s.classList.toggle('show', s.dataset.screen===name));
+    $("nf-flow").classList.toggle("nf-flow--report", name==='done');  // 결과는 풀폭·상단정렬 리포트
     const n = STAGE[name]||1;
     document.querySelectorAll('#nf-stepper .nf-st').forEach(st=>{
       const k=+st.dataset.st;
@@ -912,19 +948,61 @@ syncEnv();
     $("nf-current").textContent=st.current_shell ? "現在: "+st.current_shell : "";
     $("nf-elapsed").textContent="経過 "+fmtTime(st.elapsed);
   }
+  function metricCard(label, n, cls, filter){
+    return `<button class="nf-mc ${cls}" data-filter="${filter}"><div class="nf-mc-n">${(n||0).toLocaleString()}</div><div class="nf-mc-l">${label}</div></button>`;
+  }
   function done(st){
-    const c=st.counts||{}, bad=(c.NG||0)+(c.ERROR||0)+(c.MISSING_TOBE||0)+(c.MISSING_ASIS||0);
-    const t=$("nf-done-title");
-    t.textContent = bad>0 ? "検証完了 — 不一致あり" : "✓ 検証完了 — すべて一致";
-    t.className = "nf-big"+(bad>0?" nf-bad":"");
-    $("nf-when").textContent = st.finished_at ? "実行日時: "+new Date(st.finished_at*1000).toLocaleString() : "";
-    $("nf-done-tally").innerHTML=tallyHtml(c);
-    const fb=$("nf-show-fail");
-    if(bad>0){ fb.style.display=""; fb.textContent=`不一致を表示（${bad.toLocaleString()}件）`; }
-    else fb.style.display="none";
-    $("nf-fail").style.display="none"; $("nf-fail").innerHTML="";  // 토글 초기화
-    NF.reportName=(st.summary && st.summary.report_name) || null;
+    const c=st.counts||{}, s=st.summary||{};
+    // summary(권위) 우선, 없으면 폴링 counts 폴백
+    const tot = s.total!=null ? s.total : Object.values(c).reduce((a,b)=>a+b,0);
+    const ok  = s.ok_count!=null ? s.ok_count : (c.OK||0);
+    const ng  = s.ng_count!=null ? s.ng_count : (c.NG||0);
+    const err = s.error_count!=null ? s.error_count : (c.ERROR||0);
+    const miss= s.missing_count!=null ? s.missing_count : ((c.MISSING_TOBE||0)+(c.MISSING_ASIS||0));
+    const bad = ng+err+miss;
+    const rate = tot ? Math.round(ok/tot*1000)/10 : 0;
+    // 판정 배너
+    const when = st.finished_at ? "実行日時 "+new Date(st.finished_at*1000).toLocaleString() : "";
+    const took = (s.elapsed_seconds!=null) ? " ・ 所要 "+s.elapsed_seconds+"秒" : "";
+    const v=$("nf-verdict"); v.className="nf-verdict "+(bad>0?"bad":"ok");
+    v.innerHTML = `<div class="nf-vmain">${bad>0?"✖ 不合格":"✓ 合格"}<span class="nf-vsub">${bad>0?`全 ${tot.toLocaleString()}件中 不一致 ${bad.toLocaleString()}件`:`全 ${tot.toLocaleString()}件 一致`}</span></div><div class="nf-vmeta">${when}${took}</div>`;
+    // 메트릭(클릭=필터)
+    $("nf-metrics").innerHTML =
+      metricCard("合計", tot, "total", "") + metricCard("OK", ok, "ok", "OK")
+      + metricCard("NG", ng, "ng", "NG") + metricCard("MISSING", miss, "miss", "MISSING")
+      + metricCard("ERROR", err, "err", "ERROR")
+      + `<div class="nf-rate"><div class="nf-mc-n">${rate}%</div><div class="nf-mc-l">一致率</div></div>`;
+    $("nf-metrics").querySelectorAll(".nf-mc").forEach(mc=> mc.addEventListener("click", ()=>{
+      const f=mc.dataset.filter; applyFailFilter((f==="OK"||f==="")?"":f);
+    }));
+    NF.reportName = s.report_name || null;
+    if(bad>0){ $("nf-failsec").style.display=""; loadFailures(); }
+    else { $("nf-failsec").style.display="none"; }
     screen('done');
+  }
+  async function loadFailures(){
+    const box=$("nf-fail"); box.innerHTML='<div class="nf-more">読み込み中…</div>';
+    try{
+      const r=await (await fetch("/run/results?config="+encodeURIComponent(activeConfig()))).json();
+      NF.failItems = r.items||[];
+      NF.failTrunc = r.truncated ? {total:r.total_bad, shown:r.shown} : null;
+      renderChips(); applyFailFilter("");
+    }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
+  }
+  function renderChips(){
+    const cnt={};
+    (NF.failItems||[]).forEach(it=>{ const k=it.status.indexOf("MISSING")===0?"MISSING":it.status; cnt[k]=(cnt[k]||0)+1; });
+    let chips=`<button class="nf-chip active" data-f="">すべて ${(NF.failItems||[]).length}</button>`;
+    ["NG","MISSING","ERROR"].forEach(k=>{ if(cnt[k]) chips+=`<button class="nf-chip" data-f="${k}">${k} ${cnt[k]}</button>`; });
+    const box=$("nf-chips"); box.innerHTML=chips;
+    box.querySelectorAll(".nf-chip").forEach(ch=> ch.addEventListener("click", ()=> applyFailFilter(ch.dataset.f)));
+  }
+  function applyFailFilter(f){
+    $("nf-chips").querySelectorAll(".nf-chip").forEach(x=> x.classList.toggle("active", x.dataset.f===f));
+    const items = !f ? (NF.failItems||[])
+      : (NF.failItems||[]).filter(it=> f==="MISSING" ? it.status.indexOf("MISSING")===0 : it.status===f);
+    const note = NF.failTrunc ? `<div class="nf-more">${NF.failTrunc.total.toLocaleString()}件中 先頭${NF.failTrunc.shown}件を表示（残りは試験成績書/レポートで）</div>` : "";
+    $("nf-fail").innerHTML = note + (items.length ? items.map(failItemHtml).join("") : '<div class="nf-more">該当なし</div>');
   }
   // 문자 단위 diff 하이라이트(공통 prefix/suffix 제외 후 가운데만 mark)
   function diffMark(a,b){
@@ -955,17 +1033,6 @@ syncEnv();
       body = `<div class="nf-fmsg">${_MISS[it.status]||it.status}</div>`;
     }
     return `<div class="nf-fitem">${head}${body}</div>`;
-  }
-  async function showFailures(){
-    const box=$("nf-fail");
-    if(box.style.display!=="none"){ box.style.display="none"; return; }  // 토글
-    box.style.display=""; box.innerHTML='<div class="nf-more">読み込み中…</div>';
-    try{
-      const r=await (await fetch("/run/results?config="+encodeURIComponent(activeConfig()))).json();
-      if(!r.items || !r.items.length){ box.innerHTML='<div class="nf-more">不一致はありません。</div>'; return; }
-      const note = r.truncated ? `<div class="nf-more">${r.total_bad.toLocaleString()}件中 先頭${r.shown}件を表示（残りは試験成績書/レポートで）</div>` : "";
-      box.innerHTML = note + r.items.map(failItemHtml).join("");
-    }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
   }
   function poll(){
     clearInterval(NF.poll);
@@ -1000,7 +1067,6 @@ syncEnv();
     $("nf-resume").addEventListener("click", ()=> start(true));
     $("nf-restart").addEventListener("click", ()=> start(false));
     $("nf-again").addEventListener("click", ()=>{ clearInterval(NF.poll); screen('select'); });
-    $("nf-show-fail").addEventListener("click", showFailures);
     $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+encodeURIComponent(activeConfig()); });
     $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName); });
     init();

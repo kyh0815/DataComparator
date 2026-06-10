@@ -262,7 +262,8 @@ def test_index_is_state_machine_flow(client):
     assert 'data-tab="flow2"' in body and 'class="tabpanel show" data-panel="flow2"' in body
     for sc in ("select", "prep", "resumable", "ready", "blocked", "running", "done"):
         assert f'data-screen="{sc}"' in body, sc
-    assert 'id="nf-start"' in body and 'id="nf-csv"' in body and 'id="nf-show-fail"' in body
+    assert 'id="nf-start"' in body and 'id="nf-csv"' in body
+    assert 'id="nf-verdict"' in body and 'id="nf-metrics"' in body and 'id="nf-failsec"' in body  # 결과 리포트
     assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body and "/run/results" in body
     # 구 검証フロー(아코디언)·Artifacts·Quarantine 패널·옛 실행 버튼 제거 확인
     assert 'data-panel="verify"' not in body and 'data-panel="quarantine"' not in body
