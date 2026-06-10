@@ -19,7 +19,7 @@
 > - **検証フロー 재설계 1단계(D-054)**: "실행 후 자리 비워도 와서 보면 끝나있다"를 위한 백엔드. `src/gui/run_manager.py`
 >   (전역 RunManager=락+RunState, run_full_comparison을 백그라운드 데몬 스레드로 감쌈) + `POST /run/start`·`GET /run/status`.
 >   §0 버그1(락 조기해제) 수정·구 /run SSE 락 단일화(조건1)·워커 예외 안전(조건2)·started/finished_at(조건3).
->   코어/기존 엔드포인트 무수정. **2단계(D-055)**: 新検証フロー(β) 상태머신 패널 병존 추가 + /run/resumable. 다음=β 기본 승격·구 UI 제거.
+>   코어/기존 엔드포인트 무수정. **2단계(D-055)**: 상태머신 패널 병존 + /run/resumable. **3단계(D-056)**: 상태머신 정식 승격·구 아코디언/Artifacts/Quarantine 제거(검証フロー+Settings 2세그먼트). node --check JS 검증. 300 passed.
 > - **GUI 자동 흐름 복원(D-052)**: 원래 비전(Mapping→Execution→결과 자동 E2E) — 점검·실행이 별도 탭 수동 2버튼
 >   이던 것을 **단일 `一括実行` 버튼**(점검 자동→0에러면 실행→결과/성적서 연쇄, 점검은 안전게이트 유지)으로.
 >   Mapping 저장 직후 'このまま一括実行' CTA로 한 흐름. 코어/엔드포인트 무수정(인터페이스 wiring). 동반: 저장 CRLF 정규화.
