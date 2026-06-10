@@ -13,7 +13,11 @@
 >   config 평문 비번 미기록). 수정 3건 — ① 코어 `DatabaseConfig.repr` 비번 차단(`field(repr=False)`, 사용자 승인)
 >   ② docs `devpw` 평문 → env 참조 ③ `config.yaml.bak`/`.tmp`·`ui_screenshot/` .gitignore.
 > - **정상 확인(발견 아님)**: io/kind 별칭 우선순위, in_encoding·setup 로더 도달, 빈 xlsx 거부, `;`시퀀스 거부, 파일출력 idx 분리.
-> - 커밋 6개(브랜치): 매핑 fix·docs(D-049)·gitignore·repr fix·docs hygiene. **다음**: F(에러/엣지) 또는 J 잔여(DB 필요한 데모 e2e).
+> - **수동 QA 회귀 발견·수정(D-051)**: GUI `/`에 complete_sample 업로드 시 `RangeError: Maximum call stack`
+>   — `index.html`의 `activeConfig`가 자기호출 무한재귀(b1bf0a7 혼입)로 **2026-06-08 이후 메인 화면 config 의존
+>   동작 전부 깨져 있었음**. `#config` 셀렉터 값 반환으로 수정 + 정적 가드 테스트(서버 test_gui는 JS 미실행이라 놓침).
+> - 커밋 8개(브랜치): 매핑 fix·docs(D-049)·gitignore·repr fix·docs hygiene·D-050·**GUI 회귀 fix**·D-051.
+>   **다음**: F(에러/엣지) 또는 J 잔여(DB 필요한 데모 e2e). GUI는 8080에서 수정본 기동 중(사용자 재시험 가능).
 
 > **2026-06-08 갱신(요지 — 아래 2026-06-07·§0~§7은 과거 스냅샷)**
 > - 테스트 **278 passed / 10 skipped**(회귀 0). 코어(비교/실행/exporter/정의 스키마/checkpoint) **0수정** 유지.

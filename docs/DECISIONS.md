@@ -920,3 +920,23 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 비번은 미포함(인증실패=user명만). 실데이터 운영에서 예외 문자열 점검은 F(운영 엣지)에서 재확인.
 
 **범위**: 코어 `models.py` 1줄(승인)·문서·.gitignore. 293 passed/10 skipped.
+
+## D-051. GUI activeConfig 무한재귀 회귀 수정 + JS 테스트 갭 인지 (수동 QA 산출)
+
+**배경**: 사용자 수동 QA(GUI `/`에 정본 `complete_sample.csv` 업로드)에서
+`通信エラー: RangeError: Maximum call stack size exceeded` 발생.
+
+**원인**: `index.html`의 `const activeConfig = () => activeConfig();`(b1bf0a7, 트랙2-B에서
+혼입) — base case 없는 자기호출. 메인 화면에서 config를 읽는 모든 동작(정의 생성·저장·
+preflight·실행·paths·groups)이 **2026-06-08 이후 전부 RangeError로 깨져 있었음**. /define 화면은
+`$("config").value`를 직접 읽어 무영향(그래서 from-csv 단독은 정상으로 보였음).
+
+**수정**: `activeConfig`를 `#config` 셀렉터(option value=config 경로) 선택값 반환 + `lastConfig`
+폴백으로. 서버 `_active_config()`(=`request.values.get("config") or _DEFAULT_CONFIG`)와 계약 일치.
+GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
+
+**교훈(테스트 갭)**: 서버측 `test_gui`(Flask test_client)는 **브라우저 JS를 실행하지 않아** 이 회귀를
+통과시켰다. 보강: 렌더 본문에서 자기재귀 패턴 부재 + `#config` 참조를 **정적 가드 테스트**로 확인
+(완전한 JS 실행 검증은 아니지만 이 부류 회귀는 차단). 향후 JS 흐름은 수동 QA/별도 E2E가 필요.
+
+**범위**: `src/gui/templates/index.html` 1줄 + `tests/test_gui.py` 가드 1건. 294 passed/10 skipped.
