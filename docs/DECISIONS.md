@@ -960,3 +960,20 @@ GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
 단일버튼으로 자동 흐름 복원).
 
 **deferred**: 더 깊은 경량화(탭→단일 화면 통합)는 별도 UX 결정 필요(지금은 탭 유지 + 자동 흐름만). i18n(G)·실 배치 연동(A) 무관.
+
+## D-053. Mapping+Execution 단일 '検証フロー' 세그먼트 병합 (D-052 deferred 실현)
+
+**배경**: D-052에서 "탭→단일 화면 통합은 별도 UX 결정 필요"로 보류했던 것을, 사용자 요청으로 실현.
+"Mapping이랑 Execution을 아예 같은 segmented control로 묶어 한 화면에서 자동으로 넘어가게."
+
+**결정**: 상단 세그먼트(기능 탭)에서 `Mapping`·`Execution` 두 탭을 **하나 `検証フロー`** 로 병합.
+①定義 → 一括実行(②点検 ③実行) → ④結果를 **한 패널/화면**에 두고, 정의 저장 직후 `一括実行` 영역으로
+**자동 스크롤**(scrollToEl)해 탭 이동 없이 흐름이 이어진다. 실제 실행은 단일 `一括実行` 버튼이 게이트(점검
+안전장치 유지 — D-052). Artifacts/Quarantine/Project Settings 세그먼트는 그대로.
+
+- 변경: 두 `tabpanel`(mapping/execution) → 하나(verify), `data-tab/data-panel` 갱신, `showTab("execution")→"verify"`,
+  저장 후 `goto-runall` CTA 제거→자동 스크롤, placeholder 문구 정정. **코어/엔드포인트 무수정**(인터페이스 계층).
+- 가드 테스트: verify 세그먼트 존재 + 옛 execution 분리탭 부재 + 자동전진 스크롤. 296 passed.
+
+**이유**: 원래 비전(한 흐름 자동 E2E)에 맞춰 화면 분절을 제거. D-044(ModernizePro 탭 셸)의 세그먼트 개념은
+유지하되, 핵심 검증 흐름만 단일 세그먼트로 합쳐 마찰 제거(D-034 경량화 정신과 합치).
