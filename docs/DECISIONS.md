@@ -874,3 +874,26 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 안 깨짐). ② `mapping_to_definition.read_mapping_bytes`가 **.xlsx를 직접 읽음**(zip 시그니처 감지 → 첫 시트
 → CSV 텍스트, openpyxl 지연 import=試験成績書와 동일 의존). CLI·GUI(定義作成 화면·`/definition/from-csv`)
 모두 CSV/xlsx 수용 → 팀원은 엑셀로 채워 **CSV 저장 단계 없이** 제출. 코어 무수정(도구·표시계층만).
+
+## D-049. 매핑도구 silent-drop/collision 3건 가드 (J 적대적 검토, 코어 무수정)
+
+**배경**: HANDOFF_7 J(직전 변경분 D-046~048 적대적 검토)에서 `mapping_to_definition`의 **검증 누락을
+조용히 일으키는** 3개 지점을 적대 케이스로 발견. 검증도구에서 "조용히 검증 안 함"은 false 커버리지(최악).
+
+**결정**(모두 매핑도구 비코어 국소 수정 — definition.py·orchestrator·comparator 무수정, 292 passed):
+1. **sam + 명시 `compare_mode` 강등 경고**: sam 출력에 `text` 등 byte 아닌 모드를 명시하면 D-039대로
+   byte로 덮어쓰는데, 기존엔 **무경고**였다(vsam은 동일 상황 경고). → `_apply_format_compare`에서
+   명시 모드가 byte로 무시될 때 vsam과 동일하게 `warnings`에 1줄. (동작 불변, 가시성만 추가)
+2. **xlsx 시트 선택 = 데이터 시트 기준**: `wb.active`만 읽던 것을 **데이터 있는 시트 탐색**으로 변경.
+   1개면 그 시트(비활성 시트에 데이터가 있어도 포착), **2개 이상이면 loud `ValueError`**(1시트 통합 요구).
+   기존엔 첫(활성) 시트 외 시트의 셸이 통째로 silent-drop(예: 業務B 시트의 002 누락) → 검증 누락.
+   빈 시트(Excel 자동 생성)는 무시. `read_mapping_bytes`→`_xlsx_to_csv_text`만 수정.
+3. **셸 내 동일 To-Be 출력경로 충돌 = 에러**: 같은 테이블/파일명 출력 2건이 빈 칸 자동채움으로 동일
+   `export_as`/`file`이 되면 런타임에 서로 덮어써 한쪽 검증이 사라진다. → autofill 후
+   `_output_target_collisions`가 `(to_be_dir, 파일명)` 중복을 에러로. 디렉토리가 다르면 충돌 아님(false-positive 가드).
+
+**범위/규칙**: `tools/mapping_to_definition.py`만 수정 + 회귀 테스트 6건(`tests/test_mapping_to_definition.py`,
+35→41). 코어·스키마·데모셋 데이터 무변경. 정본 `complete_sample.csv`(24 CK) 변환 영향 0(이미 distinct 이름·단일시트).
+
+**이유**: 자가검증 6항의 **silent drop** 원칙 — 사용자 의도·검증 대상이 경고/에러 없이 사라지면 안 된다.
+세 건 모두 "조용히 잘못"을 "loud 실패 또는 경고"로 바꾼 것(동작 보존, 가시성 강화).
