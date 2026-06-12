@@ -911,7 +911,7 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 1. **코어 repr 차단(사용자 승인 — 코어 무수정 예외)**: `DatabaseConfig`(dataclass) 자동 repr이
    password를 평문 출력 → repr/로그/예외로 누출될 지뢰(활성 누출은 0). `password` 필드에 `field(repr=False)`.
    값 보관·접속 동작 불변. `models.py` 1줄 + 가드 테스트 1건.
-2. **devpw 평문 제거**: `HANDOFF_6/7.md`의 데모 DB 비번 `devpw` → 환경변수 참조로 리다이렉트
+2. **데모 비번 평문 제거**: `HANDOFF_6/7.md`의 데모 DB 비번 평문 → 환경변수 참조로 리다이렉트
    (레포 자체 '★평문 금지' 정책 일치).
 3. **공개 레포 위생 .gitignore**: 원자적 저장 산출물 `config.yaml.bak`/`.tmp`(고객 DB host/user 포함) +
    `ui_screenshot/`(형제 제품 디자인 참조) 무시.

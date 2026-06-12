@@ -5,8 +5,8 @@
 # 브라우저는 src/gui/web.py:main()이 기동 직후 자동으로 연다(§④).
 #
 # 사용 예:
-#   POSTGRES_PASSWORD=devpw ./run_gui.sh
-#   GUI_PORT=8080 POSTGRES_PASSWORD=devpw ./run_gui.sh
+#   POSTGRES_PASSWORD='<자기비번>' ./run_gui.sh
+#   GUI_PORT=8080 POSTGRES_PASSWORD='<자기비번>' ./run_gui.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 exec python3 -m src.gui.web "$@"

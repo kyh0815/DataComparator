@@ -21,7 +21,7 @@
 >   출력경로 충돌 → 에러(덮어쓰기 검증손실 방지).
 > - **HANDOFF_7 H(보안/온프레미스 감사)** 1차(**D-050**): 핵심 견고 확인(외부 네트워크 0·shell=True 0·GUI 비번 env만·
 >   config 평문 비번 미기록). 수정 3건 — ① 코어 `DatabaseConfig.repr` 비번 차단(`field(repr=False)`, 사용자 승인)
->   ② docs `devpw` 평문 → env 참조 ③ `config.yaml.bak`/`.tmp`·`ui_screenshot/` .gitignore.
+>   ② docs 데모 비번 평문 → env 참조 ③ `config.yaml.bak`/`.tmp`·`ui_screenshot/` .gitignore.
 > - **정상 확인(발견 아님)**: io/kind 별칭 우선순위, in_encoding·setup 로더 도달, 빈 xlsx 거부, `;`시퀀스 거부, 파일출력 idx 분리.
 > - **수동 QA 회귀 발견·수정(D-051)**: GUI `/`에 complete_sample 업로드 시 `RangeError: Maximum call stack`
 >   — `index.html`의 `activeConfig`가 자기호출 무한재귀(b1bf0a7 혼입)로 **2026-06-08 이후 메인 화면 config 의존
@@ -34,7 +34,7 @@
 >   이던 것을 **단일 `一括実行` 버튼**(점검 자동→0에러면 실행→결과/성적서 연쇄, 점검은 안전게이트 유지)으로.
 >   Mapping 저장 직후 'このまま一括実行' CTA로 한 흐름. 코어/엔드포인트 무수정(인터페이스 wiring). 동반: 저장 CRLF 정규화.
 > - 커밋 10개(브랜치): J·docs·gitignore·repr·hygiene·D-050·GUI회귀fix·D-051·칩제거·**一括実行+CRLF**·D-052.
->   **다음**: F(에러/엣지) 또는 J 잔여(DB 데모 e2e). GUI는 8080에서 기동 중(`POSTGRES_PASSWORD=devpw`).
+>   **다음**: F(에러/엣지) 또는 J 잔여(DB 데모 e2e). GUI는 8080에서 기동 중(비번=env).
 
 > **2026-06-08 갱신(요지 — 아래 2026-06-07·§0~§7은 과거 스냅샷)**
 > - 테스트 **278 passed / 10 skipped**(회귀 0). 코어(비교/실행/exporter/정의 스키마/checkpoint) **0수정** 유지.
