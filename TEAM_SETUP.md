@@ -153,7 +153,14 @@ GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
 > DB 없이 파일 CK만 보려면(022건): DB CK(019/020)는 빼고 `--shells`로 선택 —
 > `python3 -m src.cli.main --config samples/complete/config.yaml --shells CK001,…,CK024`(019·020 제외). DB 불요.
 
-**완료 기준**: 프리플라이트 통과 → 실행 → 試験成績書가 생성. 그게 보이면 셋업 성공.
+**완료 기준 (전부 체크해야 셋업 성공 — CLI만으로는 불충분)**:
+- [ ] CLI: 프리플라이트 통과 → 실행 → 試験成績書 생성 (위 run_demo 기대치와 일치)
+- [ ] **GUI 실사용 1회(필수)**: 検証フロー에서 매핑표(`samples/complete/complete_sample.csv`) **업로드 → 자동 점검 통과 → `▶ 検証開始` 클릭 → 결과 화면**(판정·메트릭)까지 도달
+- [ ] 결과 화면에서 試験成績書(Excel)·結果データ(CSV) **다운로드가 열림**
+
+> ★GUI 단계를 생략하지 말 것: 서버 테스트(pytest)는 브라우저 JS를 실행하지 않아, **화면이 멀쩡히 떠도
+> 버튼 동작이 깨져 있을 수 있다**(실례: 2026-06-08~10 activeConfig 회귀 — CLI·pytest 전부 녹색인데
+> GUI 클릭만 전부 실패. 합격 기준에 GUI 클릭이 없어 팀 검증을 통과해버림 → D-051).
 
 ---
 
