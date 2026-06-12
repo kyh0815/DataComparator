@@ -1,5 +1,8 @@
 # SETUP.md — 시연용 Sample DB 환경 구축 (우분투)
 
+> **이 문서의 역할 = PostgreSQL 설치·접속 준비 상세**(우분투). **e2e 테스트 정본은 루트
+> `TEAM_SETUP.md`**(셋업→데모 e2e→GUI 클릭 체크리스트) — 이 문서는 그 §0 ③(PG 띄우기)의 상세다.
+>
 > ⚠️ **이 문서는 시연용 sample DB 구축 가이드다.** 여기서 만드는 스키마(`db/schema.sql`)는
 > 금융 도메인을 흉내 낸 *시연용*이며, 실 운영에서는 마이그레이션 팀이 설계한 진짜
 > 비즈니스 스키마(도메인 깊이가 다름)가 사용된다. **인수인계 시 정직원이 실 클라이언트
@@ -129,14 +132,19 @@ echo "$POSTGRES_PASSWORD"     # 정한 값이 출력되면 OK (빈 줄이면 미
 
 ## 5. 스키마 + 더미 데이터 적용
 
-프로젝트 루트에서:
+> ★**데모 e2e(`TEAM_SETUP.md` 경로)라면 이 장은 건너뛴다** — `run_demo.sh`가
+> `db/schema.sql` + `db/schema_realistic.sql`을 **자동 적용**한다(수동 적용 불필요·금지).
+> 아래 수동 적용은 **DB 단독 점검**(도구 없이 DB만 확인)할 때만 쓴다.
+
+프로젝트 루트에서(단독 점검 시):
 
 ```bash
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h localhost -U postgres -d compare_proto -f db/schema.sql
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h localhost -U postgres -d compare_proto -f db/schema_realistic.sql
 ```
 
-성공하면 `CREATE TABLE` ×2, `INSERT 0 20`, `INSERT 0 50`이 출력된다.
-(`db/schema.sql` 상단에 `DROP TABLE IF EXISTS`가 있어 **여러 번 재적용**해도 안전하다.)
+성공하면 schema.sql에서 `CREATE TABLE` ×2, `INSERT 0 20`, `INSERT 0 50`이 출력된다.
+(`DROP TABLE IF EXISTS`가 있어 **여러 번 재적용**해도 안전하다.)
 
 ---
 
@@ -237,4 +245,6 @@ export LANG=en_US.UTF-8                  # 또는 ja_JP.UTF-8
 - [ ] 6-2 일본어 정상 표시 확인
 - [ ] `config.yaml`의 `database.*` 키가 3장 매핑과 일치
 
-여기까지 통과하면 Loader(T2-2) 작업으로 넘어갈 수 있다.
+여기까지가 **DB 준비**다. 다음 단계 = **루트 `TEAM_SETUP.md` §5(e2e 한 바퀴)** —
+CLI 데모(run_demo) + **GUI 클릭 검증**(検証フロー 업로드→検証開始→결과)까지의
+**완료 체크리스트 3항목**을 전부 통과해야 셋업 성공이다.
