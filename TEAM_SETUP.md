@@ -155,20 +155,12 @@ GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
 
 **완료 기준 (전부 체크해야 셋업 성공 — CLI만으로는 불충분)**:
 - [ ] CLI: 프리플라이트 통과 → 실행 → 試験成績書 생성 (위 run_demo 기대치와 일치)
-- [ ] **GUI 실사용 1회(필수)**: 検証フロー에서 매핑표(`samples/complete/complete_sample.csv`) **업로드 → 자동 점검 통과 → `▶ 検証開始` 클릭 → 결과 화면**(판정·메트릭)까지 도달
+- [ ] **GUI 실사용 1회(필수)**: ★먼저 **왼쪽 사이드바에서 『サンプル demo』 프로젝트 선택**(기본값 本番이면 데모 경로 점검이 실패한다) → 検証フロー에서 매핑표(`samples/complete/complete_sample.csv`) **업로드 → 자동 점검 통과 → `▶ 検証開始` 클릭 → 결과 화면**(판정·메트릭)까지 도달
 - [ ] 결과 화면에서 試験成績書(Excel)·結果データ(CSV) **다운로드가 열림**
 
 > ★GUI 단계를 생략하지 말 것: 서버 테스트(pytest)는 브라우저 JS를 실행하지 않아, **화면이 멀쩡히 떠도
 > 버튼 동작이 깨져 있을 수 있다**(실례: 2026-06-08~10 activeConfig 회귀 — CLI·pytest 전부 녹색인데
 > GUI 클릭만 전부 실패. 합격 기준에 GUI 클릭이 없어 팀 검증을 통과해버림 → D-051).
-
----
-
-## 7. 매핑표 작성 (자기 정의 만들 때)
-검증할 셸-입출력 매핑은 **엑셀 템플릿**으로 채운다(코드·고정길이가 Excel 자동변환에 안 깨지게 텍스트 서식 잠금):
-- 템플릿: `definition_template.xlsx`(루트). 팀원에게 이 파일을 공유 → Excel로 채워 제출.
-- 변환: `python3 tools/mapping_to_definition.py 채운표.xlsx -o test_definition.yaml` (.xlsx 직접 읽음, CSV 저장 불요).
-- 칼럼: checklist·io(input/output)·type(database/file/sam/vsam)·input·as_is_output·to_be_output·input_dir·as_is_dir·to_be_dir·compare_mode·key_columns·fixed_layout·… (헤더 그대로).
 
 ---
 
@@ -184,3 +176,23 @@ GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
 | `DB 接続に失敗`(env는 설정됨) | 진짜 비번·권한·host/port 문제 | DB 접속정보·계정 권한 확인 |
 
 해결이 안 되면 추측하지 말고 메시지 전문과 자기 `config.yaml`(비번 제외)을 들고 물어볼 것.
+
+---
+
+## 7. 매핑표 작성 + 자기 데이터 배치 (자기 정의 만들 때)
+검증할 셸-입출력 매핑은 **엑셀 템플릿**으로 채운다(코드·고정길이가 Excel 자동변환에 안 깨지게 텍스트 서식 잠금):
+- 템플릿: `definition_template.xlsx`(루트). 팀원에게 이 파일을 공유 → Excel로 채워 제출.
+- 변환: GUI 検証フロー에 .xlsx 그대로 업로드(자동 변환·저장) 또는
+  `python3 tools/mapping_to_definition.py 채운표.xlsx -o test_definition.yaml` (.xlsx 직접 읽음, CSV 저장 불요).
+- 칼럼: checklist·io(input/output)·type(database/file/sam/vsam)·input·as_is_output·to_be_output·input_dir·as_is_dir·to_be_dir·compare_mode·key_columns·fixed_layout·… (헤더 그대로).
+
+**★데이터 파일 두는 곳(매핑표 ↔ config.paths 연결)** — 매핑표에 적은 파일명이 이 디렉토리에서 찾아진다:
+| 매핑표 칼럼 | 파일을 둘 곳 (config의) | 내용 |
+|---|---|---|
+| `input` | `asis_input_dir` | 코드변환 후 As-Is **입력**(도구가 적재/복사) |
+| `as_is_output` | `asis_output_dir` | 코드변환 후 As-Is **출력 = 정답**(수령한 그대로) |
+| `to_be_output` | `tobe_output_dir` | To-Be 배치가 **생성**(직접 두지 않음 — 배치 실행 결과) |
+
+행별로 위치가 다르면 매핑표의 `input_dir`/`as_is_dir`/`to_be_dir` 칼럼으로 그 행만 override(비우면 config 공통).
+
+---
