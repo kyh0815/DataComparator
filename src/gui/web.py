@@ -222,7 +222,15 @@ def run():
                 run_manager.end()  # 먼저 락 해제 → 그 다음 done(소비자가 done을 본 시점엔 락 free 보장)
                 events.put({"type": "done"})
 
-        threading.Thread(target=worker, daemon=True).start()
+        thread = threading.Thread(target=worker, daemon=True)
+        try:
+            thread.start()
+        except Exception as exc:  # noqa: BLE001 — start 실패 시 락을 되돌려야 영구 409가 안 됨
+            run_manager.finish_failed(str(exc))
+            run_manager.end()
+            yield _sse({"type": "error", "message": f"実行スレッドを開始できません: {exc}"})
+            yield _sse({"type": "done"})
+            return
         while True:
             msg = events.get()
             yield _sse(msg)
@@ -242,6 +250,10 @@ def run_start():
     config_path = _active_config()
     shells = request.values.get("shells") or None
     resume = request.values.get("resume") in ("1", "true", "yes", "on")
+    retry = request.values.get("retry") in ("1", "true", "yes", "on")
+    # 상호배타 가드(CLI와 동일 계약): 코어는 resume 시 shell_ids를 조용히 무시하므로 여기서 loud 거부.
+    if (1 if shells else 0) + (1 if resume else 0) + (1 if retry else 0) > 1:
+        return jsonify({"ok": False, "message": "shells / resume / retry は同時に指定できません。"}), 400
     if not run_manager.try_begin(config_path, shells, resume=resume):
         return jsonify({"ok": False, "message": "他の実行が進行中です。"}), 409
 
@@ -251,7 +263,8 @@ def run_start():
             config = load_config(config_path)
             shell_ids = parse_shell_selector(shells) if shells else None
             summary = run_full_comparison(
-                config, on_progress=run_manager.apply_progress, shell_ids=shell_ids, resume=resume,
+                config, on_progress=run_manager.apply_progress,
+                shell_ids=shell_ids, resume=resume, retry_failed=retry,
             )
             run_manager.finish_done(summary, time.perf_counter() - start)
         except Exception as exc:  # noqa: BLE001 — 워커 크래시도 락 해제 + failed 상태(조건2)
@@ -259,7 +272,13 @@ def run_start():
         finally:
             run_manager.end()  # 예외 포함 반드시 락 해제
 
-    threading.Thread(target=worker, daemon=True).start()
+    thread = threading.Thread(target=worker, daemon=True)
+    try:
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 — start 실패(스레드 고갈 등) 시 락을 되돌려야 영구 409가 안 됨
+        run_manager.finish_failed(str(exc))
+        run_manager.end()
+        return jsonify({"ok": False, "message": f"実行スレッドを開始できません: {exc}"}), 500
     return jsonify({"ok": True, "run_id": run_manager.snapshot()["run_id"]})
 
 
@@ -285,8 +304,11 @@ def run_resumable():
         total = len(all_ids)
         done = len(store.load_records(cp))
         remaining = len(store.shells_to_resume(cp, all_ids))
+        # ★중단 = 미실행 셸이 남은 경우만(done < total). 완주했는데 ERROR만 남은 run을
+        #   "中断された検証"으로 표시하면 모순(N/N 完了)이고 매 로드마다 진입 흐름을 가둔다.
+        #   ERROR 재시험은 결과 화면의 재검증 동선(retry)으로 따로 제공.
         return jsonify({
-            "resumable": done > 0 and remaining > 0,
+            "resumable": 0 < done < total and remaining > 0,
             "total": total, "done": done, "remaining": remaining,
         })
     except Exception:  # noqa: BLE001 — 설정/정의/checkpoint 미비면 재개 불가로 처리
@@ -325,31 +347,37 @@ def run_results():
         ]
         return jsonify({"items": items, "total_bad": len(bad), "shown": len(items),
                         "truncated": len(bad) > _LIST_CAP})
-    except Exception:  # noqa: BLE001 — 미비·오류면 빈 목록(화면이 깨지지 않게)
-        return jsonify({"items": [], "total_bad": 0, "shown": 0, "truncated": False})
+    except Exception:  # noqa: BLE001 — 화면은 깨지지 않게 빈 목록, 단 서버 로그에는 남긴다(無진단 방지)
+        app.logger.exception("/run/results failed")
+        return jsonify({"items": [], "total_bad": 0, "shown": 0, "truncated": False, "error": True})
 
 
 @app.route("/run/results/diff")
 def run_result_diff():
-    """불일치 1건의 diff(As-Is↔To-Be)를 지연 로드 — idx는 /run/results 목록의 인덱스. 코어 무수정.
+    """불일치 1건의 diff(As-Is↔To-Be)를 지연 로드 — **안정 키(shell+output)** 주소. 코어 무수정.
 
-    줄 수는 _DIFF_CAP 캡(초과는 試験成績書/レ포트で, diff_truncated=true). 범위 밖/미비면 빈 diff.
+    위치(idx) 주소는 목록 재계산 사이에 checkpoint가 바뀌면 다른 항목을 가리킬 수 있어(오짝 증적)
+    shell_id+output_name으로 찾는다. 못 찾으면 found=false(재실행으로 내용이 바뀐 경우 등).
+    줄 수는 _DIFF_CAP 캡(초과는 試験成績書(差分明細)で, diff_truncated=true).
     """
     try:
-        idx = int(request.args.get("idx", "-1"))
+        shell = request.args.get("shell", "")
+        output = request.args.get("output", "")  # 단일 출력은 빈 문자열
         bad = _bad_results(load_config(_active_config()))
-        if not (0 <= idx < len(bad)):
-            return jsonify({"diff_lines": [], "diff_truncated": False})
-        r = bad[idx]
+        r = next((x for x in bad if x.shell_id == shell and (x.output_name or "") == output), None)
+        if r is None:
+            return jsonify({"diff_lines": [], "diff_truncated": False, "found": False})
         return jsonify({
+            "found": True,
             "diff_lines": [
                 {"line_number": d.line_number, "asis_content": d.asis_content, "tobe_content": d.tobe_content}
                 for d in r.diff_lines[:_DIFF_CAP]
             ],
             "diff_truncated": len(r.diff_lines) > _DIFF_CAP,
         })
-    except Exception:  # noqa: BLE001
-        return jsonify({"diff_lines": [], "diff_truncated": False})
+    except Exception:  # noqa: BLE001 — 화면은 깨지지 않게, 서버 로그에는 남긴다
+        app.logger.exception("/run/results/diff failed")
+        return jsonify({"diff_lines": [], "diff_truncated": False, "found": False})
 
 
 @app.route("/preflight")

@@ -218,6 +218,67 @@ def test_run_resumable_detects_interrupted(client, monkeypatch, tmp_path):
     assert r["resumable"] is True and r["total"] == 10 and r["done"] == 9 and r["remaining"] == 1
 
 
+def test_run_resumable_false_when_completed_with_errors(client, monkeypatch, tmp_path):
+    """완주(done==total)했고 ERROR만 남은 run은 中断이 아니다 — 재시험은 결과화면 retry 동선으로."""
+    cp = tmp_path / "checkpoint.jsonl"
+    monkeypatch.setattr(web, "load_config",
+                        lambda p: SimpleNamespace(report_dir=tmp_path, definition_file=tmp_path / "d.yaml"))
+    monkeypatch.setattr(web, "load_definitions",
+                        lambda p: [SimpleNamespace(test_id=f"{i:03d}") for i in range(1, 11)])
+    monkeypatch.setattr(web.store, "checkpoint_path", lambda rd: cp)
+    monkeypatch.setattr(web.store, "has_checkpoint", lambda p: True)
+    monkeypatch.setattr(web.store, "load_records", lambda p: {f"{i:03d}": object() for i in range(1, 11)})
+    monkeypatch.setattr(web.store, "shells_to_resume", lambda p, ids: ["003"])  # ERROR 셸만 남음
+    r = client.get("/run/resumable").get_json()
+    assert r["resumable"] is False and r["done"] == 10 and r["total"] == 10
+
+
+def test_run_start_rejects_mixed_selectors_with_400(client, monkeypatch):
+    """shells/resume/retry 동시 지정은 400 — 코어가 조용히 무시하는 대신 loud 거부(CLI와 동일 계약)."""
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=Path(".")))
+    monkeypatch.setattr(web, "run_full_comparison",
+                        lambda *a, **k: RunSummary(0, 0, 0, 0, 0, [], Path("out/r.csv")))
+    assert client.post("/run/start?config=x&shells=1-3&resume=1").status_code == 400
+    assert client.post("/run/start?config=x&resume=1&retry=1").status_code == 400
+
+
+def test_run_start_retry_passes_retry_failed(client, monkeypatch):
+    """retry=1이 코어 retry_failed로 전달된다(NG・ERROR만 재시험 — 결과화면 재검증 버튼)."""
+    seen = {}
+
+    def fake_run(config, on_progress=None, shell_ids=None, resume=False, retry_failed=False):
+        seen.update(resume=resume, retry_failed=retry_failed, shell_ids=shell_ids)
+        return RunSummary(0, 0, 0, 0, 0, [], Path("out/r.csv"))
+
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=Path(".")))
+    monkeypatch.setattr(web, "run_full_comparison", fake_run)
+    assert client.post("/run/start?config=x&retry=1").status_code == 200
+    _poll_status(client, lambda s: s["state"] in ("done", "failed"))
+    assert seen == {"resume": False, "retry_failed": True, "shell_ids": None}
+
+
+def test_run_start_thread_start_failure_releases_lock(client, monkeypatch):
+    """Thread.start() 실패 시 500 + 락 해제(영구 409 방지) + 상태 failed."""
+    monkeypatch.setattr(web, "load_config", lambda p: SimpleNamespace(report_dir=Path(".")))
+    monkeypatch.setattr(web, "run_full_comparison",
+                        lambda *a, **k: RunSummary(0, 0, 0, 0, 0, [], Path("out/r.csv")))
+
+    class BoomThread:
+        def __init__(self, *a, **k):
+            pass
+
+        def start(self):
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(web.threading, "Thread", BoomThread)
+    r = client.post("/run/start?config=x")
+    assert r.status_code == 500
+    assert client.get("/run/status").get_json()["state"] == "failed"
+    monkeypatch.undo()  # Thread 복원 후 새 실행이 시작 가능해야(락 해제 확인)
+    assert client.post("/run/start?config=x").status_code == 200
+    _poll_status(client, lambda s: s["state"] in ("done", "failed"))
+
+
 def test_run_resumable_false_without_checkpoint(client, monkeypatch):
     """checkpoint 없으면 resumable=False(미비·오류는 재개 불가로 안전 처리)."""
     monkeypatch.setattr(web, "load_config",
@@ -251,17 +312,21 @@ def test_run_results_lists_all_bad_lightweight(client, monkeypatch, tmp_path):
     assert ng["output_name"] == "明細" and ng["diff_count"] == 1 and "diff_lines" not in ng
 
 
-def test_run_result_diff_lazy_by_idx(client, monkeypatch, tmp_path):
-    """/run/results/diff?idx=는 해당 불일치의 diff(As-Is↔To-Be)를 지연 로드. 범위 밖이면 빈 diff."""
+def test_run_result_diff_lazy_by_stable_key(client, monkeypatch, tmp_path):
+    """/run/results/diff는 안정 키(shell+output)로 찾는다 — 목록 변동에도 오짝 방지. 미존재면 found=false."""
     results = [
         ComparisonResult("001", ComparisonStatus.OK),  # bad 목록에서 제외됨
         ComparisonResult("002", ComparisonStatus.NG,
                          diff_lines=[DiffLine(3, "abc", "abd")], output_name="明細"),
+        ComparisonResult("003", ComparisonStatus.NG, diff_lines=[DiffLine(1, "x", "y")]),  # 단일 출력(None)
     ]
     _patch_results(web, monkeypatch, tmp_path, results)
-    d = client.get("/run/results/diff?idx=0").get_json()  # bad[0] = NG(002)
-    assert d["diff_lines"][0]["asis_content"] == "abc" and d["diff_truncated"] is False
-    assert client.get("/run/results/diff?idx=9").get_json()["diff_lines"] == []  # 범위 밖
+    d = client.get("/run/results/diff?shell=002&output=明細").get_json()
+    assert d["found"] is True and d["diff_lines"][0]["asis_content"] == "abc"
+    d2 = client.get("/run/results/diff?shell=003&output=").get_json()  # output_name=None ↔ 빈 문자열
+    assert d2["found"] is True and d2["diff_lines"][0]["asis_content"] == "x"
+    miss = client.get("/run/results/diff?shell=999&output=").get_json()
+    assert miss["found"] is False and miss["diff_lines"] == []  # 재실행 등으로 사라진 항목 → loud
 
 
 def test_run_results_empty_without_checkpoint(client, monkeypatch):
@@ -281,6 +346,12 @@ def test_index_is_state_machine_flow(client):
     assert 'id="nf-start"' in body and 'id="nf-csv"' in body
     assert 'id="nf-verdict"' in body and 'id="nf-metrics"' in body and 'id="nf-failsec"' in body  # 결과 리포트
     assert "/run/start" in body and "/run/status" in body and "/run/resumable" in body and "/run/results" in body
+    # 리뷰 수정 가드(D-059): idle 폴링 분기·파일 input 리셋·config 전환 리셋·안정 키 diff·재검증 동선·탈출 버튼
+    assert 'st.state==="idle"' in body
+    assert 'e.target.value=""' in body
+    assert 'NF.failItems=[]; init();' in body          # config change → 상태머신 초기화
+    assert "data-shell=" in body and "&shell=" in body  # diff 안정 키 주소
+    assert 'id="nf-rerun"' in body and 'id="nf-rerun-ng"' in body and 'id="nf-skip-resume"' in body
     # 구 검証フロー(아코디언)·Artifacts·Quarantine 패널·옛 실행 버튼 제거 확인
     assert 'data-panel="verify"' not in body and 'data-panel="quarantine"' not in body
     assert 'id="runall"' not in body and 'id="results"' not in body

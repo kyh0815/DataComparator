@@ -116,3 +116,20 @@ def test_diff_detail_sheet_lists_all_ng_lines(tmp_path):
     assert [c.value for c in ws[1]] == ["チェックリスト", "試験名", "項目", "行", "As-Is(現)", "To-Be(新)"]
     vals = [(r[3].value, r[4].value, r[5].value) for r in ws.iter_rows(min_row=2)]
     assert ("L2", "AAA", "AAB") in vals and ("L5", "100", "200") in vals  # 전 차이 줄
+
+
+def test_eq_prefixed_data_stays_literal_not_formula(tmp_path):
+    """'='로 시작하는 데이터가 수식이 아닌 리터럴 문자열로 기록된다(감사문서 왜곡·수식 인젝션 방지)."""
+    from src.core.models import DiffLine
+    openpyxl = pytest.importorskip("openpyxl")
+    defs = [_def("001", [_out("e1")])]
+    records = [_rec("001", "20260605_120000", [
+        ComparisonResult("001", ComparisonStatus.NG,
+                         diff_lines=[DiffLine(1, "=1+1", '=HYPERLINK("http://x","y")')])
+    ])]
+    out = evidence.generate_evidence(defs, records, tmp_path / "ev.xlsx")
+    ws = openpyxl.load_workbook(out)["差分明細"]
+    row = list(ws.iter_rows(min_row=2))[0]
+    asis, tobe = row[4], row[5]
+    assert asis.data_type == "s" and asis.value == "=1+1"          # 수식('f') 아님
+    assert tobe.data_type == "s" and tobe.value == '=HYPERLINK("http://x","y")'

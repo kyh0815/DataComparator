@@ -130,6 +130,19 @@ def summarize(rows: list[_Row]) -> dict:
     return {"total": total, "counts": counts, "not_run": not_run, "done": done, "rate": rate}
 
 
+def _append_literal(ws, values) -> None:
+    """행을 추가하되 '='로 시작하는 문자열을 수식이 아닌 **리터럴 문자열**로 강제한다.
+
+    openpyxl은 '=' 시작 문자열을 수식(data_type='f')으로 저장 → 試験成績書가 원데이터를
+    왜곡(#NAME?/평가값)하고 '=HYPERLINK(...)' 수식 인젝션이 가능해진다. 감사 문서는
+    데이터를 있는 그대로 보여야 하므로 데이터 행은 전부 이 헬퍼로 기록한다.
+    """
+    ws.append(values)
+    for c in ws[ws.max_row]:
+        if isinstance(c.value, str) and c.value.startswith("="):
+            c.data_type = "s"
+
+
 def generate_evidence(
     definitions: list[ShellDefinition], records: list[ShellRecord], output_path: Path
 ) -> Path:
@@ -177,7 +190,7 @@ def generate_evidence(
     for c in ws2[1]:
         c.font = bold
     for row in rows:
-        ws2.append([row.test_id, row.test_name, row.item, row.status, row.run_id, row.detail])
+        _append_literal(ws2, [row.test_id, row.test_name, row.item, row.status, row.run_id, row.detail])
 
     # --- 差分明細 시트(NG 全差分: 어느 行이 現→新으로 어떻게 — 납품·감사용) ---
     ws3 = wb.create_sheet("差分明細")
@@ -186,7 +199,7 @@ def generate_evidence(
         c.font = bold
     diff_rows = build_diff_rows(definitions, records)
     for (tid, tname, item, ln, asis, tobe) in diff_rows:
-        ws3.append([tid, tname, item, f"L{ln}", asis, tobe])
+        _append_literal(ws3, [tid, tname, item, f"L{ln}", asis, tobe])
     if not diff_rows:
         ws3.append(["（差分なし）"])
 

@@ -505,6 +505,7 @@
                 <div class="nf-actions">
                   <button class="run big primary" id="nf-resume">▶ 続きから再開</button>
                   <button class="ghost" id="nf-restart">最初からやり直す</button>
+                  <button class="ghost" id="nf-skip-resume">最初の画面へ</button>
                 </div>
               </div>
               <div class="nf-screen" data-screen="ready">
@@ -533,7 +534,11 @@
               <div class="nf-screen nf-result" data-screen="done">
                 <div class="nf-rhead">
                   <div class="nf-big" id="nf-done-title">検証結果</div>
-                  <button class="ghost" id="nf-again">↻ もう一度</button>
+                  <span style="display:inline-flex; gap:8px">
+                    <button class="ghost" id="nf-rerun-ng" style="display:none">▶ NG・ERRORのみ再検証</button>
+                    <button class="ghost" id="nf-rerun">▶ 再検証（全件）</button>
+                    <button class="ghost" id="nf-again">↻ もう一度</button>
+                  </span>
                 </div>
                 <div class="nf-verdict" id="nf-verdict"></div>
                 <div class="nf-metrics" id="nf-metrics"></div>
@@ -876,6 +881,7 @@ syncEnv();
 (function(){
   const NF = { totalOutputs:0, poll:null, genWarnings:[], reportName:null };
   const STAGE = { select:1, prep:1, resumable:1, ready:2, blocked:2, running:3, done:4 };
+  const escAttr = s => escapeHtml(s).replace(/"/g, "&quot;");  // 속성값용(따옴표까지)
   function screen(name){
     document.querySelectorAll('#nf-flow .nf-screen').forEach(s=> s.classList.toggle('show', s.dataset.screen===name));
     $("nf-flow").classList.toggle("nf-flow--report", name==='done');  // 결과는 풀폭·상단정렬 리포트
@@ -935,16 +941,27 @@ syncEnv();
       screen('ready');
     }catch(e){ blocked([String(e)], "通信エラー"); }
   }
-  async function start(resume){
+  async function start(mode){  // mode: "" | "resume" | "retry"
     try{
-      const r=await fetch("/run/start?config="+encodeURIComponent(activeConfig())+(resume?"&resume=1":""), {method:"POST"});
+      // 안전 게이트: 어떤 경로로 시작해도 점검을 먼저(READY 외 RESUMABLE/再検証 경로 포함, 에러=차단)
+      const pf=await (await fetch("/preflight?config="+encodeURIComponent(activeConfig()))).json();
+      if(!pf.ok) return blocked(pf.errors, "点検でエラーが見つかりました");
+      if(mode) NF.totalOutputs=0;  // resume/retry는 대상이 부분집합 — 업로드 시 분모는 무효(단위 정합)
+      const q = mode==="resume" ? "&resume=1" : (mode==="retry" ? "&retry=1" : "");
+      const r=await fetch("/run/start?config="+encodeURIComponent(activeConfig())+q, {method:"POST"});
       if(r.status===409){ alert("他の実行が進行中です。"); return; }
+      if(!r.ok){ const j=await r.json().catch(()=>({})); return blocked([j.message||("HTTP "+r.status)], "実行を開始できませんでした"); }
       screen('running'); poll();
     }catch(e){ blocked([String(e)], "実行を開始できませんでした"); }
   }
   function fmtTime(sec){ sec=Math.floor(sec||0); const m=Math.floor(sec/60), s=sec%60; return (m?m+"分":"")+s+"秒"; }
   function render(st){
-    const denom=NF.totalOutputs || st.total || 0, done=st.done||0;
+    // ★단위 정합: 출력 분모(NF.totalOutputs)를 아는 세션만 출력 단위로, 모르면(재접속·재개) 셸 단위로 통일
+    //   (st.done=출력 수·st.total=셸 수 — 섞으면 '15/10' 같은 표시가 된다)
+    const haveOut = NF.totalOutputs > 0;
+    const doneShells = Math.min(st.total||0, Math.max(0, (st.current_index||0) - (st.state==="running"?1:0)));
+    const denom = haveOut ? NF.totalOutputs : (st.total||0);
+    const done  = haveOut ? (st.done||0) : doneShells;
     $("nf-bar").style.width=(denom? Math.min(100, Math.round(done/denom*100)):0)+"%";
     $("nf-done").textContent=done.toLocaleString();
     $("nf-total").textContent=(denom||0).toLocaleString();
@@ -981,6 +998,7 @@ syncEnv();
     }));
     NF.reportName = s.report_name || null;
     NF.runConfig = st.config || activeConfig();  // ★실행이 실제로 쓴 config(재접속 시 셀렉터와 달라도 일치)
+    $("nf-rerun-ng").style.display = (ng+err)>0 ? "" : "none";  // NG・ERROR 재시험(코어 retry_failed)
     if(bad>0){ $("nf-failsec").style.display=""; loadFailures(); }
     else { $("nf-failsec").style.display="none"; }
     screen('done');
@@ -1029,8 +1047,9 @@ syncEnv();
     const head = `<div class="nf-fhead"><span class="nf-fid">${name}</span><span class="nf-fbadge ${cls}">${it.status}</span></div>`;
     let body="";
     if(it.status==="NG"){
-      // 경량 행 + 항목별 diff는 펼칠 때 지연 로드(대용량에도 전건 확인 가능)
-      body = `<button class="nf-exp" data-idx="${it.idx}">▸ 差分 ${(it.diff_count||0).toLocaleString()}行</button>`
+      // 경량 행 + 항목별 diff는 펼칠 때 지연 로드. ★주소는 위치(idx)가 아니라 안정 키(shell+output) —
+      //   목록 이후 checkpoint가 바뀌어도(재실행 등) 다른 항목의 diff가 끼워지지 않게.
+      body = `<button class="nf-exp" data-idx="${it.idx}" data-shell="${escAttr(it.shell_id)}" data-output="${escAttr(it.output_name||"")}">▸ 差分 ${(it.diff_count||0).toLocaleString()}行</button>`
            + `<div class="nf-diff" id="nf-d-${it.idx}" style="display:none"></div>`;
     } else if(it.status==="ERROR"){
       body = `<div class="nf-fmsg">エラー: ${escapeHtml(it.error_message||"")}</div>`;
@@ -1044,14 +1063,17 @@ syncEnv();
       return `<div class="nf-dline"><div class="nf-ln">${d.line_number}行目</div><div class="nf-da"><b>As-Is</b>${a}</div><div class="nf-db"><b>To-Be</b>${b}</div></div>`;
     }).join("") + (truncated ? '<div class="nf-more">… 以降は 試験成績書(差分明細) で全件確認</div>' : "");
   }
-  async function toggleDiff(idx, btn){
-    const box=$("nf-d-"+idx);
+  async function toggleDiff(btn){
+    const box=$("nf-d-"+btn.dataset.idx);
     if(box.style.display!=="none"){ box.style.display="none"; btn.textContent=btn.textContent.replace("▾","▸"); return; }
     if(!box.dataset.loaded){
       box.innerHTML='<div class="nf-more">読み込み中…</div>';
       try{
-        const d=await (await fetch("/run/results/diff?config="+rcfg()+"&idx="+idx)).json();
-        box.innerHTML = (d.diff_lines||[]).length ? diffLinesHtml(d.diff_lines, d.diff_truncated) : '<div class="nf-more">差分なし</div>';
+        const d=await (await fetch("/run/results/diff?config="+rcfg()
+          +"&shell="+encodeURIComponent(btn.dataset.shell||"")
+          +"&output="+encodeURIComponent(btn.dataset.output||""))).json();
+        if(d.found===false){ box.innerHTML='<div class="nf-more">該当する結果が見つかりません（再実行で内容が変わった可能性）。画面を更新してください。</div>'; }
+        else box.innerHTML = (d.diff_lines||[]).length ? diffLinesHtml(d.diff_lines, d.diff_truncated) : '<div class="nf-more">差分なし</div>';
         box.dataset.loaded="1";
       }catch(e){ box.innerHTML='<div class="nf-more">読み込みに失敗しました。</div>'; }
     }
@@ -1065,6 +1087,7 @@ syncEnv();
         if(st.state==="running") render(st);
         else if(st.state==="done"){ clearInterval(NF.poll); render(st); done(st); }
         else if(st.state==="failed"){ clearInterval(NF.poll); blocked([st.error||"実行中にエラーが発生しました"], "実行が失敗しました"); }
+        else if(st.state==="idle"){ clearInterval(NF.poll); init(); }  // 서버 재시작 등 — 동결 방지, 초기 판정으로 복귀
       }catch(e){ /* 일시 단절: 다음 폴링에서 복구 */ }
     }, 800);
   }
@@ -1084,15 +1107,21 @@ syncEnv();
   if($("nf-flow")){
     $("nf-pick").addEventListener("click", ()=> $("nf-csv").click());
     $("nf-retry-pick").addEventListener("click", ()=> $("nf-csv").click());
-    $("nf-csv").addEventListener("change", e=>{ const f=e.target.files[0]; if(f) chain(f); });
+    // ★value 리셋: 같은 파일을 다시 선택해도 change가 발화하도록(BLOCKED 후 제자리 수정 → 재선택 경로)
+    $("nf-csv").addEventListener("change", e=>{ const f=e.target.files[0]; e.target.value=""; if(f) chain(f); });
     $("nf-recheck").addEventListener("click", ()=> recheck(null));
-    $("nf-start").addEventListener("click", ()=> start(false));
-    $("nf-resume").addEventListener("click", ()=> start(true));
-    $("nf-restart").addEventListener("click", ()=> start(false));
+    $("nf-start").addEventListener("click", ()=> start(""));
+    $("nf-resume").addEventListener("click", ()=> start("resume"));
+    $("nf-restart").addEventListener("click", ()=> start(""));
+    $("nf-skip-resume").addEventListener("click", ()=> screen('select'));
     $("nf-again").addEventListener("click", ()=>{ clearInterval(NF.poll); screen('select'); });
-    $("nf-fail").addEventListener("click", e=>{ const b=e.target.closest(".nf-exp"); if(b) toggleDiff(b.dataset.idx, b); });  // diff 펼침(위임)
+    $("nf-rerun").addEventListener("click", ()=> start(""));            // 저장된 정의로 전건 재검증(파일 불요)
+    $("nf-rerun-ng").addEventListener("click", ()=> start("retry"));    // NG・ERROR만 재시험(코어 retry_failed)
+    $("nf-fail").addEventListener("click", e=>{ const b=e.target.closest(".nf-exp"); if(b) toggleDiff(b); });  // diff 펼침(위임)
     $("nf-dl-evidence").addEventListener("click", ()=>{ window.location="/evidence?config="+rcfg(); });
     $("nf-dl-report").addEventListener("click", ()=>{ if(NF.reportName) window.location="/report/"+encodeURIComponent(NF.reportName)+"?config="+rcfg(); });
+    // ★프로젝트(config) 전환 시 상태머신 초기화 — 다른 config의 READY/DONE이 남아 무점검 실행되는 것 방지
+    $("config").addEventListener("change", ()=>{ clearInterval(NF.poll); NF.totalOutputs=0; NF.genWarnings=[]; NF.failItems=[]; init(); });
     init();
   }
 })();
