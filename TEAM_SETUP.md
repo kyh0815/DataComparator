@@ -15,7 +15,7 @@ git clone <repo-url> && cd DataComparator
 pip install -r requirements.txt          # psycopg2 · pyyaml · flask · openpyxl
 
 # ② 설치 확인 — DB 없이 도는 단위 테스트로 환경 검증
-python3 -m pytest -q                      # 286 passed / 10 skipped 면 환경 OK
+python3 -m pytest -q                      # 309 passed / 10 skipped 면 환경 OK
 
 # ③ ★자기 PostgreSQL 띄우기(도구가 안 띄움 — 직접). 예시는 docker, 비번은 자기가 정함:
 docker run -d --name my-pg -e POSTGRES_PASSWORD='<자기비번>' -p 5432:5432 postgres:16
