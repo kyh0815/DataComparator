@@ -874,3 +874,231 @@ comparator·loader·코어 테스트 무수정. 생성 YAML round-trip 동일**(
 안 깨짐). ② `mapping_to_definition.read_mapping_bytes`가 **.xlsx를 직접 읽음**(zip 시그니처 감지 → 첫 시트
 → CSV 텍스트, openpyxl 지연 import=試験成績書와 동일 의존). CLI·GUI(定義作成 화면·`/definition/from-csv`)
 모두 CSV/xlsx 수용 → 팀원은 엑셀로 채워 **CSV 저장 단계 없이** 제출. 코어 무수정(도구·표시계층만).
+
+## D-049. 매핑도구 silent-drop/collision 3건 가드 (J 적대적 검토, 코어 무수정)
+
+**배경**: HANDOFF_7 J(직전 변경분 D-046~048 적대적 검토)에서 `mapping_to_definition`의 **검증 누락을
+조용히 일으키는** 3개 지점을 적대 케이스로 발견. 검증도구에서 "조용히 검증 안 함"은 false 커버리지(최악).
+
+**결정**(모두 매핑도구 비코어 국소 수정 — definition.py·orchestrator·comparator 무수정, 292 passed):
+1. **sam + 명시 `compare_mode` 강등 경고**: sam 출력에 `text` 등 byte 아닌 모드를 명시하면 D-039대로
+   byte로 덮어쓰는데, 기존엔 **무경고**였다(vsam은 동일 상황 경고). → `_apply_format_compare`에서
+   명시 모드가 byte로 무시될 때 vsam과 동일하게 `warnings`에 1줄. (동작 불변, 가시성만 추가)
+2. **xlsx 시트 선택 = 데이터 시트 기준**: `wb.active`만 읽던 것을 **데이터 있는 시트 탐색**으로 변경.
+   1개면 그 시트(비활성 시트에 데이터가 있어도 포착), **2개 이상이면 loud `ValueError`**(1시트 통합 요구).
+   기존엔 첫(활성) 시트 외 시트의 셸이 통째로 silent-drop(예: 業務B 시트의 002 누락) → 검증 누락.
+   빈 시트(Excel 자동 생성)는 무시. `read_mapping_bytes`→`_xlsx_to_csv_text`만 수정.
+3. **셸 내 동일 To-Be 출력경로 충돌 = 에러**: 같은 테이블/파일명 출력 2건이 빈 칸 자동채움으로 동일
+   `export_as`/`file`이 되면 런타임에 서로 덮어써 한쪽 검증이 사라진다. → autofill 후
+   `_output_target_collisions`가 `(to_be_dir, 파일명)` 중복을 에러로. 디렉토리가 다르면 충돌 아님(false-positive 가드).
+
+**범위/규칙**: `tools/mapping_to_definition.py`만 수정 + 회귀 테스트 6건(`tests/test_mapping_to_definition.py`,
+35→41). 코어·스키마·데모셋 데이터 무변경. 정본 `complete_sample.csv`(24 CK) 변환 영향 0(이미 distinct 이름·단일시트).
+
+**이유**: 자가검증 6항의 **silent drop** 원칙 — 사용자 의도·검증 대상이 경고/에러 없이 사라지면 안 된다.
+세 건 모두 "조용히 잘못"을 "loud 실패 또는 경고"로 바꾼 것(동작 보존, 가시성 강화).
+
+## D-050. 보안/온프레미스 감사 — H 1차(코어 repr 차단 + 위생 3건)
+
+**배경**: HANDOFF_7 H(보안/온프레미스). 일본 엔터프라이즈 온프레미스 배포 차단요건
+(자격=env만·데이터 비반출·로그 비밀 0·config 평문 0·오프라인)을 코드 정독으로 감사.
+
+**감사 결과 — 핵심은 견고(✅)**: 외부 네트워크 호출 0(localhost webbrowser/flask/psycopg2만),
+`shell=True`/eval/os.system 0, GUI 기본 바인드 127.0.0.1, GUI는 폼에서 비번 미수령(env만)·
+클라엔 password_env 이름만 반환, `save_connection`이 `db.pop("password")`로 config에 평문 비번 미기록.
+
+**수정(3건)**:
+1. **코어 repr 차단(사용자 승인 — 코어 무수정 예외)**: `DatabaseConfig`(dataclass) 자동 repr이
+   password를 평문 출력 → repr/로그/예외로 누출될 지뢰(활성 누출은 0). `password` 필드에 `field(repr=False)`.
+   값 보관·접속 동작 불변. `models.py` 1줄 + 가드 테스트 1건.
+2. **devpw 평문 제거**: `HANDOFF_6/7.md`의 데모 DB 비번 `devpw` → 환경변수 참조로 리다이렉트
+   (레포 자체 '★평문 금지' 정책 일치).
+3. **공개 레포 위생 .gitignore**: 원자적 저장 산출물 `config.yaml.bak`/`.tmp`(고객 DB host/user 포함) +
+   `ui_screenshot/`(형제 제품 디자인 참조) 무시.
+
+**deferred/참고**: preflight DB 접속 에러는 psycopg2 예외를 그대로 노출하나 표준 접속 에러 메시지에
+비번은 미포함(인증실패=user명만). 실데이터 운영에서 예외 문자열 점검은 F(운영 엣지)에서 재확인.
+
+**범위**: 코어 `models.py` 1줄(승인)·문서·.gitignore. 293 passed/10 skipped.
+
+## D-051. GUI activeConfig 무한재귀 회귀 수정 + JS 테스트 갭 인지 (수동 QA 산출)
+
+**배경**: 사용자 수동 QA(GUI `/`에 정본 `complete_sample.csv` 업로드)에서
+`通信エラー: RangeError: Maximum call stack size exceeded` 발생.
+
+**원인**: `index.html`의 `const activeConfig = () => activeConfig();`(b1bf0a7, 트랙2-B에서
+혼입) — base case 없는 자기호출. 메인 화면에서 config를 읽는 모든 동작(정의 생성·저장·
+preflight·실행·paths·groups)이 **2026-06-08 이후 전부 RangeError로 깨져 있었음**. /define 화면은
+`$("config").value`를 직접 읽어 무영향(그래서 from-csv 단독은 정상으로 보였음).
+
+**수정**: `activeConfig`를 `#config` 셀렉터(option value=config 경로) 선택값 반환 + `lastConfig`
+폴백으로. 서버 `_active_config()`(=`request.values.get("config") or _DEFAULT_CONFIG`)와 계약 일치.
+GUI 템플릿(인터페이스 계층)만 수정 — 코어 무관.
+
+**교훈(테스트 갭)**: 서버측 `test_gui`(Flask test_client)는 **브라우저 JS를 실행하지 않아** 이 회귀를
+통과시켰다. 보강: 렌더 본문에서 자기재귀 패턴 부재 + `#config` 참조를 **정적 가드 테스트**로 확인
+(완전한 JS 실행 검증은 아니지만 이 부류 회귀는 차단). 향후 JS 흐름은 수동 QA/별도 E2E가 필요.
+
+**범위**: `src/gui/templates/index.html` 1줄 + `tests/test_gui.py` 가드 1건. 294 passed/10 skipped.
+
+## D-052. GUI 一括実行 단일버튼 — Mapping→Execution→결과 자동 흐름 복원 (코어 무수정)
+
+**배경**: 원래 비전(시연 시나리오·Phase7 "버튼+모니터+결과")은 **정의만 준비되면 한 흐름으로
+점검→실행→결과/성적서**. 그런데 GUI(D-044 ModernizePro 탭 셸)가 점검·실행을 **별도 탭의 수동 2버튼**으로
+쪼개 노출 중이었다. 엔진은 이미 자동 E2E(`/run` SSE = 전 셸 적재→배치→비교→리포트).
+
+**결정**: **단일 `一括実行` 버튼** 추가(인터페이스 계층만, 코어/엔드포인트 무수정 — 기존 `/preflight`·`/run` wiring).
+- `runPreflight()`를 await 가능 함수로 추출 → `runAll()`이 **점검 자동 실행 → 에러0이면 그대로 `startRun()`**.
+  **점검은 안전 게이트로 유지**(에러 있으면 멈추고 preflight-out에 표시 — 야간 수천 건 헛실행 방지 C3).
+- 배치: Execution 탭 상단 `#runall`(주버튼) + **Mapping 저장 직후 `goto-runall` CTA**("このまま一括実行")로
+  탭 이동 없이 업로드→버튼→모니터 한 흐름.
+- 동반 버그(수동 QA 발견): `/definition/save`가 **브라우저 폼 왕복 CRLF**(HTTP 폼 줄바꿈 정규화)를 그대로
+  기록해 정의파일이 CRLF가 됐다(tracked 샘플 spurious diff). 저장 직전 `\r\n→\n` 정규화로 수정.
+
+**범위**: `src/gui/templates/index.html`·`src/gui/web.py`(CRLF 1줄)·`tests/test_gui.py`(정적 가드 2 + CRLF 1).
+코어·스키마·엔드포인트 계약 무변경. 296 passed/10 skipped. **D-034(경량 자동 흐름)·D-044(탭 셸) 양립**(탭 유지 +
+단일버튼으로 자동 흐름 복원).
+
+**deferred**: 더 깊은 경량화(탭→단일 화면 통합)는 별도 UX 결정 필요(지금은 탭 유지 + 자동 흐름만). i18n(G)·실 배치 연동(A) 무관.
+
+## D-053. Mapping+Execution 단일 '検証フロー' 세그먼트 병합 (D-052 deferred 실현)
+
+**배경**: D-052에서 "탭→단일 화면 통합은 별도 UX 결정 필요"로 보류했던 것을, 사용자 요청으로 실현.
+"Mapping이랑 Execution을 아예 같은 segmented control로 묶어 한 화면에서 자동으로 넘어가게."
+
+**결정**: 상단 세그먼트(기능 탭)에서 `Mapping`·`Execution` 두 탭을 **하나 `検証フロー`** 로 병합.
+①定義 → 一括実行(②点検 ③実行) → ④結果를 **한 패널/화면**에 두고, 정의 저장 직후 `一括実行` 영역으로
+**자동 스크롤**(scrollToEl)해 탭 이동 없이 흐름이 이어진다. 실제 실행은 단일 `一括実行` 버튼이 게이트(점검
+안전장치 유지 — D-052). Artifacts/Quarantine/Project Settings 세그먼트는 그대로.
+
+- 변경: 두 `tabpanel`(mapping/execution) → 하나(verify), `data-tab/data-panel` 갱신, `showTab("execution")→"verify"`,
+  저장 후 `goto-runall` CTA 제거→자동 스크롤, placeholder 문구 정정. **코어/엔드포인트 무수정**(인터페이스 계층).
+- 가드 테스트: verify 세그먼트 존재 + 옛 execution 분리탭 부재 + 자동전진 스크롤. 296 passed.
+
+**이유**: 원래 비전(한 흐름 자동 E2E)에 맞춰 화면 분절을 제거. D-044(ModernizePro 탭 셸)의 세그먼트 개념은
+유지하되, 핵심 검증 흐름만 단일 세그먼트로 합쳐 마찰 제거(D-034 경량화 정신과 합치).
+
+## D-054. 検証フロー 재설계 1단계 — 백그라운드 실행(RunManager) + 상태 엔드포인트 (코어 무수정)
+
+**배경**: GUI를 "긴 세로 스크롤 아코디언"에서 "한 화면 자동 전환 + 실행 후 자리 비워도 복귀"로
+재설계(설계 승인됨). §0 조사: `/run`(SSE)은 데몬 워커라 실행은 끊겨도 계속 도나 **진행을 되읽을
+서버 상태가 없고**, `_run_lock`을 generator finally가 조기 해제하는 **버그1**(실행 중 2차 기동 가능)이
+있었다. 단 코어가 셸 종료 직후 **checkpoint.jsonl에 fsync**(영속)하므로 상태 복원의 토대는 이미 있음.
+
+**결정(1단계, 인터페이스 계층만 — 코어/기존 엔드포인트 무수정)**:
+- `src/gui/run_manager.py` 신설: 전역 단일 `RunManager`(락 + RunState). `run_full_comparison`을
+  백그라운드 데몬 스레드로 감싸 진행/결과를 서버에 보존. 락은 **워커 생명주기 전체** 보유·워커
+  finally에서만 해제(버그1 수정 — 연결 종속 제거).
+- `POST /run/start`(즉시 반환, 진행 중 409, resume 플래그=코어 통과) + `GET /run/status`(폴링·재접속
+  복원용 스냅샷: state·total(셸)·counts(출력)·current·started_at/finished_at·summary·error).
+- **락 단일화(조건1)**: 구 `/run` SSE도 `run_manager` 락을 거치게 일원화 → 동시 기동 구멍 제거.
+  구 SSE 기능(실시간 push)은 유지. (신규 UI는 폴링 기반으로 이행 후 구 SSE 정리 — 후속 단계)
+- **예외 안전(조건2)**: 워커 크래시도 finally `end()`로 락 해제 + 상태 `failed` 보존(테스트 포함).
+- **타임스탬프(조건3)**: started_at/finished_at — "이 결과가 언제 것인가"(어제 결과를 방금처럼 보이지 않게).
+
+**단위 주의**: `total`=셸 수(ProgressEvent.total), `counts`/`done`=출력 수(N:M라 셸≠출력). 진행률 분모는
+프론트가 from-csv의 output_count 합(출력)을 보존해 `done`과 짝짓는다(설계대로). 백엔드는 둘 다 제공.
+
+**검증**: 단위 테스트 +3 + 격리 fixture, 구 SSE 테스트 2건 유지. dc-pg 실 데모를 `/run/start`로 백그라운드
+실행 → `/run/status`가 done/OK22·NG4·MISSING1/타임스탬프/summary 정확 반영(curl). 299 passed/10 skipped.
+
+**다음 단계(설계 2~6)**: 프론트 상태머신(고정 뷰포트·in-place) → 자동 연쇄(SELECT→READY) → RUNNING 폴링/
+DONE/재접속 복원 → RESUMABLE(중단 checkpoint 감지 + resume) → 구 아코디언/SSE 정리.
+**단일 프로세스 전제**(app.run threaded) — 다중 워커 WSGI면 RunState 깨짐(배포 가이드 명시 필요, 리스크).
+
+## D-055. 検証フロー 재설계 2단계 — 고정 뷰포트 상태머신(新検証フロー β, 병존) (코어 무수정)
+
+**배경**: 1단계(D-054) 백엔드 위에서, "긴 세로 스크롤 아코디언"을 "한 화면에서 단계 자동 전진"하는
+상태머신 UI로. 기존 동작을 깨지 않으려고(로드시 dangling 참조=스크립트 전체 사망) **별도 세그먼트로 병존**.
+
+**결정(인터페이스 계층만)**:
+- 백엔드 `GET /run/resumable`(2-a): 미완 checkpoint 감지(store 재사용) → RESUMABLE 화면용.
+- 프론트(2-b): 새 세그먼트 `新検証フロー(β)` + 상태머신 패널(고정 뷰포트, 단일 컨테이너 in-place 전환,
+  스테퍼). 화면: SELECT→PREP(생성·저장·점검 자동 연쇄)→READY(경고 모음+検証開始)→RUNNING(폴링
+  /run/status, 진행바+집계)→DONE(요약+다운로드) + BLOCKED(에러+재시도) + RESUMABLE(이어하기) +
+  재접속 복원(로드 시 /run/status·/run/resumable로 적절 화면 복귀).
+- 자기완결 IIFE(`nf-*` ID), 기존 `$`/`activeConfig`/`escapeHtml` 재사용. **node --check JS 문법 검증**.
+- 셸 개별 리스트업 없음(PM 확정), NG 상세는 Quarantine/Artifacts·리포트 위임. 진행률 분모=출력(from-csv).
+
+**병존 이유**: 기존 検証フ로ー(아코디언) 패널·JS를 손대지 않아 회귀 0. **다음 단계(3)**: β를 기본으로 승격 +
+구 아코디언/`/run` SSE/결과 리스트 JS 제거 + (선택) Web Notification + 에러별 해결책 문구 정교화.
+
+**검증**: 정적 가드 테스트, dc-pg 기동·렌더·엔드포인트 확인. 302 passed/10 skipped. **사용자 브라우저 QA 권장**
+(β 탭에서 매핑표 업로드→自動進行→検証開始→진행/결과, 새로고침 복원, 중단 후 재개).
+
+## D-056. 検証フロー 3단계 — 상태머신 정식 승격 + 구 아코디언/Artifacts/Quarantine 제거 (코어 무수정)
+
+**결정**: 2단계의 新検証フロー(β) 상태머신을 **정식 検証フロー로 승격**(기본 활성), 구 아코디언 UI를 제거.
+화면 = **検証フロー(상태머신) + Project Settings** 2세그먼트로 단순화(원래 "버튼+모니터+결과" 비전).
+
+- 제거: 구 verify 아코디언 패널(①定義②点検③実行④結果) + Artifacts + Quarantine 패널 + 거기 얽힌 구 플로
+  JS 전부(applyDefinition·runAll·preflight·SSE handleMsg·결과카드/필터/diff/quarantine 렌더·startRun, ~240줄).
+- 결과·다운로드·NG 접근 = 상태머신 DONE 화면(요약+試験成績書/리포트 다운로드) + 리포트 CSV로 일원화.
+  **셸 개별 리스트업·Quarantine 격리 카드는 폐지**(PM 확정: 집계 카운트 중심, NG는 리포트로 접근).
+- 구 `/run` SSE 엔드포인트는 **잔존**(UI 미사용) — 신규 경로(/run/start+폴링)로 완전 이행됨. 제거는 후속.
+- syncEnv 축소(설정 탭 갱신만), init의 scard/goto-artifacts 제거.
+
+**안전 검증(중요 — JS는 서버 테스트로 실행 안 됨)**: ①제거 ID/함수 호출 잔존 0 grep(가드된 def-preview
+조기반환만 잔존) ②**렌더된 전체 `<script>`를 `node --check`로 문법 검증 통과** ③dc-pg 기동·2탭 렌더 확인.
+옛 UI 검사 테스트 2건 삭제·1건 갱신. 300 passed/10 skipped.
+
+**deferred(작은 정리)**: 죽은 CSS(.scard/.shell/.outrow 등)·미사용 함수(markStepDone·setStep*·refreshDefPreview·
+DEF)·web `_definition_preview`/index의 definition 임베드 잔재 제거. + 에러별 해결책 문구 정교화·Web Notification(설계 잔여).
+
+## D-057. 결과 불일치 브라우저 표시 — /run/results + DONE 화면 diff 뷰 (코어 무수정)
+
+**배경**: 사용자 — "결과를 웹상에서 볼 수 없어?" 3단계에서 구 Quarantine/결과목록을 걷어내며 불일치
+상세 보기가 사라졌다. 검증도구의 핵심 가치는 "NG가 어디서 어떻게 다른지"이므로 웹에서 보여야 한다.
+체크포인트(`checkpoint.jsonl`)에 NG diff(line_number·asis_content·tobe_content)·MISSING·ERROR가
+이미 보존됨(store) → 다운로드 없이 렌더 가능.
+
+**결정(인터페이스 계층, 코어 무수정)**:
+- `GET /run/results`: 직전 검증의 **NG/MISSING/ERROR만** `store.latest_results`에서 추려 반환.
+  NG는 diff_lines 포함. **대용량 보호 캡**: 결과당 200줄·총 500건(초과는 試験成績書/レポートで, truncated 플래그).
+- DONE 화면 **"不一致を表示（N件）"** 토글 버튼(불일치>0일 때만) → 인-브라우저 목록.
+  NG = 줄별 As-Is↔To-Be **문자 단위 diff 하이라이트**, MISSING/ERROR = 사유. (셸 개별 라이브 리스트 아님 —
+  완료 후 불일치만 on-demand, PM 절충 "NG만 목록")
+- 제거된 Quarantine/Artifacts 탭 지칭 문구 정정.
+
+**검증**: 테스트 +2 + 정적가드, node --check JS, dc-pg 데모 checkpoint 실데이터(NG4·MISSING1 diff 포함). 302 passed.
+
+## D-058. 검증 결과화면 = 체계적 리포트 + 다운로드 정합 + 감사용 差分明細 (대부분 비코어, evidence 1예외)
+
+**배경**: 사용자 — 결과화면 정보가 압축됨·成果物 버튼 불일치·CSV Not Found·Excel "합계만"·"납품 감사 시
+어느 行이 어떻게 틀렸는지" 필요. 일련의 결과화면 개선.
+
+**결정**:
+1. **결과 리포트 화면(비코어)**: DONE을 풀폭 리포트로 — 판정 배너(合格/不合格+한줄+실행일시·所要), 메트릭
+   대시보드(合計/OK/NG/MISSING/ERROR + 一致率, 클릭=필터), 성과물 행, 不一致 상세(항상표시+필터칩).
+2. **불일치 전건 + diff 지연로드(비코어)**: `/run/results`=불일치 전 항목 경량 목록(diff 제외, 5000행),
+   `/run/results/diff?idx=`=항목별 diff 펼침 지연 로드(500줄). 수만 NG도 안전·전건 확인.
+3. **다운로드/조회 config 정합(비코어, 버그수정)**: 결과화면이 activeConfig() 대신 **실행이 쓴 config**
+   (`/run/status.config`=RunState)를 `rcfg()`로 /evidence·/report·/run/results(+diff)에 전달. 재접속으로
+   셀렉터가 기본값으로 돌아가도 일치. → CSV Not Found(버튼 ?config 누락)·Excel 明細 빈칸(엉뚱 checkpoint) 해소.
+4. **감사용 差分明細(코어 evidence.py — 사용자 승인 예외)**: 試験成績書에 3번째 시트 추가 — 모든 NG의
+   모든 차이 줄(行/As-Is(現)/To-Be(新)) 전건. 단일 정식 문서로 "어느 行이 어떻게". **비교 판정·계약 불변,
+   출력 포맷만 확장**(comparator/orchestrator/스키마 무수정). 試験成績書는 원래 要約+明細 2시트 → 3시트.
+
+**검증**: node --check JS, dc-pg 실런(판정·一致率81.5%·불일치5건 목록+diff·CSV200·Excel 3시트 差分明細 전건).
+테스트 누적 +다수. 304 passed/10 skipped. (커밋 D-058 계열: 결과리포트→버튼·전건→config정합→差分明細)
+
+## D-059. main 머지 전 정밀 리뷰 — 확정 결함 10건 수정 + deferred 기록
+
+**배경**: 브랜치(D-049~058, 34커밋)를 팀 공유 main에 머지하기 전 `/code-review high`
+(파인더 7앵글 × 후보 ~35 × 검증자 교차검증). 확정 결함 10건 → 전부 수정 후 머지.
+**제품 본질(비교 판정·스키마·실행 흐름) 무변경** — 표시/배선/안전망 계층만.
+
+**수정(커밋 ac1a566)**: ① 試験成績書 '=' 데이터 수식화(왜곡·인젝션) → `_append_literal`로 리터럴 강제
+[evidence, 승인영역] ② diff 주소 idx→안정 키(shell+output), 미존재 found=false ③ 진행 단위 정합
+(출력/셸 혼용 '15/10' 제거) ④ config 전환 시 상태머신 초기화(무점검 실행 방지) ⑤ resumable=
+미실행 잔존(done<total)만 + 탈출 버튼 + start() 전 경로 점검 선행 ⑥ poll idle 분기(서버 재시작 동결 해소)
+⑦ 파일 input value 리셋(같은 파일 재선택 무반응) ⑧ /run/results(+diff) 예외 로깅 ⑨ Thread.start 실패
+시 락 반환(영구 409 차단) ⑩ 재검증 동선: 再検証(全件)·NG・ERRORのみ(코어 retry_failed 노출,
+/run/start?retry=1) + shells/resume/retry 상호배타 400. 테스트 +5, 309 passed. 실데모 e2e 확인.
+
+**deferred(비차단, 후속)**: 죽은 CSS ~130줄·고아 JS(preflightOK/es/editProjName 등)·refreshDefPreview
+무용 호출·/run SSE↔/run/start 워커 중복(구 SSE 제거 예정)·_COUNT_KEYS/_BAD_STATUSES enum 파생화·
+evidence build_rows/build_diff_rows 키잉 공유·checkpoint 캐싱(클릭마다 전체 재파싱)·applyFailFilter
+전체 재렌더·差分明細 행 캡(초극단 100만행)·매핑 collision 가드 경로 정규화·멀티워커 WSGI 가드.
+
+**머지**: feat/qa-mapping-guards → main (팀 공유 최신화). TEAM_SETUP.md GUI 절차를 検証フロー 기준으로 갱신.

@@ -14,9 +14,16 @@ out/
 
 # 환경별 실제 설정 (예시 파일만 커밋, 실값은 제외)
 config.yaml
+# 원자적 저장 산출물(고객 DB host/user 포함 — 평문 비번은 없으나 실수 커밋 방지)
+config.yaml.bak
+config.yaml.tmp
+*.yaml.bak
 
 # 비밀
 .env
+
+# 형제 제품(ModernizePro) 디자인 참조 스크린샷 — 로컬 참조용, 공개 레포 미커밋(IP/기밀)
+ui_screenshot/
 
 # 현실형 환경 실효 설정(런타임 생성, host/port 덮어씀)
 .config.realistic.effective.yaml

@@ -80,3 +80,10 @@ def test_run_summary_fields():
     assert s.total == 10
     assert s.missing_count == 1
     assert len(s.results) == 1
+
+
+def test_database_config_repr_hides_password():
+    """DatabaseConfig.repr에 비밀번호가 평문 노출되지 않는다(방어심층, D-049 H). 값 자체는 보존."""
+    db = DatabaseConfig(host="h", port=5432, dbname="d", user="u", password="SUPERSECRET")
+    assert "SUPERSECRET" not in repr(db)  # repr/로그/예외 문자열에 비번 안 샘
+    assert db.password == "SUPERSECRET"   # 접속용 값은 정상 보관

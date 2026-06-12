@@ -477,3 +477,91 @@ def test_leading_comment_lines_skipped():
     r = m.mapping_to_definition(csv)
     assert r["ok"], r["errors"]
     assert r["count"] == 1
+
+
+# --- J 적대적 검토(D-046~048) — silent-drop/collision 회귀 가드 -----------------
+
+def test_sam_explicit_nonbyte_mode_warns_not_silent():
+    """sam 출력에 compare_mode=text 명시 → byte로 덮어쓰되 **경고**(vsam과 동일, silent-drop 방지)."""
+    csv = (
+        "checklist,io,type,input,to_be_output,as_is_output,compare_mode\n"
+        "001,input,sam,in.dat,,,\n"
+        "001,output,sam,,out.dat,gold.dat,text\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]
+    assert yaml.safe_load(r["yaml"])["tests"][0]["outputs"][0]["compare"]["mode"] == "byte"
+    assert any("text" in w and "byte" in w for w in r["warnings"]), r["warnings"]
+
+
+def test_sam_explicit_byte_mode_no_warning():
+    """sam + compare_mode=byte(명시)는 강등이 아니므로 경고하지 않는다(false-positive 가드)."""
+    csv = (
+        "checklist,io,type,input,to_be_output,as_is_output,compare_mode\n"
+        "001,input,sam,in.dat,,,\n"
+        "001,output,sam,,out.dat,gold.dat,byte\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"] and not r["warnings"]
+
+
+def test_xlsx_multiple_data_sheets_rejected():
+    """xlsx 데이터 시트가 둘 이상이면 loud 에러(검증 누락 방지) — 첫 시트만 읽고 나머지 silent-drop 금지."""
+    import io as _io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.append(["checklist", "io", "type", "input", "to_be_output", "as_is_output"])
+    ws1.append(["001", "input", "file", "in.dat", "", ""])
+    ws2 = wb.create_sheet("業務B")
+    ws2.append(["checklist", "io", "type", "input", "to_be_output", "as_is_output"])
+    ws2.append(["002", "input", "file", "in.dat", "", ""])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    with pytest.raises(ValueError, match="複数"):
+        m.read_mapping_bytes(buf.getvalue())
+
+
+def test_xlsx_data_on_non_active_sheet_is_read():
+    """데이터가 비활성(첫째가 아닌) 시트에만 있어도 읽는다 — wb.active 고정의 빈-결과 함정 방지."""
+    import io as _io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.title = "empty"  # 활성 시트는 비어 있음
+    ws = wb.create_sheet("data")
+    ws.append(["checklist", "io", "type", "input", "to_be_output", "as_is_output"])
+    ws.append(["001", "input", "file", "in.dat", "", ""])
+    ws.append(["001", "output", "file", "", "out.dat", "gold.dat"])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    r = m.mapping_to_definition(m.read_mapping_bytes(buf.getvalue()))
+    assert r["ok"] and r["count"] == 1, r["errors"]
+
+
+def test_duplicate_output_target_within_shell_rejected():
+    """한 셸에서 두 출력의 To-Be 출력 경로가 같으면 에러(덮어쓰기 = 검증 손실)."""
+    csv = (
+        "checklist,io,type,table,input,to_be_output,as_is_output\n"
+        "001,input,database,t,in.csv,,\n"
+        "001,output,database,acc,,,\n"
+        "001,output,database,acc,,,\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert not r["ok"]
+    assert any("重複" in e for e in r["errors"]), r["errors"]
+
+
+def test_duplicate_name_different_dir_is_ok():
+    """같은 파일명이라도 to_be_dir이 다르면 충돌 아님(false-positive 가드)."""
+    csv = (
+        "checklist,io,type,table,input,to_be_output,as_is_output,to_be_dir\n"
+        "001,input,database,t,in.csv,,,\n"
+        "001,output,database,acc,,,,/d1\n"
+        "001,output,database,acc,,,,/d2\n"
+    )
+    r = m.mapping_to_definition(csv)
+    assert r["ok"], r["errors"]

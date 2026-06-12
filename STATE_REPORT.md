@@ -3,7 +3,40 @@
 > 현재 상태 있는-그대로 보고(읽기 전용). 작성 시점 기준 파일에 실제로 존재하는 것만 기록.
 > 코드 수정 없음. 불확실한 것은 "불확실"로 명시.
 
-> **2026-06-08 갱신(요지 — 이 블록이 최현행. 아래 2026-06-07·§0~§7은 과거 스냅샷)**
+> **2026-06-12 갱신(요지 — 이 블록이 최현행. 아래는 과거 스냅샷)**
+> - **main 머지 완료**: feat/qa-mapping-guards(D-049~D-059) → main. 테스트 **309 passed / 10 skipped**.
+> - **머지 전 정밀 리뷰(D-059)**: /code-review high(7앵글×검증) → 확정 결함 10건 전부 수정(試験成績書 수식
+>   인젝션·diff 안정키·진행단위·config 전환 리셋·resumable 조건·idle 폴링·input 리셋·예외 로깅·락 누수·
+>   재검증 동선+상호배타 400). deferred 목록은 D-059 기록.
+> - **GUI = 検証フロー 한 화면 자동 진행**(D-052~058): 매핑표 선택→정의·점검 자동→検証開始 1클릭→백그라운드
+>   실행(브라우저 닫아도 계속)→결과 리포트(판정·一致率·不一致 행별 diff)→試験成績書(要約·明細·差分明細)/
+>   結果データ(CSV)·再検証(全件/NG・ERRORのみ). 운영 주의: 단일 프로세스 전제(멀티워커 금지)·서버 절전 해제.
+> - TEAM_SETUP.md GUI 절차 갱신(検証フロー 기준).
+
+> **2026-06-10 갱신(과거 스냅샷)**
+> - 테스트 **293 passed / 10 skipped**(회귀 0). 브랜치 `feat/qa-mapping-guards`(미푸시), base=main `195dc1d`. 코어=models.py repr 1줄만(승인).
+> - **HANDOFF_7 J(직전 변경분 D-046~048 적대적 검토)** → 매핑도구 **silent-drop/collision 3건** 발견·수정
+>   (**D-049**, 코어 밖 `tools/mapping_to_definition.py`만 + 테스트 6건). ① sam+명시 compare_mode 강등 시 vsam과 동일
+>   경고(무경고였음) ② xlsx 다중/비활성 시트 silent-drop → 데이터 시트 탐색+다중시 loud 에러 ③ 셸 내 동일 To-Be
+>   출력경로 충돌 → 에러(덮어쓰기 검증손실 방지).
+> - **HANDOFF_7 H(보안/온프레미스 감사)** 1차(**D-050**): 핵심 견고 확인(외부 네트워크 0·shell=True 0·GUI 비번 env만·
+>   config 평문 비번 미기록). 수정 3건 — ① 코어 `DatabaseConfig.repr` 비번 차단(`field(repr=False)`, 사용자 승인)
+>   ② docs `devpw` 평문 → env 참조 ③ `config.yaml.bak`/`.tmp`·`ui_screenshot/` .gitignore.
+> - **정상 확인(발견 아님)**: io/kind 별칭 우선순위, in_encoding·setup 로더 도달, 빈 xlsx 거부, `;`시퀀스 거부, 파일출력 idx 분리.
+> - **수동 QA 회귀 발견·수정(D-051)**: GUI `/`에 complete_sample 업로드 시 `RangeError: Maximum call stack`
+>   — `index.html`의 `activeConfig`가 자기호출 무한재귀(b1bf0a7 혼입)로 **2026-06-08 이후 메인 화면 config 의존
+>   동작 전부 깨져 있었음**. `#config` 셀렉터 값 반환으로 수정 + 정적 가드 테스트(서버 test_gui는 JS 미실행이라 놓침).
+> - **検証フロー 재설계 1단계(D-054)**: "실행 후 자리 비워도 와서 보면 끝나있다"를 위한 백엔드. `src/gui/run_manager.py`
+>   (전역 RunManager=락+RunState, run_full_comparison을 백그라운드 데몬 스레드로 감쌈) + `POST /run/start`·`GET /run/status`.
+>   §0 버그1(락 조기해제) 수정·구 /run SSE 락 단일화(조건1)·워커 예외 안전(조건2)·started/finished_at(조건3).
+>   2단계(D-055)·3단계(D-056) 거쳐 상태머신 정식 승격. **결과화면(D-057·D-058)**: 불일치 브라우저 표시→체계적 리포트(판정·메트릭·一致率·필터)→다운로드 config 정합(CSV404·Excel합계만 수정)→**감사용 差分明細 시트**(evidence 코어 예외·승인). 304 passed.
+> - **GUI 자동 흐름 복원(D-052)**: 원래 비전(Mapping→Execution→결과 자동 E2E) — 점검·실행이 별도 탭 수동 2버튼
+>   이던 것을 **단일 `一括実行` 버튼**(점검 자동→0에러면 실행→결과/성적서 연쇄, 점검은 안전게이트 유지)으로.
+>   Mapping 저장 직후 'このまま一括実行' CTA로 한 흐름. 코어/엔드포인트 무수정(인터페이스 wiring). 동반: 저장 CRLF 정규화.
+> - 커밋 10개(브랜치): J·docs·gitignore·repr·hygiene·D-050·GUI회귀fix·D-051·칩제거·**一括実行+CRLF**·D-052.
+>   **다음**: F(에러/엣지) 또는 J 잔여(DB 데모 e2e). GUI는 8080에서 기동 중(`POSTGRES_PASSWORD=devpw`).
+
+> **2026-06-08 갱신(요지 — 아래 2026-06-07·§0~§7은 과거 스냅샷)**
 > - 테스트 **278 passed / 10 skipped**(회귀 0). 코어(비교/실행/exporter/정의 스키마/checkpoint) **0수정** 유지.
 > - **트랙1-A**(`1869900`): preflight DB 접속 실패 시 `password_env`(기본 POSTGRES_PASSWORD) 미설정이면 그 사실 1줄 명시.
 >   env 있는데 실패면 raw 유지. `preflight.py:_check_db` 1곳 + 분기 테스트 1개(지시된 국소 예외).
