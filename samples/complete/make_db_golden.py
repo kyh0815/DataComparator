@@ -7,7 +7,7 @@ make_golden은 전건 대상이라 파일 CK의 의도된 NG 골든(003·005·00
 골든과 To-Be가 같은 직렬화를 타 false-NG가 구조적으로 불가능(D-027).
 
 DB 필요(dc-pg). 실행:
-  POSTGRES_PASSWORD=postgres python3 samples/complete/make_db_golden.py
+  python3 samples/complete/make_db_golden.py   # (Windows: py …)
 선행: db/schema.sql + db/schema_realistic.sql 적용, make_complete_data.py 실행, test_definition.yaml 생성.
 """
 
