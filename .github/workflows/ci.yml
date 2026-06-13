@@ -27,4 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run tests (DB-free)
-        run: python -m pytest -q
+        run: python -m pytest -rA --junitxml=junit.xml
+      - name: Annotate test failures
+        if: failure()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: junit.xml
+          detailed_summary: true
+          include_passed: false
+          annotate_only: true
