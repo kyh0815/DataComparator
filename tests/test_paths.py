@@ -39,14 +39,16 @@ def test_input_source_falls_back_to_config(tmp_path):
 
 def test_input_source_override(tmp_path):
     cfg = _config(tmp_path)
-    spec = InputSpec(csv="001.csv", type="file", src_dir="/mnt/asis")
-    assert paths.input_source_path(spec, cfg) == Path("/mnt/asis/001.csv")
+    ovr = tmp_path / "ovr_asis"  # ★OS-무관 절대경로(POSIX /mnt는 Windows서 드라이브가 붙음)
+    spec = InputSpec(csv="001.csv", type="file", src_dir=str(ovr))
+    assert paths.input_source_path(spec, cfg) == ovr / "001.csv"
 
 
 def test_input_dest_override_and_rename(tmp_path):
     cfg = _config(tmp_path)
-    spec = InputSpec(csv="001.csv", type="file", dest_dir="/mnt/in", dest_name="staged.csv")
-    assert paths.input_dest_path(spec, cfg) == Path("/mnt/in/staged.csv")
+    ovr = tmp_path / "ovr_in"
+    spec = InputSpec(csv="001.csv", type="file", dest_dir=str(ovr), dest_name="staged.csv")
+    assert paths.input_dest_path(spec, cfg) == ovr / "staged.csv"
 
 
 def test_input_dest_defaults_keep_name(tmp_path):
@@ -65,8 +67,9 @@ def test_input_dest_missing_dir_raises(tmp_path):
 
 def test_output_asis_override(tmp_path):
     cfg = _config(tmp_path)
-    out = OutputSpec(type="file", expected="gold.dat", file="o.dat", expected_dir="/mnt/gold")
-    assert paths.output_asis_path(out, cfg) == Path("/mnt/gold/gold.dat")
+    ovr = tmp_path / "ovr_gold"
+    out = OutputSpec(type="file", expected="gold.dat", file="o.dat", expected_dir=str(ovr))
+    assert paths.output_asis_path(out, cfg) == ovr / "gold.dat"
 
 
 def test_output_tobe_override_creates_parent(tmp_path):

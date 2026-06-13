@@ -467,7 +467,8 @@ def definition_save():
         return jsonify({"ok": False, "message": "config.yaml に paths.definition_file がありません。"})
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(yaml_text, encoding="utf-8")
+    # newline="\n": Windows에서도 LF로 기록(기본 text 모드는 \n→\r\n 변환 — D-058 정규화 무효화 방지).
+    target.write_text(yaml_text, encoding="utf-8", newline="\n")
     return jsonify({"ok": True, "message": f"定義を保存しました: {target}", "path": str(target)})
 
 
