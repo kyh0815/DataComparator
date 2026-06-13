@@ -5,6 +5,7 @@
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -153,7 +154,10 @@ def test_named_column_with_header_ok(tmp_path):
 # --- 출력 디렉토리 쓰기권한 -----------------------------------------------------
 
 
-@pytest.mark.skipif(os.getuid() == 0, reason="root는 권한 우회")
+@pytest.mark.skipif(
+    sys.platform == "win32" or (os.name == "posix" and os.getuid() == 0),
+    reason="POSIX 쓰기권한(chmod) 의미 — Windows는 ACL이라 chmod 미적용, root는 권한 우회",
+)
 def test_unwritable_output_dir_is_error(tmp_path):
     ro = tmp_path / "readonly_out"
     ro.mkdir()
