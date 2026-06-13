@@ -3,8 +3,12 @@
 > 목적: 주니어 팀원이 **자기 PostgreSQL + 자기 샘플**로 e2e(프리플라이트→検証実行→試験成績書) 한 바퀴를 깨끗한 환경에서 막힘없이 돌린다.
 > 이 문서만 따라하면 끝나야 한다. 막히면 6번을 보라.
 
-전제: Python 3.10+, 자기 PostgreSQL(직접 띄움 — 도구가 안 띄운다). **OS = Linux/macOS.**
-Windows는 네이티브 불가(진입 스크립트·데모 배치가 sh) — **WSL2(Ubuntu) 안에서** 이 문서를 그대로 따르면 된다(운영 타깃도 Linux라 오히려 실환경에 가깝다).
+전제: Python 3.10+, 자기 PostgreSQL(직접 띄움 — 도구가 안 띄운다). **OS = Linux / macOS / Windows 모두 가능**(D-060).
+- 명령은 **Linux/macOS = `python3`**, **Windows = `py`**(또는 `python`)로 읽으면 된다. `.sh` 래퍼 대신 직접 호출:
+  - 데모: `python3 samples/complete/run_demo.py` (Windows: `py samples\complete\run_demo.py`)
+  - CLI: `python3 -m src.cli.main …` / GUI: `python3 -m src.gui.web` (Windows: `py -m …`)
+- 비번 env: Linux/macOS `export POSTGRES_PASSWORD='…'` / Windows PowerShell `$env:POSTGRES_PASSWORD='…'`.
+- ★양 OS 동작은 GitHub Actions CI(ubuntu+windows 매트릭스)로 매 푸시 검증된다.
 
 ---
 
@@ -121,7 +125,10 @@ python3 -m src.cli.main --evidence --config ./config.yaml
 
 ### (B) GUI — 브라우저에서 (検証フロー: 한 화면 자동 진행)
 ```bash
+# Linux/macOS
 GUI_PORT=8000 POSTGRES_PASSWORD='자기비번' ./run_gui.sh
+# Windows (PowerShell)
+$env:POSTGRES_PASSWORD='자기비번'; $env:GUI_PORT='8000'; py -m src.gui.web
 # → http://127.0.0.1:8000/
 ```
 1. **検証フロー** 화면에서 `▶ マッピング表を選択` → 매핑표(CSV/xlsx) 선택

@@ -5,7 +5,7 @@ tests:
     - csv: ck001_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck001.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck001.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -27,7 +27,7 @@ tests:
     - csv: ck002_in2.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck002.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck002.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -45,7 +45,7 @@ tests:
     - csv: ck003_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck003.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck003.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -63,7 +63,7 @@ tests:
     - csv: ck004_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck004.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck004.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -77,7 +77,7 @@ tests:
     - csv: ck005_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck005.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck005.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -91,7 +91,7 @@ tests:
     - csv: ck006_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck006.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck006.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -106,7 +106,7 @@ tests:
     - csv: ck007_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck007.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck007.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -124,7 +124,7 @@ tests:
     - csv: ck008_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務A/sh/ck008.sh
+    shell_program: mock_linux/opt/migsys/業務A/sh/ck008.py
     shell_group: 業務A
   outputs:
   - type: file
@@ -142,7 +142,7 @@ tests:
     - csv: ck009_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck009.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck009.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -160,7 +160,7 @@ tests:
     - csv: ck010_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck010.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck010.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -177,7 +177,7 @@ tests:
     - csv: ck011_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck011.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck011.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -191,7 +191,7 @@ tests:
     - csv: ck012_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck012.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck012.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -205,7 +205,7 @@ tests:
     - csv: ck013_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck013.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck013.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -222,7 +222,7 @@ tests:
     - csv: ck014_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck014.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck014.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -237,7 +237,7 @@ tests:
     - csv: ck015_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.py
     shell_group: 業務C
   outputs:
   - type: file
@@ -254,7 +254,7 @@ tests:
     - csv: ck016_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck_shared.py
     shell_group: 業務C
   outputs:
   - type: file
@@ -268,7 +268,7 @@ tests:
     - csv: ck017_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck017.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck017.py
     shell_group: 業務C
   outputs:
   - type: file
@@ -286,7 +286,7 @@ tests:
     - csv: ck018_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck018.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck018.py
     shell_group: 業務C
   outputs:
   - type: file
@@ -301,7 +301,7 @@ tests:
       type: database
       table: transaction_log
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck019_db.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck019_db.py
     shell_group: 業務C
   outputs:
   - type: database
@@ -323,7 +323,7 @@ tests:
       type: database
       table: rt_customer
   execution:
-    shell_program: mock_linux/opt/migsys/業務C/sh/ck020_db.sh
+    shell_program: mock_linux/opt/migsys/業務C/sh/ck020_db.py
     shell_group: 業務C
   outputs:
   - type: file
@@ -349,7 +349,7 @@ tests:
     - csv: ck021_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck021.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck021.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -366,7 +366,7 @@ tests:
     - csv: ck022_in.csv
       type: file
   execution:
-    shell_program: mock_linux/opt/migsys/業務B/sh/ck022.sh
+    shell_program: mock_linux/opt/migsys/業務B/sh/ck022.py
     shell_group: 業務B
   outputs:
   - type: file
@@ -390,7 +390,7 @@ tests:
       type: file
       src_dir: 業務D_io/asis_in
   execution:
-    shell_program: mock_linux/opt/migsys/業務D/sh/ck023.sh
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck023.py
     shell_group: 業務D
   outputs:
   - type: file
@@ -423,7 +423,7 @@ tests:
       type: file
       src_dir: 業務D_io/asis_in
   execution:
-    shell_program: mock_linux/opt/migsys/業務D/sh/ck024.sh
+    shell_program: mock_linux/opt/migsys/業務D/sh/ck024.py
     shell_group: 業務D
   outputs:
   - type: file

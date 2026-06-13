@@ -80,8 +80,11 @@ def test_argv_db_input_db_output(tmp_path):
     argv, env, timeout = runner._build_command(
         _def("001", "database", "database"), _config(tmp_path), clean=False
     )
-    assert argv[0].endswith("stub_batch/run_batch_db.py")
-    assert argv[1:3] == ["--shell-id", "001"]
+    # D-060: .py 배치는 [인터프리터, 스크립트, ...] — Windows 크로스플랫폼 실행
+    import sys
+    assert argv[0] == sys.executable
+    assert argv[1].endswith("run_batch_db.py")  # OS별 경로구분자 무관(basename)
+    assert argv[2:4] == ["--shell-id", "001"]
     assert "--input-table" in argv and "transaction_log" in argv
     assert "--output-table" in argv
     assert "--output-path" not in argv  # DB출력엔 출력경로를 stub에 넘기지 않음
@@ -92,7 +95,9 @@ def test_argv_file_input_file_output(tmp_path):
     argv, env, timeout = runner._build_command(
         _def("006", "file", "file"), _config(tmp_path), clean=False
     )
-    assert argv[0].endswith("stub_batch/run_batch_file.py")
+    import sys
+    assert argv[0] == sys.executable                       # D-060: .py → 인터프리터 경유
+    assert argv[1].endswith("run_batch_file.py")  # OS별 경로구분자 무관(basename)
     assert "--input-file" in argv
     assert str(tmp_path / "tobe_input" / "006.csv") in argv
     assert "--output-path" in argv
@@ -261,21 +266,19 @@ def test_run_setup_none_is_noop(tmp_path):
 
 
 def test_run_setup_runs_script(tmp_path):
-    """비-.sql setup은 실행파일로 호출된다(마커 파일로 확인)."""
+    """비-.sql setup은 실행파일로 호출된다(마커 파일로 확인). ★.py로 크로스플랫폼(D-060)."""
     marker = tmp_path / "ran.txt"
-    script = tmp_path / "prep.sh"
-    script.write_text(f"#!/bin/sh\necho ok > {marker}\n", encoding="utf-8")
-    script.chmod(0o755)
+    script = tmp_path / "prep.py"
+    script.write_text(f"open(r{str(marker)!r}, 'w').write('ok')\n", encoding="utf-8")
     d = _def("001", "file", "file", setup=str(script))
     runner.run_setup(d, _config(tmp_path), conn=None)
     assert marker.is_file()
 
 
 def test_run_setup_script_failure_raises(tmp_path):
-    """setup 스크립트 종료코드≠0 → RunnerError."""
-    script = tmp_path / "bad.sh"
-    script.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
-    script.chmod(0o755)
+    """setup 스크립트 종료코드≠0 → RunnerError. ★.py로 크로스플랫폼."""
+    script = tmp_path / "bad.py"
+    script.write_text("import sys; sys.exit(3)\n", encoding="utf-8")
     d = _def("001", "file", "file", setup=str(script))
     with pytest.raises(runner.RunnerError, match="setup"):
         runner.run_setup(d, _config(tmp_path), conn=None)
@@ -315,9 +318,13 @@ def test_second_batch_different_convention_via_config_only(tmp_path):
     같은 stub만 쓰면 결합이 안 풀려도 녹색이라, 일부러 전혀 다른 규약의 배치를 실제 실행해 검증한다.
     """
     marker = tmp_path / "argv.txt"
-    script = tmp_path / "batch2.sh"
-    script.write_text(f'#!/bin/sh\necho "$@" > "{marker}"\nexit 7\n', encoding="utf-8")
-    script.chmod(0o755)
+    script = tmp_path / "batch2.py"  # ★.py로 크로스플랫폼(D-060) — 다른 규약 배치를 실제 실행
+    script.write_text(
+        "import sys\n"
+        f"open(r{str(marker)!r}, 'w').write(' '.join(sys.argv[1:]))\n"
+        "sys.exit(7)\n",
+        encoding="utf-8",
+    )
 
     cfg = _config(tmp_path)
     # 전혀 다른 규약: 서브커맨드 run + shell_id 위치인자 + --src/--dst, DB 인자 없음, 성공코드 7.
@@ -343,3 +350,17 @@ def test_success_exit_code_is_configurable(tmp_path, monkeypatch):
     cfg = _config(tmp_path)
     cfg.batch.success_exit_code = 7
     runner.run_batch(_def("006", "file", "file"), cfg)  # 이제 성공(예외 없음)
+
+
+def test_exec_argv_py_uses_interpreter():
+    """`.py` 배치는 현재 인터프리터로 실행(D-060 — Windows 크로스플랫폼). 그 외는 직접 호출(계약 불변)."""
+    import sys
+    from pathlib import Path
+    from src.core.runner import _exec_argv
+
+    import os
+    py, sh = os.path.join("x", "mock.py"), os.path.join("opt", "job", "batch.sh")
+    assert _exec_argv(Path(py)) == [sys.executable, str(Path(py))]
+    assert _exec_argv(Path(py.upper())) == [sys.executable, str(Path(py.upper()))]  # 대소문자 무관
+    assert _exec_argv(Path(sh)) == [str(Path(sh))]                                  # 실 배치는 그대로
+    assert _exec_argv(Path("netcobol_bin")) == ["netcobol_bin"]

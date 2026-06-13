@@ -3,6 +3,18 @@
 > 현재 상태 있는-그대로 보고(읽기 전용). 작성 시점 기준 파일에 실제로 존재하는 것만 기록.
 > 코드 수정 없음. 불확실한 것은 "불확실"로 명시.
 
+> **2026-06-13 갱신 ② (이 블록이 최현행)**
+> - **Windows 지원 main 머지 완료(D-060·D-061)**: CI 매트릭스(ubuntu+windows×py3.10/3.12) **4잡 전부 green**.
+>   mock 23개 .sh→.py·run_demo.py·runner `.py` 인터프리터(코어 예외 승인)·junit CI 리포터. 실패 12건 전수
+>   수정(거의 테스트 POSIX 가정; 실코드는 web.py 정의저장 LF 1줄). 비교 판정·코어 무변경. 310 passed.
+>   ★팀원 안내: Linux/macOS=python3, **Windows=py**(또는 WSL). git pull + GUI 서버 재시작.
+
+> **2026-06-13 갱신(과거 — 브랜치 작업 중 스냅샷)**
+> - **Windows 지원(D-060, 브랜치 feat/windows-support)**: mock 23개 .sh→.py·run_demo.py 포팅·runner `.py`
+>   인터프리터 실행(코어 예외 승인)·**ubuntu+windows CI 매트릭스** 추가. 운영(리눅스)·비교 판정 불변.
+>   dc-pg e2e 27/OK22·NG4·MISSING1 유지. 310 passed. Windows 동작은 CI가 증명(맥에서 단정 불가).
+> - TEAM_SETUP/README에 Windows 명령(`py`·`$env:`) 병기.
+
 > **2026-06-12 갱신(요지 — 이 블록이 최현행. 아래는 과거 스냅샷)**
 > - **main 머지 완료**: feat/qa-mapping-guards(D-049~D-059) → main. 테스트 **309 passed / 10 skipped**.
 > - **머지 전 정밀 리뷰(D-059)**: /code-review high(7앵글×검증) → 확정 결함 10건 전부 수정(試験成績書 수식
