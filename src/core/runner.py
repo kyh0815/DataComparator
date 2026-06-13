@@ -12,7 +12,9 @@
   ARCHITECTURE 4-3의 shell_id 대신 ShellDefinition을 받는다(분기 정보 재조회 회피).
 - 종료코드≠0/timeout은 RunnerError로 던지고, 오케스트레이터(T3-1)가 ComparisonResult.ERROR로
   매핑한다(예상된 ERROR도 '구조화된 결과'는 경계에서 만들어짐 — Runner는 산출물 유무만 신호).
-- shell_program은 실행파일로 직접 호출(우분투 전제 D-003, shebang+실행비트). Windows는 범위 밖.
+- shell_program은 실행파일로 직접 호출(운영=리눅스 Net COBOL, D-003). 단 `.py`는 현재 인터프리터로
+  실행한다(D-060) — Windows에 shebang이 없어 직접 실행이 안 되므로, 데모/stub의 크로스플랫폼 실행용.
+  실 배치(비-.py) 호출 계약은 불변.
 - 출력=database면 같은 함수가 exporter로 결과 테이블을 CSV 다운로드(Boss 출력 단계).
 - clean=True면 stub에 --clean 전달(골든 생성). 골든·To-Be가 동일 경로를 타 false-NG를 구조적 차단.
 - 비밀번호는 argv가 아니라 환경변수(POSTGRES_PASSWORD)로 전달(ps 노출 방지).
@@ -25,6 +27,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from .exporter import export_table_to_csv
@@ -36,6 +39,15 @@ _PLACEHOLDER = re.compile(r"\{(\w+)\}")  # 배치 호출 토큰의 {name} 치환
 
 class RunnerError(Exception):
     """배치 실행 실패(종료코드≠0·timeout·설정 모순). 오케스트레이터가 ERROR로 기록한다."""
+
+
+def _exec_argv(program: Path) -> list[str]:
+    """실행 argv 선두를 만든다. `.py`만 현재 인터프리터로(D-060 — Windows는 shebang 미지원이라
+    직접 실행 불가; 데모 mock·stub의 크로스플랫폼 실행용). 그 외(실 배치 실행파일·셸)는 기존 그대로
+    직접 호출 — 실 배치 호출 계약 불변."""
+    if str(program).lower().endswith(".py"):
+        return [sys.executable, str(program)]
+    return [str(program)]
 
 
 def run_setup(definition: ShellDefinition, config: Config, conn=None) -> None:
@@ -59,7 +71,7 @@ def run_setup(definition: ShellDefinition, config: Config, conn=None) -> None:
         conn.commit()  # 후속 적재/배치가 보도록 즉시 커밋(D-023 ① 정신)
         return
     timeout = definition.timeout_seconds or config.batch.timeout_seconds
-    proc = subprocess.run([str(path)], env=dict(os.environ), capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(_exec_argv(path), env=dict(os.environ), capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
         raise RunnerError(
             f"[{definition.test_id}] setup スクリプト失敗(終了コード {proc.returncode}): "
@@ -126,7 +138,7 @@ def _build_command(
     program = _resolve_program(definition, config)
     ctx = _command_context(definition, config)
 
-    argv = [str(program)] + _render_argv(config.batch.command, ctx)
+    argv = _exec_argv(program) + _render_argv(config.batch.command, ctx)
     if clean and config.batch.clean_flag:  # 골든 생성 플래그(미지원 배치면 clean_flag=None)
         argv.append(config.batch.clean_flag)
 

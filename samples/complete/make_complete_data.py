@@ -5,7 +5,8 @@
   asis/input/   입력(존재용 더미 — 파일흐름 배치는 읽되 내용 미사용)
   asis/output/  정답(As-Is 출력) = expected
   tobe_src/     To-Be 원본(플랫폼차·결함 심음). mock 셸이 이걸 출력으로 복사.
-  mock_linux/opt/migsys/<業務>/sh/<shell>.sh  실행되는 mock 셸(파일흐름=복사 / MISSING=무출력 / DB=래퍼)
+  mock_linux/opt/migsys/<業務>/sh/<shell>.py  실행되는 mock 셸(파일흐름=복사 / MISSING=무출력 / DB=래퍼)
+                                              ★.py = 크로스플랫폼(D-060) — runner가 인터프리터로 실행
 
 파일흐름 22건(CK001~018 + VSAM 021~022 + N:M 023~024) + DB 2건(CK019~020, 래퍼 셸이 repo stub_batch/ 호출)을 시연한다.
 의도된 결과: OK / NG 4건(003·005·009·022) / MISSING_TOBE 1건(013). 모드 byte/text/record·정규화·mask·
@@ -185,29 +186,42 @@ CHECKS = [
 ]
 
 # mock 복사 셸(파일흐름): --output-path를 받아 tobe_src/<출력명>을 복사한다(realtest 패턴).
-# 셸 위치 mock_linux/opt/migsys/<業務>/sh/ → tobe_src는 5단계 상위(complete 루트) 밑.
-_COPY_SH = """#!/bin/sh
-# mock 업무 셸(파일흐름) — tobe_src/<출력명>을 --output-path로 바이트 복사(실 배치 자리).
-OUT=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-path) OUT="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[ -n "$OUT" ] || { echo "no --output-path" >&2; exit 2; }
-SRC="$(cd "$(dirname "$0")/../../../../../tobe_src" && pwd)/$(basename "$OUT")"
-[ -f "$SRC" ] || { echo "tobe_src なし: $SRC" >&2; exit 1; }
-mkdir -p "$(dirname "$OUT")"
-cp "$SRC" "$OUT"
-"""
+# ★mock은 .py(D-060) — Windows에 shebang이 없어 .sh는 안 돌므로, runner가 인터프리터로 실행한다.
+# 셸 위치 mock_linux/opt/migsys/<業務>/sh/ → tobe_src는 5단계 상위(complete 루트) 밑(parents[5]).
+_COPY_PY = '''#!/usr/bin/env python3
+"""mock 업무 셸(파일흐름) — tobe_src/<출력명>을 --output-path로 바이트 복사(실 배치 자리)."""
+import shutil
+import sys
+from pathlib import Path
+
+
+def main(argv):
+    out = None
+    i = 1
+    while i < len(argv):
+        if argv[i] == "--output-path" and i + 1 < len(argv):
+            out = Path(argv[i + 1]); i += 2
+        else:
+            i += 1
+    if out is None:
+        print("no --output-path", file=sys.stderr); return 2
+    src = Path(__file__).resolve().parents[5] / "tobe_src" / out.name
+    if not src.is_file():
+        print(f"tobe_src なし: {src}", file=sys.stderr); return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+'''
 
 # MISSING_TOBE 시연 셸 — 정상 종료(exit 0)하되 출력을 생성하지 않는다(정답 有·To-Be 無).
-_NOOP_SH = """#!/bin/sh
-# MISSING_TOBE デモ — 出力を生成せず正常終了(exit 0)。比較段階で To-Be 不在 → MISSING_TOBE。
-echo "出力なし(MISSING_TOBE デモ)"
-exit 0
-"""
+_NOOP_PY = '''#!/usr/bin/env python3
+"""MISSING_TOBE デモ — 出力を生成せず正常終了(exit 0)。比較段階で To-Be 不在 → MISSING_TOBE。"""
+print("出力なし(MISSING_TOBE デモ)")
+'''
 
 
 def _write_sh(rel: str, content: str) -> None:
@@ -242,26 +256,45 @@ def _write_output(o: dict, asis_out_dir: str = "asis/output") -> None:
         _write(f"tobe_src/{out}", o["tobe"].encode(_ENC))
 
 
-def _multi_copy_sh(names: list[str]) -> str:
-    """다출력 mock 셸 — 자기 출력들(baked)을 tobe_src에서 --output-path 디렉토리로 복사한다.
+def _multi_copy_py(names: list[str]) -> str:
+    """다출력 mock 셸(.py, D-060) — 자기 출력들(baked)을 tobe_src에서 --output-path 디렉토리로 복사.
 
     런너는 outputs[0] 경로만 --output-path로 넘기므로(D-033 계약), 나머지 출력은 셸이 같은
     디렉토리에 만든다(실 배치는 자기 I/O 위치가 고정이라는 가정과 일치). NG/MISSING엔 미사용.
     """
-    return (
-        "#!/bin/sh\n"
-        "# mock 멀티출력 셸 — 자기 출력들을 tobe_src에서 --output-path 디렉토리로 복사(실 배치는 자기 I/O 고정).\n"
-        'OUT=""\n'
-        'while [ $# -gt 0 ]; do case "$1" in --output-path) OUT="$2"; shift 2 ;; *) shift ;; esac; done\n'
-        '[ -n "$OUT" ] || { echo "no --output-path" >&2; exit 2; }\n'
-        'DIR="$(dirname "$OUT")"\n'
-        'SRC="$(cd "$(dirname "$0")/../../../../../tobe_src" && pwd)"\n'
-        'mkdir -p "$DIR"\n'
-        "for f in " + " ".join(names) + "; do\n"
-        '  [ -f "$SRC/$f" ] || { echo "tobe_src なし: $SRC/$f" >&2; exit 1; }\n'
-        '  cp "$SRC/$f" "$DIR/$f"\n'
-        "done\n"
-    )
+    baked = ", ".join(repr(n) for n in names)
+    return f'''#!/usr/bin/env python3
+"""mock 멀티출력 셸 — 자기 출력들을 tobe_src에서 --output-path 디렉토리로 복사(실 배치는 자기 I/O 고정)."""
+import shutil
+import sys
+from pathlib import Path
+
+NAMES = [{baked}]
+
+
+def main(argv):
+    out = None
+    i = 1
+    while i < len(argv):
+        if argv[i] == "--output-path" and i + 1 < len(argv):
+            out = Path(argv[i + 1]); i += 2
+        else:
+            i += 1
+    if out is None:
+        print("no --output-path", file=sys.stderr); return 2
+    src_dir = Path(__file__).resolve().parents[5] / "tobe_src"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    for name in NAMES:
+        src = src_dir / name
+        if not src.is_file():
+            print(f"tobe_src なし: {{src}}", file=sys.stderr); return 1
+        shutil.copyfile(src, out.parent / name)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+'''
 
 
 def main() -> int:
@@ -284,13 +317,15 @@ def main() -> int:
         for o in outs:
             _write_output(o, out_dir)
 
-        rel_sh = f"mock_linux/opt/migsys/{c['group']}/sh/{c['shell']}"
+        # ★mock 파일명은 .py로 생성(D-060 — CHECKS의 .sh 표기는 셸 식별자, 실파일은 크로스플랫폼 .py)
+        stem = c["shell"].rsplit(".", 1)[0]
+        rel_sh = f"mock_linux/opt/migsys/{c['group']}/sh/{stem}.py"
         if any(o["kind"] == MISSING for o in outs):
-            shells[rel_sh] = _NOOP_SH
+            shells[rel_sh] = _NOOP_PY
         elif len(outs) > 1:
-            shells[rel_sh] = _multi_copy_sh([o["out"] for o in outs])  # 다출력=멀티복사 셸(baked)
+            shells[rel_sh] = _multi_copy_py([o["out"] for o in outs])  # 다출력=멀티복사 셸(baked)
         else:
-            shells[rel_sh] = _COPY_SH
+            shells[rel_sh] = _COPY_PY
 
     for rel_sh, content in shells.items():
         _write_sh(rel_sh, content)
@@ -309,14 +344,20 @@ def main() -> int:
         ["customer_id", "name", "kana", "birth_date", "branch_code", "account_type", "balance", "opened_date"],
         [["C0001", "田中太郎", "タナカタロウ", "1980-04-15", "101", "普通", "1500000", "2015-06-01"],
          ["C0002", "鈴木花子", "スズキハナコ", "1985-08-20", "101", "普通", "800000", "2016-03-01"]]))
-    _db_wrap = (
-        "#!/bin/sh\n"
-        "# mock 업무 셸(DB) — repo stub_batch/의 실 DB stub을 exec(§1: DB 로직은 stub_batch에만).\n"
-        'ROOT="$(cd "$(dirname "$0")/../../../../../../.." && pwd)"\n'
-        'exec python3 "$ROOT/stub_batch/%s" "$@"\n'
-    )
-    _write_sh("mock_linux/opt/migsys/業務C/sh/ck019_db.sh", _db_wrap % "run_batch_db.py")
-    _write_sh("mock_linux/opt/migsys/業務C/sh/ck020_db.sh", _db_wrap % "run_settlement.py")
+    # DB 래퍼도 .py(D-060) — stub을 현재 인터프리터로 호출(Windows에 python3 별칭이 없을 수 있음).
+    _db_wrap = '''#!/usr/bin/env python3
+"""mock 업무 셸(DB) — repo stub_batch/의 실 DB stub을 호출(§1: DB 로직은 stub_batch에만)."""
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[7]
+raise SystemExit(
+    subprocess.run([sys.executable, str(ROOT / "stub_batch" / "%s"), *sys.argv[1:]]).returncode
+)
+'''
+    _write_sh("mock_linux/opt/migsys/業務C/sh/ck019_db.py", _db_wrap % "run_batch_db.py")
+    _write_sh("mock_linux/opt/migsys/業務C/sh/ck020_db.py", _db_wrap % "run_settlement.py")
 
     print(f"生成: {len(CHECKS)} 체크리스트(파일흐름) + {len(shells)} mock 셸 + DB CK 2건(019/020) 입력·래퍼 (Shift-JIS)")
     return 0

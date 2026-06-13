@@ -80,8 +80,11 @@ def test_argv_db_input_db_output(tmp_path):
     argv, env, timeout = runner._build_command(
         _def("001", "database", "database"), _config(tmp_path), clean=False
     )
-    assert argv[0].endswith("stub_batch/run_batch_db.py")
-    assert argv[1:3] == ["--shell-id", "001"]
+    # D-060: .py 배치는 [인터프리터, 스크립트, ...] — Windows 크로스플랫폼 실행
+    import sys
+    assert argv[0] == sys.executable
+    assert argv[1].endswith("stub_batch/run_batch_db.py")
+    assert argv[2:4] == ["--shell-id", "001"]
     assert "--input-table" in argv and "transaction_log" in argv
     assert "--output-table" in argv
     assert "--output-path" not in argv  # DB출력엔 출력경로를 stub에 넘기지 않음
@@ -92,7 +95,9 @@ def test_argv_file_input_file_output(tmp_path):
     argv, env, timeout = runner._build_command(
         _def("006", "file", "file"), _config(tmp_path), clean=False
     )
-    assert argv[0].endswith("stub_batch/run_batch_file.py")
+    import sys
+    assert argv[0] == sys.executable                       # D-060: .py → 인터프리터 경유
+    assert argv[1].endswith("stub_batch/run_batch_file.py")
     assert "--input-file" in argv
     assert str(tmp_path / "tobe_input" / "006.csv") in argv
     assert "--output-path" in argv
@@ -343,3 +348,15 @@ def test_success_exit_code_is_configurable(tmp_path, monkeypatch):
     cfg = _config(tmp_path)
     cfg.batch.success_exit_code = 7
     runner.run_batch(_def("006", "file", "file"), cfg)  # 이제 성공(예외 없음)
+
+
+def test_exec_argv_py_uses_interpreter():
+    """`.py` 배치는 현재 인터프리터로 실행(D-060 — Windows 크로스플랫폼). 그 외는 직접 호출(계약 불변)."""
+    import sys
+    from pathlib import Path
+    from src.core.runner import _exec_argv
+
+    assert _exec_argv(Path("/x/mock.py")) == [sys.executable, "/x/mock.py"]
+    assert _exec_argv(Path("/x/MOCK.PY")) == [sys.executable, "/x/MOCK.PY"]  # 대소문자 무관
+    assert _exec_argv(Path("/opt/job/batch.sh")) == ["/opt/job/batch.sh"]   # 실 배치는 그대로
+    assert _exec_argv(Path("/opt/job/netcobol_bin")) == ["/opt/job/netcobol_bin"]
