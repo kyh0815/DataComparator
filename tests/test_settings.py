@@ -4,11 +4,21 @@
 경로 해석·비밀번호 환경변수·필수 키 누락·파일 없음·YAML 오류.
 """
 
+import os
 from pathlib import Path
 
 import pytest
 
 from src.config.settings import ConfigError, load_config
+
+
+def _osabs(p: str) -> str:
+    """POSIX 스타일 절대경로를 실행 OS의 절대경로(forward-slash, YAML 안전)로.
+
+    '/abs/B' → POSIX '/abs/B', Windows 'C:/abs/B'. 테스트에서 "절대경로 통과"를 OS-무관하게
+    검증하려면 입력·기대를 같은 OS-절대형으로 맞춰야 한다(하드코딩 /abs는 Windows서 비절대).
+    """
+    return Path(os.path.abspath(p)).as_posix()
 
 _FULL_YAML = """
 encoding: Shift_JIS
@@ -149,14 +159,15 @@ _GROUPS_YAML = _FULL_YAML.replace(
 
 def test_batch_groups_parsed_with_inheritance(tmp_path):
     """batch.groups: base_dir 그룹 필수, env/success_exit_code는 비면 batch 전역 상속(B-Q2)."""
-    g = load_config(_write(tmp_path, _GROUPS_YAML)).batch.groups
+    absB = _osabs("/abs/B")  # OS-절대경로(Windows는 드라이브 포함)
+    g = load_config(_write(tmp_path, _GROUPS_YAML.replace("/abs/B", absB))).batch.groups
     assert set(g) == {"業務A", "業務B"}
     assert g["業務A"].success_exit_code == 0                       # 상속(전역 0)
     assert g["業務A"].env == {"POSTGRES_PASSWORD": "gpw"}          # 상속(전역 env)
     assert g["業務A"].base_dir == (tmp_path / "mock/A").resolve()  # 상대→config 기준 절대화
     assert g["業務B"].success_exit_code == 3                       # override
     assert g["業務B"].env == {"X": "y"}                            # override
-    assert g["業務B"].base_dir == Path("/abs/B")                   # 절대경로 그대로
+    assert g["業務B"].base_dir == Path(absB)                       # 절대경로 그대로(OS-무관)
 
 
 def test_batch_groups_absent_is_empty(tmp_path):
@@ -173,13 +184,14 @@ def test_batch_group_missing_base_dir_errors(tmp_path):
 
 def test_batch_group_data_dirs_parsed(tmp_path):
     """batch.groups[업무]의 업무별 데이터 디렉토리 파싱·절대화(D-044, 3단계 폴백 중간층)."""
+    absT = _osabs("/abs/A/tobe")  # OS-절대경로
     y = _GROUPS_YAML.replace(
         "業務A: { base_dir: ./mock/A }",
-        "業務A: { base_dir: ./mock/A, asis_input_dir: ./A/asis/in, tobe_output_dir: /abs/A/tobe }",
+        f"業務A: {{ base_dir: ./mock/A, asis_input_dir: ./A/asis/in, tobe_output_dir: {absT} }}",
     )
     g = load_config(_write(tmp_path, y)).batch.groups["業務A"]
     assert g.asis_input_dir == (tmp_path / "A/asis/in").resolve()   # 상대 → config 기준 절대화
-    assert g.tobe_output_dir == Path("/abs/A/tobe")                  # 절대 그대로
+    assert g.tobe_output_dir == Path(absT)                          # 절대 그대로(OS-무관)
     assert g.asis_output_dir is None                                 # 미지정 → None(전역 폴백)
 
 
@@ -205,8 +217,9 @@ def test_apply_group_dirs_three_level_priority():
         outputs=[OutputSpec(type="file", expected="exp.dat", file="out.dat")],
     )
     apply_group_dirs(d, cfg)
-    assert d.inputs[0].src_dir == "/g/asis/in"        # 빈칸 → 그룹
-    assert d.inputs[1].src_dir == "/item/in"          # 항목 override 우선(불변)
-    assert d.outputs[0].expected_dir == "/g/asis/out" # 빈칸 → 그룹
-    assert d.outputs[0].tobe_dir == "/g/tobe/out"
+    # 그룹 dir은 str(Path)로 운반되므로 기대도 동일 형식으로(OS 구분자 무관)
+    assert d.inputs[0].src_dir == str(group.asis_input_dir)    # 빈칸 → 그룹
+    assert d.inputs[1].src_dir == "/item/in"                   # 항목 override 우선(불변 — 입력 문자열 그대로)
+    assert d.outputs[0].expected_dir == str(group.asis_output_dir)  # 빈칸 → 그룹
+    assert d.outputs[0].tobe_dir == str(group.tobe_output_dir)
     assert d.inputs[0].dest_dir is None               # 그룹에 tobe_input_dir 없음 → None(전역 폴백)
